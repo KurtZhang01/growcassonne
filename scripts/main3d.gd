@@ -3,6 +3,7 @@ extends Node3D
 const TITLE_BACKGROUND: Texture2D = preload("res://assets/title-background.png")
 const CLOUD_SPRITE: Texture2D = preload("res://assets/cloud-sprite-v2.png")
 const DYNAMIC_SKY_SHADER: Shader = preload("res://shaders/dynamic_sky.gdshader")
+const WATER_TILE_SHADER: Shader = preload("res://shaders/water_tile.gdshader")
 
 # ---- Config ----
 const GRID_SIZE := 9
@@ -15,10 +16,10 @@ const DIRS := [Vector2i.UP, Vector2i.RIGHT, Vector2i.DOWN, Vector2i.LEFT]
 
 # ---- Terrain palette (Dorfromantik soft) ----
 const TERRAIN_TOP := [
-	Color("#6fbd57"),  # GRASS
-	Color("#4f9fca"),  # WATER
-	Color("#2f784b"),  # FOREST
-	Color("#d9ad59"),  # DESERT
+	Color("#76c85e"),  # GRASS
+	Color("#52acd5"),  # WATER
+	Color("#347f50"),  # FOREST
+	Color("#e2b765"),  # DESERT
 ]
 const TERRAIN_MID := [
 	Color("#4f8f42"),
@@ -608,17 +609,7 @@ func _spawn_tile(pos: Vector2i, terr: int, animate: bool, road_mask: int = 0):
 		2: _tile_forest_surface(root, road_mask)
 		3: _tile_desert_surface(root, road_mask)
 
-	# --- Edge highlight ---
-	var bevel = MeshInstance3D.new()
-	var bvm = BoxMesh.new(); bvm.size = Vector3(1.08, 0.012, 1.08)
-	bevel.mesh = bvm
-	var bvmat = StandardMaterial3D.new()
-	bvmat.albedo_color = TERRAIN_TOP[terr].lightened(0.3)
-	bvmat.emission_enabled = true; bvmat.emission = TERRAIN_TOP[terr].lightened(0.1)
-	bvmat.emission_energy_multiplier = 0.25
-	bvmat.roughness = 0.72
-	bevel.material_override = bvmat; bevel.position.y = 0.16
-	root.add_child(bevel)
+	_spawn_edge_trim(root, terr)
 
 	# --- Decorations ---
 	_spawn_decor(terr, root, road_mask)
@@ -640,15 +631,28 @@ func _spawn_island_base(root: Node3D, terr: int):
 		mesh.size = layer_data[0]; layer.mesh = mesh
 		var material = StandardMaterial3D.new(); material.albedo_color = layer_data[2]; material.roughness = 0.94
 		layer.material_override = material; layer.position.y = layer_data[1]; root.add_child(layer)
-	for i in 3:
+	for i in 2:
 		var shard = MeshInstance3D.new(); var shard_mesh = BoxMesh.new()
-		shard_mesh.size = Vector3(randf_range(0.12, 0.22), randf_range(0.12, 0.24), randf_range(0.12, 0.22))
+		shard_mesh.size = Vector3(randf_range(0.10, 0.18), randf_range(0.15, 0.27), randf_range(0.10, 0.18))
 		shard.mesh = shard_mesh
 		var shard_material = StandardMaterial3D.new(); shard_material.albedo_color = TERRAIN_BOT[terr].darkened(randf_range(0.18, 0.32)); shard_material.roughness = 1.0
 		shard.material_override = shard_material
 		shard.position = Vector3(randf_range(-0.28, 0.28), randf_range(-0.38, -0.29), randf_range(-0.28, 0.28))
 		shard.rotation_degrees = Vector3(randf_range(-18, 18), randf_range(0, 360), randf_range(-18, 18))
 		root.add_child(shard)
+
+func _spawn_edge_trim(root: Node3D, terr: int):
+	var trim_material = StandardMaterial3D.new()
+	trim_material.albedo_color = TERRAIN_TOP[terr].lightened(0.22)
+	trim_material.roughness = 0.76
+	for side in 4:
+		var trim = MeshInstance3D.new(); var mesh = BoxMesh.new()
+		var horizontal = side < 2
+		mesh.size = Vector3(1.07 if horizontal else 0.035, 0.018, 0.035 if horizontal else 1.07)
+		trim.mesh = mesh; trim.material_override = trim_material
+		if horizontal: trim.position = Vector3(0, 0.172, -0.515 if side == 0 else 0.515)
+		else: trim.position = Vector3(-0.515 if side == 2 else 0.515, 0.172, 0)
+		root.add_child(trim)
 
 func _feature_position(road_mask: int, extent: float = 0.34) -> Vector2:
 	for attempt in 12:
@@ -706,37 +710,46 @@ func _tile_grass_surface(root: Node3D, road_mask: int):
 	var top = MeshInstance3D.new()
 	var tm = BoxMesh.new(); tm.size = Vector3(0.95, 0.06, 0.95)
 	top.mesh = tm
-	var mat = StandardMaterial3D.new(); mat.albedo_color = TERRAIN_TOP[0]
+	var mat = StandardMaterial3D.new(); mat.albedo_color = TERRAIN_TOP[0]; mat.roughness = 0.92
 	top.material_override = mat; top.position.y = 0.13
 	root.add_child(top)
 
-	# Small hill bumps
-	for i in randi_range(2, 4):
+	# Soft clover patches break up the square surface without obscuring roads.
+	for i in 2:
+		var patch = MeshInstance3D.new(); var patch_mesh = CylinderMesh.new()
+		patch_mesh.top_radius = randf_range(0.10, 0.18); patch_mesh.bottom_radius = patch_mesh.top_radius * 1.08
+		patch_mesh.height = 0.012; patch_mesh.radial_segments = 12; patch.mesh = patch_mesh
+		var patch_material = StandardMaterial3D.new(); patch_material.albedo_color = TERRAIN_TOP[0].lerp(Color("#b4d66a"), randf_range(0.18, 0.42))
+		patch_material.roughness = 1.0; patch.material_override = patch_material
+		var patch_pos = _feature_position(road_mask, 0.34); patch.position = Vector3(patch_pos.x, 0.166, patch_pos.y)
+		patch.scale.z = randf_range(0.65, 1.2); root.add_child(patch)
+
+	# Rounded hillocks give grass tiles a soft pastoral silhouette.
+	for i in randi_range(1, 3):
 		var bump = MeshInstance3D.new()
 		var sm = SphereMesh.new()
-		sm.radius = randf_range(0.08, 0.16); sm.height = sm.radius * 1.4
+		sm.radius = randf_range(0.10, 0.17); sm.height = sm.radius * 1.15
+		sm.radial_segments = 16; sm.rings = 8
 		bump.mesh = sm
 		var bm2 = StandardMaterial3D.new()
 		bm2.albedo_color = TERRAIN_TOP[0].lerp(Color(0.4, 0.75, 0.3), randf_range(0, 0.3))
 		bump.material_override = bm2
 		var feature_pos = _feature_position(road_mask, 0.32)
-		bump.position = Vector3(feature_pos.x, 0.16, feature_pos.y)
-		bump.scale.y = randf_range(0.4, 0.7)
+		bump.position = Vector3(feature_pos.x, 0.15, feature_pos.y)
+		bump.scale = Vector3(randf_range(1.0, 1.35), randf_range(0.32, 0.48), randf_range(0.9, 1.25))
 		root.add_child(bump)
 
 # ---- Water: depressed pool with ripple rings ----
-func _tile_water_surface(root: Node3D, _road_mask: int):
+func _tile_water_surface(root: Node3D, road_mask: int):
 	# Water surface (slightly lower)
 	var top = MeshInstance3D.new()
 	var tm = BoxMesh.new(); tm.size = Vector3(0.92, 0.04, 0.92)
 	top.mesh = tm
-	var mat = StandardMaterial3D.new()
-	mat.albedo_color = TERRAIN_TOP[1]
-	mat.metallic = 0.3; mat.roughness = 0.2
+	var mat = ShaderMaterial.new(); mat.shader = WATER_TILE_SHADER
 	top.material_override = mat; top.position.y = 0.10
 	root.add_child(top)
 
-	# Depth layer (darker center)
+	# A submerged center creates depth beneath the animated surface.
 	var depth = MeshInstance3D.new()
 	var dm = CylinderMesh.new(); dm.top_radius = 0.30; dm.bottom_radius = 0.30; dm.height = 0.02
 	depth.mesh = dm
@@ -745,23 +758,26 @@ func _tile_water_surface(root: Node3D, _road_mask: int):
 	depth.material_override = dmat; depth.position.y = 0.09
 	root.add_child(depth)
 
-	# Ripple rings
+	# Offset ripple rings keep neighboring water tiles from looking cloned.
 	for i in randi_range(1, 3):
 		var ripple = MeshInstance3D.new()
 		var rm = TorusMesh.new()
 		rm.inner_radius = 0.12 + i * 0.10; rm.outer_radius = rm.inner_radius + 0.02; rm.rings = 24
 		ripple.mesh = rm
 		var rmat = StandardMaterial3D.new()
-		rmat.albedo_color = Color(0.5, 0.8, 1.0, 0.25 - i * 0.05)
+		rmat.albedo_color = Color(0.68, 0.92, 1.0, 0.23 - i * 0.045)
 		rmat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 		rmat.emission_enabled = true; rmat.emission = Color(0.2, 0.5, 0.8)
 		rmat.emission_energy_multiplier = 0.3
 		ripple.material_override = rmat
-		ripple.position = Vector3(randf_range(-0.15, 0.15), 0.13, randf_range(-0.15, 0.15))
-		ripple.rotation_degrees.x = 90
+		var ripple_pos = _feature_position(road_mask, 0.25)
+		ripple.position = Vector3(ripple_pos.x, 0.13, ripple_pos.y)
 		root.add_child(ripple)
+		var ripple_tween = ripple.create_tween().set_loops()
+		ripple_tween.tween_property(ripple, "scale", Vector3(1.10, 1.10, 1.10), randf_range(1.8, 2.8)).set_trans(Tween.TRANS_SINE)
+		ripple_tween.tween_property(ripple, "scale", Vector3.ONE, randf_range(1.8, 2.8)).set_trans(Tween.TRANS_SINE)
 
-	# Specular highlight
+	# Small reflected streak.
 	var spec = MeshInstance3D.new()
 	var sm = PlaneMesh.new(); sm.size = Vector2(0.25, 0.15)
 	spec.mesh = sm
@@ -771,33 +787,33 @@ func _tile_water_surface(root: Node3D, _road_mask: int):
 	smat.emission_enabled = true; smat.emission = Color(0.5, 0.8, 1.0)
 	smat.emission_energy_multiplier = 0.4
 	spec.material_override = smat
-	spec.position = Vector3(randf_range(-0.15, 0.15), 0.14, randf_range(-0.15, 0.15))
-	spec.rotation_degrees.x = -90
+	var spec_pos = _feature_position(road_mask, 0.28)
+	spec.position = Vector3(spec_pos.x, 0.14, spec_pos.y)
+	spec.rotation_degrees.y = randf_range(0, 360)
 	root.add_child(spec)
 
 # ---- Forest: raised terrain with visible tree trunks ----
 func _tile_forest_surface(root: Node3D, road_mask: int):
-	# Raised earth mound
+	# Raised forest floor remains square so connected tiles read as one biome.
 	var top = MeshInstance3D.new()
-	var tm = CylinderMesh.new()
-	tm.top_radius = 0.42; tm.bottom_radius = 0.48; tm.height = 0.10
+	var tm = BoxMesh.new(); tm.size = Vector3(0.95, 0.075, 0.95)
 	top.mesh = tm
 	var mat = StandardMaterial3D.new(); mat.albedo_color = TERRAIN_MID[2]
-	top.material_override = mat; top.position.y = 0.14
+	mat.roughness = 1.0; top.material_override = mat; top.position.y = 0.138
 	root.add_child(top)
 
 	# Moss layer on top
 	var moss = MeshInstance3D.new()
 	var mm2 = CylinderMesh.new()
-	mm2.top_radius = 0.38; mm2.bottom_radius = 0.42; mm2.height = 0.04
+	mm2.top_radius = 0.31; mm2.bottom_radius = 0.34; mm2.height = 0.025; mm2.radial_segments = 14
 	moss.mesh = mm2
 	var mmat2 = StandardMaterial3D.new()
 	mmat2.albedo_color = TERRAIN_TOP[2]
-	moss.material_override = mmat2; moss.position.y = 0.20
+	moss.material_override = mmat2; moss.position.y = 0.19
 	root.add_child(moss)
 
-	# Stumps/logs
-	for i in randi_range(1, 2):
+	# Stumps and fallen timber make the forest floor legible between canopies.
+	for i in 1:
 		var stump = MeshInstance3D.new()
 		var sm = CylinderMesh.new()
 		sm.top_radius = randf_range(0.04, 0.07)
@@ -817,22 +833,21 @@ func _tile_desert_surface(root: Node3D, road_mask: int):
 	var top = MeshInstance3D.new()
 	var tm = BoxMesh.new(); tm.size = Vector3(0.95, 0.05, 0.95)
 	top.mesh = tm
-	var mat = StandardMaterial3D.new(); mat.albedo_color = TERRAIN_TOP[3]
+	var mat = StandardMaterial3D.new(); mat.albedo_color = TERRAIN_TOP[3]; mat.roughness = 1.0
 	top.material_override = mat; top.position.y = 0.13
 	root.add_child(top)
 
-	# Dune ridges (elongated boxes at angle)
-	for i in randi_range(1, 3):
+	# Partially buried ellipsoids form smooth dune ridges instead of hard boxes.
+	for i in randi_range(2, 3):
 		var dune = MeshInstance3D.new()
-		var dm = BoxMesh.new()
-		var w = randf_range(0.12, 0.25)
-		dm.size = Vector3(w, randf_range(0.03, 0.06), randf_range(0.35, 0.55))
+		var dm = SphereMesh.new(); dm.radius = 0.16; dm.height = 0.20; dm.radial_segments = 18; dm.rings = 8
 		dune.mesh = dm
 		var dmat2 = StandardMaterial3D.new()
 		dmat2.albedo_color = TERRAIN_TOP[3].lerp(Color(0.85, 0.72, 0.40), randf_range(0, 0.4))
 		dune.material_override = dmat2
 		var feature_pos = _feature_position(road_mask, 0.30)
-		dune.position = Vector3(feature_pos.x, 0.16, feature_pos.y)
+		dune.position = Vector3(feature_pos.x, 0.135, feature_pos.y)
+		dune.scale = Vector3(randf_range(0.55, 0.85), randf_range(0.22, 0.34), randf_range(1.25, 1.75))
 		dune.rotation_degrees.y = randf_range(0, 360)
 		root.add_child(dune)
 
@@ -847,7 +862,7 @@ func _tile_desert_surface(root: Node3D, road_mask: int):
 		shadow.material_override = shmat
 		var feature_pos = _feature_position(road_mask, 0.30)
 		shadow.position = Vector3(feature_pos.x, 0.165, feature_pos.y)
-		shadow.rotation_degrees.x = -90; shadow.rotation_degrees.z = randf_range(0, 360)
+		shadow.rotation_degrees.y = randf_range(0, 360)
 		root.add_child(shadow)
 
 # ================================================================
@@ -864,7 +879,6 @@ func _spawn_decor(terr: int, parent: Node3D, road_mask: int):
 func _decor_grass(p: Node3D, road_mask: int):
 	# Flowers
 	for i in randi_range(2, 5):
-		var flower = MeshInstance3D.new()
 		# Stem
 		var stem = MeshInstance3D.new()
 		var stm = CylinderMesh.new(); stm.top_radius = 0.008; stm.bottom_radius = 0.01; stm.height = randf_range(0.06, 0.12)
@@ -888,6 +902,17 @@ func _decor_grass(p: Node3D, road_mask: int):
 		petal.material_override = pmat
 		petal.position = Vector3(sx, 0.18 + stm.height + pm.radius, sz)
 		p.add_child(petal)
+	# Tufts add a readable grassy edge silhouette at game distance.
+	var blade_material = StandardMaterial3D.new(); blade_material.albedo_color = Color("#4d9b43"); blade_material.roughness = 1.0
+	for tuft_index in 2:
+		var tuft_pos = _feature_position(road_mask, 0.36)
+		for blade_index in 3:
+			var blade = MeshInstance3D.new(); var blade_mesh = BoxMesh.new()
+			var blade_height = randf_range(0.055, 0.105)
+			blade_mesh.size = Vector3(0.012, blade_height, 0.018); blade.mesh = blade_mesh; blade.material_override = blade_material
+			blade.position = Vector3(tuft_pos.x + (blade_index - 1) * 0.018, 0.18 + blade_height * 0.5, tuft_pos.y)
+			blade.rotation_degrees.z = (blade_index - 1) * randf_range(10.0, 18.0)
+			blade.rotation_degrees.y = randf_range(-25.0, 25.0); p.add_child(blade)
 
 func _decor_water(p: Node3D, road_mask: int):
 	# Lily pad
@@ -908,53 +933,69 @@ func _decor_water(p: Node3D, road_mask: int):
 		lotus.material_override = lmat
 		lotus.position = pad.position + Vector3(0, 0.03, 0)
 		p.add_child(lotus)
+	# A small reed cluster anchors the otherwise reflective surface.
+	var reed_pos = _feature_position(road_mask, 0.37)
+	var reed_material = StandardMaterial3D.new(); reed_material.albedo_color = Color("#6f8f47"); reed_material.roughness = 1.0
+	for reed_index in 3:
+		var reed = MeshInstance3D.new(); var reed_mesh = CylinderMesh.new()
+		reed_mesh.top_radius = 0.006; reed_mesh.bottom_radius = 0.009; reed_mesh.height = randf_range(0.10, 0.17); reed_mesh.radial_segments = 6
+		reed.mesh = reed_mesh; reed.material_override = reed_material
+		reed.position = Vector3(reed_pos.x + (reed_index - 1) * 0.026, 0.12 + reed_mesh.height * 0.5, reed_pos.y + abs(reed_index - 1) * 0.012)
+		reed.rotation_degrees.z = (reed_index - 1) * 5.0; p.add_child(reed)
 
 func _decor_forest(p: Node3D, road_mask: int):
-	# Pine tree with trunk + 2-3 cone layers
-	var trunk = MeshInstance3D.new()
-	var tm = CylinderMesh.new(); tm.top_radius = 0.018; tm.bottom_radius = 0.028; tm.height = randf_range(0.18, 0.30)
-	trunk.mesh = tm
-	var tmat = StandardMaterial3D.new(); tmat.albedo_color = Color(0.42, 0.28, 0.14)
-	trunk.material_override = tmat
-	var feature_pos = _feature_position(road_mask, 0.29)
-	var tx = feature_pos.x; var tz = feature_pos.y
-	trunk.position = Vector3(tx, 0.20 + tm.height * 0.5, tz)
-	p.add_child(trunk)
-	for layer in randi_range(2, 3):
-		var fol = MeshInstance3D.new()
-		var fm = CylinderMesh.new()
-		var lr = 0.16 - layer * 0.035
-		fm.top_radius = 0.01; fm.bottom_radius = max(0.03, lr); fm.height = randf_range(0.10, 0.15)
-		fol.mesh = fm
-		var fmat = StandardMaterial3D.new()
-		fmat.albedo_color = Color(0.14, 0.50, 0.18).lerp(Color(0.22, 0.68, 0.28), randf())
-		fol.material_override = fmat
-		fol.position = Vector3(tx, 0.20 + tm.height * 0.3 + layer * 0.09, tz)
-		p.add_child(fol)
+	# A compact grove with varied height reads as a forest rather than a lone tree.
+	var tree_count = randi_range(2, 3)
+	for tree_index in tree_count:
+		var feature_pos = _feature_position(road_mask, 0.34)
+		var tx = feature_pos.x; var tz = feature_pos.y
+		var tree_height = randf_range(0.22, 0.38) * (1.0 if tree_index == 0 else 0.82)
+		var trunk = MeshInstance3D.new(); var tm = CylinderMesh.new()
+		tm.top_radius = 0.018; tm.bottom_radius = 0.030; tm.height = tree_height; tm.radial_segments = 7
+		trunk.mesh = tm
+		var tmat = StandardMaterial3D.new(); tmat.albedo_color = Color("#6d4828"); tmat.roughness = 1.0
+		trunk.material_override = tmat; trunk.position = Vector3(tx, 0.20 + tree_height * 0.5, tz); p.add_child(trunk)
+		for layer in 3:
+			var fol = MeshInstance3D.new(); var fm = CylinderMesh.new()
+			var layer_radius = (0.16 - layer * 0.032) * (tree_height / 0.32)
+			fm.top_radius = 0.012; fm.bottom_radius = maxf(0.055, layer_radius); fm.height = 0.13; fm.radial_segments = 10
+			fol.mesh = fm
+			var fmat = StandardMaterial3D.new()
+			fmat.albedo_color = Color("#236a3f").lerp(Color("#55a84f"), float(layer) * 0.18 + randf_range(0.0, 0.12)); fmat.roughness = 0.94
+			fol.material_override = fmat
+			fol.position = Vector3(tx, 0.20 + tree_height * 0.43 + layer * 0.075, tz); p.add_child(fol)
 
 func _decor_desert(p: Node3D, road_mask: int):
-	# Rocks
+	# Faceted, partially buried stones replace the previous box-like rubble.
 	for i in randi_range(1, 3):
 		var rock = MeshInstance3D.new()
-		var rm = BoxMesh.new(); rm.size = Vector3(randf_range(0.06, 0.14), randf_range(0.04, 0.09), randf_range(0.06, 0.14))
+		var rm = SphereMesh.new(); rm.radius = randf_range(0.055, 0.10); rm.height = rm.radius * 1.45; rm.radial_segments = 7; rm.rings = 4
 		rock.mesh = rm
 		var rmat = StandardMaterial3D.new()
 		rmat.albedo_color = Color(0.62, 0.52, 0.35).lerp(Color(0.78, 0.68, 0.48), randf())
 		rock.material_override = rmat
 		var feature_pos = _feature_position(road_mask, 0.31)
-		rock.position = Vector3(feature_pos.x, 0.18, feature_pos.y)
+		rock.position = Vector3(feature_pos.x, 0.17, feature_pos.y)
+		rock.scale = Vector3(randf_range(0.75, 1.25), randf_range(0.55, 0.85), randf_range(0.75, 1.20))
 		rock.rotation_degrees = Vector3(randf_range(-10, 10), randf_range(0, 360), randf_range(-10, 10))
 		p.add_child(rock)
-	# Cactus
-	if randf() < 0.35:
+	# Branched cactus creates a distinctive desert silhouette.
+	if randf() < 0.52:
 		var cac = MeshInstance3D.new()
-		var cm = CylinderMesh.new(); cm.top_radius = 0.02; cm.bottom_radius = 0.025; cm.height = randf_range(0.12, 0.20)
+		var cm = CylinderMesh.new(); cm.top_radius = 0.025; cm.bottom_radius = 0.030; cm.height = randf_range(0.16, 0.24); cm.radial_segments = 8
 		cac.mesh = cm
 		var cmat = StandardMaterial3D.new(); cmat.albedo_color = Color(0.28, 0.58, 0.22)
 		cac.material_override = cmat
 		var cactus_pos = _feature_position(road_mask, 0.29)
 		cac.position = Vector3(cactus_pos.x, 0.18 + cm.height * 0.5, cactus_pos.y)
 		p.add_child(cac)
+		for arm_side in [-1, 1]:
+			if randf() > 0.72: continue
+			var arm = MeshInstance3D.new(); var arm_mesh = CylinderMesh.new()
+			arm_mesh.top_radius = 0.014; arm_mesh.bottom_radius = 0.018; arm_mesh.height = randf_range(0.065, 0.095); arm_mesh.radial_segments = 7
+			arm.mesh = arm_mesh; arm.material_override = cmat
+			arm.position = cac.position + Vector3(arm_side * 0.035, randf_range(-0.02, 0.035), 0)
+			arm.rotation_degrees.z = 90.0; p.add_child(arm)
 
 # ================================================================
 #  PLANT — per-player distinct 3D model
