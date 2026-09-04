@@ -51,6 +51,16 @@ var scores := []; var group_counts := []
 var hovered_cell := Vector2i(-1, -1); var pulse := 0.0
 var flash_timer := 0.0; var flash_color := Color.WHITE
 
+# Camera zoom/pan
+var cam_zoom := 1.0; var cam_zoom_target := 1.0
+const CAM_ZOOM_MIN := 0.5; const CAM_ZOOM_MAX := 2.5
+const CAM_ZOOM_SPEED := 0.1
+var cam_offset := Vector2.ZERO; var cam_offset_target := Vector2.ZERO
+var is_panning := false; var pan_start := Vector2.ZERO
+var cam_pan_start := Vector2.ZERO
+const CAM_PAN_SPEED := 0.015
+const CAM_BASE_SIZE := 18.0
+
 # Nodes
 var camera: Camera3D; var grid_root: Node3D; var plant_root: Node3D
 var decor_root: Node3D; var hover_mesh: MeshInstance3D; var ui_ctrl: Control
@@ -733,7 +743,17 @@ func _mouse_to_grid(mp: Vector2) -> Vector2i:
 func _process(delta):
 	pulse += delta
 	if flash_timer > 0: flash_timer = max(0, flash_timer - delta * 2.5)
-	camera.position.y = 16 + sin(pulse * 0.3) * 0.2
+
+	# Smooth zoom interpolation
+	cam_zoom = lerp(cam_zoom, cam_zoom_target, delta * 10.0)
+	camera.size = CAM_BASE_SIZE / cam_zoom
+
+	# Smooth pan interpolation
+	cam_offset = cam_offset.lerp(cam_offset_target, delta * 10.0)
+	var base_pos = Vector3(8, 16, 12)
+	# Convert 2D offset to 3D (isometric axes)
+	camera.position = base_pos + Vector3(cam_offset.x, 0, cam_offset.y)
+
 	ui_ctrl.queue_redraw()
 
 func _input(event):
@@ -746,7 +766,34 @@ func _input(event):
 			player_count = 2; state = S.PLACE_TILE; _start_game()
 		return
 
+	# ---- Zoom: scroll wheel ----
+	if event is InputEventMouseButton:
+		if event.button_index == MOUSE_BUTTON_WHEEL_UP:
+			cam_zoom_target = clamp(cam_zoom_target + CAM_ZOOM_SPEED, CAM_ZOOM_MIN, CAM_ZOOM_MAX)
+			return
+		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
+			cam_zoom_target = clamp(cam_zoom_target - CAM_ZOOM_SPEED, CAM_ZOOM_MIN, CAM_ZOOM_MAX)
+			return
+
+	# ---- Zoom: trackpad pinch (macOS MagnifyGesture) ----
+	if event is InputEventMagnifyGesture:
+		cam_zoom_target = clamp(cam_zoom_target + event.factor * 0.5, CAM_ZOOM_MIN, CAM_ZOOM_MAX)
+		return
+
+	# ---- Pan: middle mouse button drag ----
+	if event is InputEventMouseButton:
+		if event.button_index == MOUSE_BUTTON_MIDDLE:
+			if event.pressed:
+				is_panning = true; pan_start = event.position; cam_pan_start = cam_offset_target
+			else:
+				is_panning = false
+			return
+
 	if event is InputEventMouseMotion:
+		if is_panning:
+			var delta_pos = (event.position - pan_start) * CAM_PAN_SPEED / cam_zoom
+			cam_offset_target = cam_pan_start + Vector2(-delta_pos.x, -delta_pos.y)
+			return
 		var nc = _mouse_to_grid(event.position)
 		if nc != hovered_cell:
 			hovered_cell = nc
@@ -754,6 +801,11 @@ func _input(event):
 				hover_mesh.visible = true
 				hover_mesh.position = _world(hovered_cell); hover_mesh.position.y = 0.01
 			else: hover_mesh.visible = false
+
+	# ---- Pan: trackpad two-finger scroll (PanGesture) ----
+	if event is InputEventPanGesture:
+		cam_offset_target += Vector2(-event.delta.x, -event.delta.y) * CAM_PAN_SPEED * 2.0 / cam_zoom
+		return
 
 	if event is InputEventMouseButton and event.pressed:
 		var cell = _mouse_to_grid(event.position)
@@ -765,8 +817,11 @@ func _input(event):
 		elif event.button_index == MOUSE_BUTTON_RIGHT:
 			if state == S.PLACE_SEED: _end_turn()
 
-	if event is InputEventKey and event.pressed and event.keycode == KEY_R:
-		get_tree().reload_current_scene()
+	if event is InputEventKey and event.pressed:
+		if event.keycode == KEY_R: get_tree().reload_current_scene()
+		# Reset camera with C key
+		elif event.keycode == KEY_C:
+			cam_zoom_target = 1.0; cam_offset_target = Vector2.ZERO
 
 # ================================================================
 #  UI
@@ -820,7 +875,9 @@ func _draw_ui():
 	for i in player_count:
 		ui_ctrl.draw_circle(Vector2(ux + 128, ly + 20 + i * 24), 6, PLAYER_COLORS[i])
 		ui_ctrl.draw_string(font, Vector2(ux + 140, ly + 26 + i * 24), PLAYER_NAMES[i], HORIZONTAL_ALIGNMENT_LEFT, -1, 13, PLAYER_COLORS[i].lightened(0.2))
-	ui_ctrl.draw_string(font, Vector2(ux + 12, vp.y - 60), "R = 重新开始", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(0.3, 0.3, 0.3))
+	ui_ctrl.draw_string(font, Vector2(ux + 12, vp.y - 80), "滚轮/双指 = 缩放", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(0.3, 0.3, 0.3))
+	ui_ctrl.draw_string(font, Vector2(ux + 12, vp.y - 62), "中键拖拽/双指滑动 = 平移", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(0.3, 0.3, 0.3))
+	ui_ctrl.draw_string(font, Vector2(ux + 12, vp.y - 44), "C = 重置视角  R = 重新开始", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(0.3, 0.3, 0.3))
 
 func _draw_title(vp: Vector2, font: Font):
 	ui_ctrl.draw_rect(Rect2(0, 0, vp.x, vp.y), Color(0, 0, 0, 0.75))
