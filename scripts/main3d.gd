@@ -1506,28 +1506,29 @@ func _draw_ui():
 	ui_ctrl.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE * interface_scale)
 	var vp = screen_size / interface_scale
 	var ux = vp.x - 320.0; var uy = 30.0
-	var card_bg = Color(0.045, 0.075, 0.068, 0.66)
-	var card_bg_soft = Color(0.060, 0.105, 0.086, 0.54)
-	var card_line = Color(0.68, 0.92, 0.70, 0.28)
-	var ink = Color(0.93, 1.00, 0.91)
-	var muted = Color(0.67, 0.81, 0.72)
+	var glass = Color(0.96, 0.99, 0.96, 0.48)
+	var glass_strong = Color(1.00, 1.00, 0.98, 0.58)
+	var glass_soft = Color(0.86, 0.95, 0.92, 0.38)
+	var glass_line = Color(1.00, 1.00, 1.00, 0.52)
+	var ink = Color(0.08, 0.14, 0.13)
+	var muted = Color(0.36, 0.48, 0.45)
 
 	if state == S.TITLE: _draw_title(vp, font); return
 	if state == S.GAME_OVER: _draw_gameover(vp, font); return
 
 	var pcol = PLAYER_COLORS[current_player]
-	_draw_hud_card(Rect2(ux, uy, 270, 52), Color(0.04, 0.07, 0.065, 0.72), pcol.lightened(0.18))
+	_draw_glass_card(Rect2(ux, uy, 270, 54), glass_strong, pcol.lightened(0.10))
 	var st := "放置浮岛" if state == S.PLACE_TILE else "放置种子"
-	ui_ctrl.draw_circle(Vector2(ux + 22, uy + 25), 8, pcol)
-	ui_ctrl.draw_string(font, Vector2(ux + 40, uy + 22), PLAYER_NAMES[current_player], HORIZONTAL_ALIGNMENT_LEFT, -1, 15, pcol.lightened(0.22))
+	ui_ctrl.draw_circle(Vector2(ux + 24, uy + 27), 8, pcol)
+	ui_ctrl.draw_string(font, Vector2(ux + 42, uy + 23), PLAYER_NAMES[current_player], HORIZONTAL_ALIGNMENT_LEFT, -1, 15, pcol.darkened(0.16))
 	ui_ctrl.draw_string(font, Vector2(ux + 128, uy + 23), st, HORIZONTAL_ALIGNMENT_LEFT, -1, 18, ink)
 
 	var sy = uy + 70
-	_draw_hud_card(Rect2(ux, sy - 6, 270, 112), card_bg_soft, card_line)
+	_draw_glass_card(Rect2(ux, sy - 6, 270, 112), glass, glass_line)
 	ui_ctrl.draw_string(font, Vector2(ux + 12, sy + 2), "守育进度", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, muted)
 	ui_ctrl.draw_string(font, Vector2(ux + 12, sy + 27), "%d / %d" % [turns_played + 1, total_turns], HORIZONTAL_ALIGNMENT_LEFT, -1, 22, ink)
 	var bp = float(turns_played) / total_turns
-	ui_ctrl.draw_rect(Rect2(ux + 12, sy + 40, 246, 8), Color(0.72, 0.92, 0.78, 0.18), 0, true, 4.0)
+	ui_ctrl.draw_rect(Rect2(ux + 12, sy + 40, 246, 8), Color(1.0, 1.0, 1.0, 0.38), 0, true, 4.0)
 	ui_ctrl.draw_rect(Rect2(ux + 12, sy + 40, 246 * bp, 8), pcol, 0, true, 4.0)
 
 	ui_ctrl.draw_string(font, Vector2(ux + 12, sy + 70), "种子", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, muted)
@@ -1535,18 +1536,17 @@ func _draw_ui():
 	ui_ctrl.draw_string(font, Vector2(ux + 120, sy + 70), "生态得分", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, muted)
 	for i in player_count:
 		ui_ctrl.draw_circle(Vector2(ux + 125, sy + 92 + i * 21 - 3), 5, PLAYER_COLORS[i])
-		ui_ctrl.draw_string(font, Vector2(ux + 136, sy + 92 + i * 21), PLAYER_NAMES[i], HORIZONTAL_ALIGNMENT_LEFT, -1, 13, PLAYER_COLORS[i].lightened(0.20))
+		ui_ctrl.draw_string(font, Vector2(ux + 136, sy + 92 + i * 21), PLAYER_NAMES[i], HORIZONTAL_ALIGNMENT_LEFT, -1, 13, PLAYER_COLORS[i].darkened(0.18))
 		ui_ctrl.draw_string(font, Vector2(ux + 226, sy + 92 + i * 21), str(scores[i]), HORIZONTAL_ALIGNMENT_RIGHT, 30, 14, ink)
 
 	var iy = sy + 192
 	if state == S.PLACE_TILE:
-		_draw_hud_card(Rect2(ux, iy - 8, 270, 150), card_bg, card_line)
+		_draw_glass_card(Rect2(ux, iy - 8, 270, 150), glass, glass_line)
 		ui_ctrl.draw_string(font, Vector2(ux + 12, iy + 4), "浮岛市场 · 点击或按 1-3", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, muted)
 		for i in piece_market.size():
 			var piece: Dictionary = piece_market[i]; var bx = ux + 8 + i * 88.0; var by = iy + 20
-			var bg = Color(0.14, 0.22, 0.16, 0.86) if i == selected_market else Color(0.08, 0.12, 0.105, 0.62)
-			ui_ctrl.draw_rect(Rect2(bx, by, 78, 102), bg, 0, true, 6.0)
-			if i == selected_market: ui_ctrl.draw_rect(Rect2(bx, by, 78, 3), pcol.lightened(0.15))
+			var bg = Color(1.0, 1.0, 1.0, 0.58) if i == selected_market else Color(1.0, 1.0, 1.0, 0.30)
+			_draw_glass_card(Rect2(bx, by, 78, 102), bg, pcol.lightened(0.15) if i == selected_market else Color(1.0, 1.0, 1.0, 0.35), 12.0)
 			var preview_rotation = piece_rotation if i == selected_market else 0
 			var preview_cells = _piece_cells(piece, preview_rotation)
 			var min_cell = preview_cells[0]; var max_cell = preview_cells[0]
@@ -1563,21 +1563,21 @@ func _draw_ui():
 				var mask = _rotate_road_mask(piece["roads"][cell_index], preview_rotation)
 				for dir_index in DIRS.size():
 					if (mask & (1 << dir_index)) != 0:
-						ui_ctrl.draw_line(center, center + Vector2(DIRS[dir_index]) * 6.0, Color("#f0d79d"), 2.0)
+						ui_ctrl.draw_line(center, center + Vector2(DIRS[dir_index]) * 6.0, Color("#80623f"), 2.0)
 			ui_ctrl.draw_string(font, Vector2(bx + 7, by + 78), "%d %s" % [i + 1, piece["name"]], HORIZONTAL_ALIGNMENT_LEFT, 64, 12, ink)
 			ui_ctrl.draw_string(font, Vector2(bx + 7, by + 93), "%d格" % piece["cells"].size(), HORIZONTAL_ALIGNMENT_LEFT, -1, 11, muted)
-		ui_ctrl.draw_string(font, Vector2(ux + 12, iy + 136), "Q / E 旋转 · 道路可跨地形生长", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color("#ead38a"))
+		ui_ctrl.draw_string(font, Vector2(ux + 12, iy + 136), "Q / E 旋转 · 道路可跨地形生长", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color("#746239"))
 	elif state == S.PLACE_SEED:
-		_draw_hud_card(Rect2(ux, iy - 8, 270, 128), card_bg, card_line)
+		_draw_glass_card(Rect2(ux, iy - 8, 270, 128), glass, glass_line)
 		ui_ctrl.draw_string(font, Vector2(ux + 12, iy + 2), "操作", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, muted)
-		ui_ctrl.draw_string(font, Vector2(ux + 12, iy + 27), "左键  放种子", HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color("#78efa1"))
+		ui_ctrl.draw_string(font, Vector2(ux + 12, iy + 27), "左键  放种子", HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color("#188b49"))
 		ui_ctrl.draw_string(font, Vector2(ux + 12, iy + 51), "右键  直接生长", HORIZONTAL_ALIGNMENT_LEFT, -1, 15, muted)
 		ui_ctrl.draw_string(font, Vector2(ux + 12, iy + 82), "上回合新生长 %d 格" % last_growth_count, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, muted)
 		if not last_road_event.is_empty():
-			ui_ctrl.draw_string(font, Vector2(ux + 12, iy + 106), last_road_event, HORIZONTAL_ALIGNMENT_LEFT, 250, 13, Color("#ead38a"))
+			ui_ctrl.draw_string(font, Vector2(ux + 12, iy + 106), last_road_event, HORIZONTAL_ALIGNMENT_LEFT, 250, 13, Color("#806022"))
 
 	var ly = vp.y - 200.0
-	_draw_hud_card(Rect2(ux, ly - 10, 270, 124), Color(0.045, 0.075, 0.068, 0.50), card_line)
+	_draw_glass_card(Rect2(ux, ly - 10, 270, 124), glass_soft, glass_line)
 	ui_ctrl.draw_string(font, Vector2(ux + 12, ly), "地形", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, muted)
 	for i in TERRAIN_TOP.size():
 		ui_ctrl.draw_rect(Rect2(ux + 12, ly + 14 + i * 24, 14, 14), TERRAIN_TOP[i], 0, true, 4.0)
@@ -1585,16 +1585,30 @@ func _draw_ui():
 	ui_ctrl.draw_string(font, Vector2(ux + 120, ly), "玩家", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, muted)
 	for i in player_count:
 		ui_ctrl.draw_circle(Vector2(ux + 128, ly + 20 + i * 24), 6, PLAYER_COLORS[i])
-		ui_ctrl.draw_string(font, Vector2(ux + 140, ly + 26 + i * 24), PLAYER_NAMES[i], HORIZONTAL_ALIGNMENT_LEFT, -1, 13, PLAYER_COLORS[i].lightened(0.20))
-	ui_ctrl.draw_line(Vector2(ux, vp.y - 95), Vector2(ux + 270, vp.y - 95), card_line, 1.0)
+		ui_ctrl.draw_string(font, Vector2(ux + 140, ly + 26 + i * 24), PLAYER_NAMES[i], HORIZONTAL_ALIGNMENT_LEFT, -1, 13, PLAYER_COLORS[i].darkened(0.18))
+	ui_ctrl.draw_line(Vector2(ux + 4, vp.y - 95), Vector2(ux + 266, vp.y - 95), Color(1.0, 1.0, 1.0, 0.28), 1.0)
 	ui_ctrl.draw_string(font, Vector2(ux + 12, vp.y - 76), "滚轮/双指 = 缩放", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, muted)
 	ui_ctrl.draw_string(font, Vector2(ux + 12, vp.y - 58), "中键拖拽/双指滑动 = 平移", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, muted)
 	ui_ctrl.draw_string(font, Vector2(ux + 12, vp.y - 40), "Q/E = 旋转  C = 视角  R = 重开", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, muted)
 
-func _draw_hud_card(rect: Rect2, fill: Color = Color(0.055, 0.085, 0.078, 0.62), line: Color = Color(0.66, 0.88, 0.72, 0.20)):
-	ui_ctrl.draw_rect(Rect2(rect.position + Vector2(0, 3), rect.size), Color(0.02, 0.04, 0.035, 0.16), 0, true, 8.0)
-	ui_ctrl.draw_rect(rect, fill, 0, true, 8.0)
-	ui_ctrl.draw_rect(Rect2(rect.position, Vector2(rect.size.x, 1.5)), line)
+func _draw_glass_card(rect: Rect2, fill: Color, line: Color = Color(1.0, 1.0, 1.0, 0.45), radius: float = 18.0):
+	var shadow = StyleBoxFlat.new()
+	shadow.bg_color = Color(0.02, 0.06, 0.05, 0.11)
+	shadow.corner_radius_top_left = int(radius); shadow.corner_radius_top_right = int(radius)
+	shadow.corner_radius_bottom_left = int(radius); shadow.corner_radius_bottom_right = int(radius)
+	ui_ctrl.draw_style_box(shadow, Rect2(rect.position + Vector2(0, 8), rect.size))
+	var frost = StyleBoxFlat.new()
+	frost.bg_color = fill
+	frost.border_color = line; frost.set_border_width_all(1)
+	frost.corner_radius_top_left = int(radius); frost.corner_radius_top_right = int(radius)
+	frost.corner_radius_bottom_left = int(radius); frost.corner_radius_bottom_right = int(radius)
+	ui_ctrl.draw_style_box(frost, rect)
+	var sheen = StyleBoxFlat.new()
+	sheen.bg_color = Color(1.0, 1.0, 1.0, 0.13)
+	sheen.corner_radius_top_left = int(radius); sheen.corner_radius_top_right = int(radius)
+	sheen.corner_radius_bottom_left = int(radius); sheen.corner_radius_bottom_right = int(radius)
+	ui_ctrl.draw_style_box(sheen, Rect2(rect.position + Vector2(1, 1), Vector2(rect.size.x - 2, rect.size.y * 0.45)))
+	ui_ctrl.draw_rect(Rect2(rect.position + Vector2(8, 6), Vector2(rect.size.x - 16, 1.2)), Color(1.0, 1.0, 1.0, 0.42))
 
 func _draw_title(vp: Vector2, font: Font):
 	ui_ctrl.draw_texture_rect_region(TITLE_BACKGROUND, Rect2(Vector2.ZERO, vp), _cover_source_rect(TITLE_BACKGROUND, vp))
