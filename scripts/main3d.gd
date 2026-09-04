@@ -1,7 +1,6 @@
 extends Node3D
 
 const TITLE_BACKGROUND: Texture2D = preload("res://assets/title-background.png")
-const CLOUD_SPRITE: Texture2D = preload("res://assets/cloud-sprite-v2.png")
 const DYNAMIC_SKY_SHADER: Shader = preload("res://shaders/dynamic_sky.gdshader")
 const WATER_TILE_SHADER: Shader = preload("res://shaders/water_tile.gdshader")
 
@@ -98,13 +97,13 @@ func _setup_scene():
 
 	var sun = DirectionalLight3D.new()
 	sun.rotation_degrees = Vector3(-50, -25, 0)
-	sun.light_energy = 0.95; sun.light_color = Color("#fff0cf")
+	sun.light_energy = 1.10; sun.light_color = Color("#fff4da")
 	sun.sky_mode = DirectionalLight3D.SKY_MODE_LIGHT_ONLY
 	sun.shadow_enabled = true; add_child(sun)
 
 	var fill = DirectionalLight3D.new()
 	fill.rotation_degrees = Vector3(30, 150, 0)
-	fill.light_energy = 0.22; fill.light_color = Color("#72b9c4")
+	fill.light_energy = 0.34; fill.light_color = Color("#9bd7d9")
 	fill.sky_mode = DirectionalLight3D.SKY_MODE_LIGHT_ONLY
 	add_child(fill)
 
@@ -121,8 +120,8 @@ func _setup_scene():
 	sky.process_mode = Sky.PROCESS_MODE_REALTIME; sky.radiance_size = Sky.RADIANCE_SIZE_128
 	e.background_mode = Environment.BG_SKY; e.sky = sky
 	e.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	e.ambient_light_color = Color("#72a39b")
-	e.ambient_light_energy = 0.58
+	e.ambient_light_color = Color("#a7d6c4")
+	e.ambient_light_energy = 0.76
 	e.tonemap_mode = Environment.TONE_MAPPER_FILMIC
 	e.glow_enabled = true; e.glow_intensity = 0.22; e.glow_bloom = 0.03
 	env.environment = e; add_child(env)
@@ -177,7 +176,20 @@ func _soft_material(color: Color, emission_energy: float = 0.0) -> StandardMater
 		material.emission_energy_multiplier = emission_energy
 	return material
 
+func _painted_cloud_material(color: Color) -> StandardMaterial3D:
+	var material = StandardMaterial3D.new()
+	material.albedo_color = color
+	material.roughness = 1.0
+	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	return material
+
 func _spawn_cloud_layer():
+	var cloud_body_materials = [
+		_painted_cloud_material(Color(0.96, 1.00, 0.95, 0.78)),
+		_painted_cloud_material(Color(0.82, 0.95, 0.93, 0.70)),
+		_painted_cloud_material(Color(0.69, 0.86, 0.84, 0.56)),
+	]
 	var cloud_positions = [
 		Vector3(-13, 4.6, -7), Vector3(-11, 2.7, 9), Vector3(-5, 5.7, -13),
 		Vector3(7, 3.1, 11), Vector3(12, 5.2, 3), Vector3(14, 2.2, -8),
@@ -185,31 +197,41 @@ func _spawn_cloud_layer():
 	]
 	for cloud_index in cloud_positions.size():
 		var cloud = Node3D.new(); cloud.position = cloud_positions[cloud_index]
-		cloud.set_meta("speed", randf_range(0.10, 0.22)); cloud.set_meta("base_z", cloud.position.z)
-		cloud.set_meta("base_y", cloud.position.y); cloud.set_meta("bob", randf_range(0.08, 0.22))
+		cloud.set_meta("speed", randf_range(0.24, 0.42)); cloud.set_meta("base_z", cloud.position.z)
+		cloud.set_meta("base_y", cloud.position.y); cloud.set_meta("bob", randf_range(0.16, 0.34))
 		cloud.set_meta("phase", randf() * TAU); sky_root.add_child(cloud); drifting_clouds.append(cloud)
-		var sprite = Sprite3D.new(); sprite.texture = CLOUD_SPRITE
-		sprite.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-		sprite.pixel_size = randf_range(0.0024, 0.0035)
-		sprite.modulate = Color(0.82, 0.94, 0.96, randf_range(0.16, 0.27))
-		sprite.flip_h = cloud_index % 2 == 1
-		cloud.scale = Vector3(randf_range(0.9, 1.35), randf_range(0.75, 1.05), 1.0)
-		cloud.add_child(sprite)
+		cloud.scale = Vector3(randf_range(0.82, 1.18), randf_range(0.72, 0.94), randf_range(0.78, 1.08))
+		var puff_count = randi_range(4, 6)
+		for puff_index in puff_count:
+			var puff = MeshInstance3D.new()
+			var puff_mesh = SphereMesh.new()
+			puff_mesh.radius = randf_range(0.34, 0.58)
+			puff_mesh.height = puff_mesh.radius * randf_range(0.72, 0.92)
+			puff_mesh.radial_segments = 10; puff_mesh.rings = 5
+			puff.mesh = puff_mesh
+			puff.material_override = cloud_body_materials[mini(puff_index, cloud_body_materials.size() - 1)]
+			puff.position = Vector3((puff_index - puff_count * 0.5) * randf_range(0.30, 0.43), randf_range(-0.06, 0.12), randf_range(-0.10, 0.10))
+			puff.scale = Vector3(randf_range(1.35, 2.10), randf_range(0.36, 0.54), randf_range(0.52, 0.78))
+			cloud.add_child(puff)
 
 func _spawn_mist_banks():
+	var mist_material = _painted_cloud_material(Color(0.78, 0.94, 0.88, 0.18))
 	for i in 11:
 		var mist = Node3D.new()
 		var angle = TAU * float(i) / 11.0 + randf_range(-0.12, 0.12)
 		var radius = randf_range(9.0, 16.0)
-		mist.position = Vector3(cos(angle) * radius, randf_range(-3.8, -2.2), sin(angle) * radius)
-		mist.set_meta("speed", randf_range(0.035, 0.075)); mist.set_meta("base_z", mist.position.z)
-		mist.set_meta("base_y", mist.position.y); mist.set_meta("bob", randf_range(0.04, 0.10))
+		mist.position = Vector3(cos(angle) * radius, randf_range(-3.2, -1.6), sin(angle) * radius)
+		mist.set_meta("speed", randf_range(0.08, 0.15)); mist.set_meta("base_z", mist.position.z)
+		mist.set_meta("base_y", mist.position.y); mist.set_meta("bob", randf_range(0.08, 0.18))
 		mist.set_meta("phase", randf() * TAU); sky_root.add_child(mist); drifting_clouds.append(mist)
-		var sprite = Sprite3D.new(); sprite.texture = CLOUD_SPRITE
-		sprite.billboard = BaseMaterial3D.BILLBOARD_ENABLED; sprite.pixel_size = randf_range(0.0032, 0.0048)
-		sprite.modulate = Color(0.42, 0.70, 0.72, randf_range(0.055, 0.10))
-		sprite.flip_h = i % 2 == 0; mist.scale = Vector3(randf_range(1.4, 2.2), randf_range(0.55, 0.78), 1.0)
-		mist.add_child(sprite)
+		for puff_index in 3:
+			var puff = MeshInstance3D.new(); var puff_mesh = SphereMesh.new()
+			puff_mesh.radius = randf_range(0.50, 0.78); puff_mesh.height = puff_mesh.radius * 0.45
+			puff_mesh.radial_segments = 9; puff_mesh.rings = 4
+			puff.mesh = puff_mesh; puff.material_override = mist_material
+			puff.position = Vector3((puff_index - 1) * randf_range(0.45, 0.70), randf_range(-0.02, 0.04), randf_range(-0.06, 0.06))
+			puff.scale = Vector3(randf_range(2.1, 3.2), 0.28, randf_range(0.42, 0.62))
+			mist.add_child(puff)
 
 func _spawn_sky_motes():
 	var mote_material = _soft_material(Color(0.74, 1.0, 0.72, 0.72), 1.4)
@@ -622,24 +644,21 @@ func _spawn_tile(pos: Vector2i, terr: int, animate: bool, road_mask: int = 0):
 
 func _spawn_island_base(root: Node3D, terr: int):
 	var layers = [
-		[Vector3(1.08, 0.14, 1.08), 0.02, TERRAIN_MID[terr]],
-		[Vector3(0.94, 0.13, 0.94), -0.105, TERRAIN_BOT[terr]],
-		[Vector3(0.72, 0.15, 0.72), -0.235, TERRAIN_BOT[terr].darkened(0.22)],
+		[Vector3(1.06, 0.13, 1.06), 0.025, TERRAIN_MID[terr]],
+		[Vector3(0.88, 0.12, 0.88), -0.095, TERRAIN_BOT[terr]],
+		[Vector3(0.56, 0.16, 0.56), -0.225, TERRAIN_BOT[terr].darkened(0.20)],
 	]
 	for layer_data in layers:
 		var layer = MeshInstance3D.new(); var mesh = BoxMesh.new()
 		mesh.size = layer_data[0]; layer.mesh = mesh
 		var material = StandardMaterial3D.new(); material.albedo_color = layer_data[2]; material.roughness = 0.94
 		layer.material_override = material; layer.position.y = layer_data[1]; root.add_child(layer)
-	for i in 2:
-		var shard = MeshInstance3D.new(); var shard_mesh = BoxMesh.new()
-		shard_mesh.size = Vector3(randf_range(0.10, 0.18), randf_range(0.15, 0.27), randf_range(0.10, 0.18))
-		shard.mesh = shard_mesh
-		var shard_material = StandardMaterial3D.new(); shard_material.albedo_color = TERRAIN_BOT[terr].darkened(randf_range(0.18, 0.32)); shard_material.roughness = 1.0
-		shard.material_override = shard_material
-		shard.position = Vector3(randf_range(-0.28, 0.28), randf_range(-0.38, -0.29), randf_range(-0.28, 0.28))
-		shard.rotation_degrees = Vector3(randf_range(-18, 18), randf_range(0, 360), randf_range(-18, 18))
-		root.add_child(shard)
+	var core = MeshInstance3D.new(); var core_mesh = CylinderMesh.new()
+	core_mesh.top_radius = 0.32; core_mesh.bottom_radius = 0.16; core_mesh.height = 0.32; core_mesh.radial_segments = 6
+	core.mesh = core_mesh
+	var core_material = StandardMaterial3D.new(); core_material.albedo_color = TERRAIN_BOT[terr].darkened(0.30); core_material.roughness = 1.0
+	core.material_override = core_material; core.position.y = -0.39; core.rotation_degrees.y = randf_range(0, 60)
+	root.add_child(core)
 
 func _spawn_edge_trim(root: Node3D, terr: int):
 	var trim_material = StandardMaterial3D.new()
@@ -1368,8 +1387,9 @@ func _process(delta):
 func _animate_sky_world(delta: float):
 	for cloud in drifting_clouds:
 		cloud.position.x += cloud.get_meta("speed") * delta
-		cloud.position.z = cloud.get_meta("base_z") + sin(pulse * 0.18 + cloud.get_meta("phase")) * 0.38
-		cloud.position.y = cloud.get_meta("base_y") + sin(pulse * 0.13 + cloud.get_meta("phase")) * cloud.get_meta("bob")
+		cloud.position.z = cloud.get_meta("base_z") + sin(pulse * 0.32 + cloud.get_meta("phase")) * 0.62
+		cloud.position.y = cloud.get_meta("base_y") + sin(pulse * 0.28 + cloud.get_meta("phase")) * cloud.get_meta("bob")
+		cloud.rotation.y = sin(pulse * 0.10 + cloud.get_meta("phase")) * 0.035
 		if cloud.position.x > 18.0: cloud.position.x = -18.0
 	for mote in sky_motes:
 		var mote_speed: float = mote.get_meta("speed")
@@ -1457,9 +1477,9 @@ func _input(event):
 		if state == S.PLACE_TILE and event.button_index == MOUSE_BUTTON_LEFT:
 			var vp = get_viewport().get_visible_rect().size / _ui_scale(get_viewport().get_visible_rect().size)
 			var ui_pointer = _ui_point(event.position)
-			var market_y = 288.0
+			var market_y = 300.0
 			for i in piece_market.size():
-				var market_rect = Rect2(vp.x - 308.0 + i * 86.0, market_y, 76, 98)
+				var market_rect = Rect2(vp.x - 312.0 + i * 88.0, market_y, 78, 102)
 				if market_rect.has_point(ui_pointer): _select_market(i); return
 		var cell = _mouse_to_grid(event.position)
 		if event.button_index == MOUSE_BUTTON_LEFT:
@@ -1490,42 +1510,53 @@ func _draw_ui():
 	ui_ctrl.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE * interface_scale)
 	var vp = screen_size / interface_scale
 	var ux = vp.x - 320.0; var uy = 30.0
-
-	ui_ctrl.draw_rect(Rect2(ux - 15, uy - 10, 305, vp.y - 40), Color(0.018, 0.055, 0.060, 0.92), 0, true, 8.0)
-	ui_ctrl.draw_rect(Rect2(ux - 15, uy - 10, 3, vp.y - 40), Color(0.38, 0.82, 0.62, 0.9))
+	var panel_bg = Color(0.89, 0.96, 0.90, 0.88)
+	var panel_edge = Color(0.27, 0.58, 0.48, 0.90)
+	var card_bg = Color(0.98, 1.00, 0.94, 0.90)
+	var card_line = Color(0.58, 0.76, 0.62, 0.55)
+	var ink = Color(0.10, 0.20, 0.18)
+	var muted = Color(0.34, 0.46, 0.40)
 
 	if state == S.TITLE: _draw_title(vp, font); return
 	if state == S.GAME_OVER: _draw_gameover(vp, font); return
 
+	ui_ctrl.draw_rect(Rect2(ux - 18, uy - 12, 310, vp.y - 38), Color(0.10, 0.22, 0.18, 0.16), 0, true, 8.0)
+	ui_ctrl.draw_rect(Rect2(ux - 20, uy - 14, 310, vp.y - 42), panel_bg, 0, true, 8.0)
+	ui_ctrl.draw_rect(Rect2(ux - 20, uy - 14, 310, 4), panel_edge)
+
 	var pcol = PLAYER_COLORS[current_player]
-	ui_ctrl.draw_rect(Rect2(ux, uy, 270, 42), Color(0.035, 0.12, 0.12, 0.96), 0, true, 6.0)
-	ui_ctrl.draw_rect(Rect2(ux, uy + 39, 270, 3), pcol)
+	ui_ctrl.draw_rect(Rect2(ux, uy, 270, 50), card_bg, 0, true, 7.0)
+	ui_ctrl.draw_rect(Rect2(ux, uy + 47, 270, 3), pcol.lightened(0.05))
 	var st := "放置浮岛" if state == S.PLACE_TILE else "放置种子"
-	ui_ctrl.draw_string(font, Vector2(ux + 16, uy + 18), PLAYER_NAMES[current_player], HORIZONTAL_ALIGNMENT_LEFT, -1, 16, pcol.lightened(0.5))
-	ui_ctrl.draw_string(font, Vector2(ux + 90, uy + 18), st, HORIZONTAL_ALIGNMENT_LEFT, -1, 18, Color.WHITE)
+	ui_ctrl.draw_circle(Vector2(ux + 22, uy + 25), 8, pcol)
+	ui_ctrl.draw_string(font, Vector2(ux + 40, uy + 22), PLAYER_NAMES[current_player], HORIZONTAL_ALIGNMENT_LEFT, -1, 15, pcol.darkened(0.15))
+	ui_ctrl.draw_string(font, Vector2(ux + 128, uy + 23), st, HORIZONTAL_ALIGNMENT_LEFT, -1, 18, ink)
 
 	var sy = uy + 70
-	ui_ctrl.draw_string(font, Vector2(ux + 12, sy), "守育进度", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(0.48, 0.67, 0.62))
-	ui_ctrl.draw_string(font, Vector2(ux + 12, sy + 22), "%d / %d" % [turns_played + 1, total_turns], HORIZONTAL_ALIGNMENT_LEFT, -1, 20, Color(0.9, 0.9, 0.9))
+	ui_ctrl.draw_rect(Rect2(ux, sy - 6, 270, 94), Color(0.78, 0.91, 0.81, 0.62), 0, true, 7.0)
+	ui_ctrl.draw_string(font, Vector2(ux + 12, sy + 2), "守育进度", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, muted)
+	ui_ctrl.draw_string(font, Vector2(ux + 12, sy + 27), "%d / %d" % [turns_played + 1, total_turns], HORIZONTAL_ALIGNMENT_LEFT, -1, 22, ink)
 	var bp = float(turns_played) / total_turns
-	ui_ctrl.draw_rect(Rect2(ux + 12, sy + 32, 246, 7), Color(0.03, 0.10, 0.10), 0, true, 4.0)
-	ui_ctrl.draw_rect(Rect2(ux + 12, sy + 32, 246 * bp, 7), pcol.darkened(0.2), 0, true, 4.0)
+	ui_ctrl.draw_rect(Rect2(ux + 12, sy + 40, 246, 8), Color(0.50, 0.66, 0.55, 0.30), 0, true, 4.0)
+	ui_ctrl.draw_rect(Rect2(ux + 12, sy + 40, 246 * bp, 8), pcol, 0, true, 4.0)
 
-	ui_ctrl.draw_string(font, Vector2(ux + 12, sy + 60), "种子", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(0.48, 0.67, 0.62))
-	ui_ctrl.draw_string(font, Vector2(ux + 12, sy + 82), str(seeds[current_player]), HORIZONTAL_ALIGNMENT_LEFT, -1, 20, Color(0.9, 0.9, 0.9))
-	ui_ctrl.draw_string(font, Vector2(ux + 120, sy + 60), "生态得分", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(0.48, 0.67, 0.62))
+	ui_ctrl.draw_string(font, Vector2(ux + 12, sy + 70), "种子", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, muted)
+	ui_ctrl.draw_string(font, Vector2(ux + 54, sy + 71), str(seeds[current_player]), HORIZONTAL_ALIGNMENT_LEFT, -1, 20, ink)
+	ui_ctrl.draw_string(font, Vector2(ux + 120, sy + 70), "生态得分", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, muted)
 	for i in player_count:
-		ui_ctrl.draw_circle(Vector2(ux + 125, sy + 80 + i * 22 - 3), 5, PLAYER_COLORS[i])
-		ui_ctrl.draw_string(font, Vector2(ux + 136, sy + 80 + i * 22), PLAYER_NAMES[i], HORIZONTAL_ALIGNMENT_LEFT, -1, 14, PLAYER_COLORS[i].lightened(0.3))
-		ui_ctrl.draw_string(font, Vector2(ux + 226, sy + 80 + i * 22), str(scores[i]), HORIZONTAL_ALIGNMENT_RIGHT, 30, 14, Color(0.9, 0.9, 0.9))
+		ui_ctrl.draw_circle(Vector2(ux + 125, sy + 92 + i * 21 - 3), 5, PLAYER_COLORS[i])
+		ui_ctrl.draw_string(font, Vector2(ux + 136, sy + 92 + i * 21), PLAYER_NAMES[i], HORIZONTAL_ALIGNMENT_LEFT, -1, 13, PLAYER_COLORS[i].darkened(0.20))
+		ui_ctrl.draw_string(font, Vector2(ux + 226, sy + 92 + i * 21), str(scores[i]), HORIZONTAL_ALIGNMENT_RIGHT, 30, 14, ink)
 
-	var iy = sy + 180
+	var iy = sy + 192
 	if state == S.PLACE_TILE:
-		ui_ctrl.draw_string(font, Vector2(ux + 12, iy), "浮岛市场 · 点击或按 1-3", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(0.55, 0.55, 0.55))
+		ui_ctrl.draw_rect(Rect2(ux, iy - 8, 270, 150), card_bg, 0, true, 7.0)
+		ui_ctrl.draw_string(font, Vector2(ux + 12, iy + 4), "浮岛市场 · 点击或按 1-3", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, muted)
 		for i in piece_market.size():
-			var piece: Dictionary = piece_market[i]; var bx = ux + 12 + i * 86.0; var by = iy + 8
-			var bg = Color(0.92, 0.92, 0.92, 0.22) if i == selected_market else Color(0.06, 0.06, 0.08, 0.8)
-			ui_ctrl.draw_rect(Rect2(bx, by, 76, 98), bg, 0, true, 6.0)
+			var piece: Dictionary = piece_market[i]; var bx = ux + 8 + i * 88.0; var by = iy + 20
+			var bg = Color(0.93, 0.99, 0.86, 1.0) if i == selected_market else Color(0.86, 0.93, 0.86, 0.82)
+			ui_ctrl.draw_rect(Rect2(bx, by, 78, 102), bg, 0, true, 6.0)
+			if i == selected_market: ui_ctrl.draw_rect(Rect2(bx, by, 78, 4), pcol)
 			var preview_rotation = piece_rotation if i == selected_market else 0
 			var preview_cells = _piece_cells(piece, preview_rotation)
 			var min_cell = preview_cells[0]; var max_cell = preview_cells[0]
@@ -1542,30 +1573,33 @@ func _draw_ui():
 				var mask = _rotate_road_mask(piece["roads"][cell_index], preview_rotation)
 				for dir_index in DIRS.size():
 					if (mask & (1 << dir_index)) != 0:
-						ui_ctrl.draw_line(center, center + Vector2(DIRS[dir_index]) * 6.0, Color("#f0d79d"), 2.0)
-			ui_ctrl.draw_string(font, Vector2(bx + 7, by + 76), "%d %s" % [i + 1, piece["name"]], HORIZONTAL_ALIGNMENT_LEFT, 64, 12, Color.WHITE)
-			ui_ctrl.draw_string(font, Vector2(bx + 7, by + 91), "%d格" % piece["cells"].size(), HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color(0.65, 0.65, 0.65))
-		ui_ctrl.draw_string(font, Vector2(ux + 12, iy + 124), "Q / E 旋转 · 道路可跨地形生长", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color("#d8bd80"))
+						ui_ctrl.draw_line(center, center + Vector2(DIRS[dir_index]) * 6.0, Color("#916e3c"), 2.0)
+			ui_ctrl.draw_string(font, Vector2(bx + 7, by + 78), "%d %s" % [i + 1, piece["name"]], HORIZONTAL_ALIGNMENT_LEFT, 64, 12, ink)
+			ui_ctrl.draw_string(font, Vector2(bx + 7, by + 93), "%d格" % piece["cells"].size(), HORIZONTAL_ALIGNMENT_LEFT, -1, 11, muted)
+		ui_ctrl.draw_string(font, Vector2(ux + 12, iy + 136), "Q / E 旋转 · 道路可跨地形生长", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color("#7a6334"))
 	elif state == S.PLACE_SEED:
-		ui_ctrl.draw_string(font, Vector2(ux + 12, iy), "操作", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(0.45, 0.45, 0.45))
-		ui_ctrl.draw_string(font, Vector2(ux + 12, iy + 22), "左键 → 放种子", HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color(0.5, 1, 0.5))
-		ui_ctrl.draw_string(font, Vector2(ux + 12, iy + 44), "右键 → 直接生长", HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color(0.6, 0.6, 0.6))
-		ui_ctrl.draw_string(font, Vector2(ux + 12, iy + 72), "上回合新生长 %d 格" % last_growth_count, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(0.65, 0.8, 0.65))
+		ui_ctrl.draw_rect(Rect2(ux, iy - 8, 270, 128), card_bg, 0, true, 7.0)
+		ui_ctrl.draw_string(font, Vector2(ux + 12, iy + 2), "操作", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, muted)
+		ui_ctrl.draw_string(font, Vector2(ux + 12, iy + 27), "左键  放种子", HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color("#208f45"))
+		ui_ctrl.draw_string(font, Vector2(ux + 12, iy + 51), "右键  直接生长", HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color("#51605a"))
+		ui_ctrl.draw_string(font, Vector2(ux + 12, iy + 82), "上回合新生长 %d 格" % last_growth_count, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, muted)
 		if not last_road_event.is_empty():
-			ui_ctrl.draw_string(font, Vector2(ux + 12, iy + 96), last_road_event, HORIZONTAL_ALIGNMENT_LEFT, 250, 13, Color("#ffd66b"))
+			ui_ctrl.draw_string(font, Vector2(ux + 12, iy + 106), last_road_event, HORIZONTAL_ALIGNMENT_LEFT, 250, 13, Color("#9a6f16"))
 
 	var ly = vp.y - 200.0
-	ui_ctrl.draw_string(font, Vector2(ux + 12, ly), "地形", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(0.4, 0.4, 0.4))
+	ui_ctrl.draw_rect(Rect2(ux, ly - 10, 270, 124), Color(0.94, 0.98, 0.91, 0.66), 0, true, 7.0)
+	ui_ctrl.draw_string(font, Vector2(ux + 12, ly), "地形", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, muted)
 	for i in TERRAIN_TOP.size():
 		ui_ctrl.draw_rect(Rect2(ux + 12, ly + 14 + i * 24, 14, 14), TERRAIN_TOP[i], 0, true, 4.0)
-		ui_ctrl.draw_string(font, Vector2(ux + 32, ly + 26 + i * 24), TERRAIN_NAMES[i], HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(0.55, 0.55, 0.55))
-	ui_ctrl.draw_string(font, Vector2(ux + 120, ly), "玩家", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(0.4, 0.4, 0.4))
+		ui_ctrl.draw_string(font, Vector2(ux + 32, ly + 26 + i * 24), TERRAIN_NAMES[i], HORIZONTAL_ALIGNMENT_LEFT, -1, 13, ink)
+	ui_ctrl.draw_string(font, Vector2(ux + 120, ly), "玩家", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, muted)
 	for i in player_count:
 		ui_ctrl.draw_circle(Vector2(ux + 128, ly + 20 + i * 24), 6, PLAYER_COLORS[i])
-		ui_ctrl.draw_string(font, Vector2(ux + 140, ly + 26 + i * 24), PLAYER_NAMES[i], HORIZONTAL_ALIGNMENT_LEFT, -1, 13, PLAYER_COLORS[i].lightened(0.2))
-	ui_ctrl.draw_string(font, Vector2(ux + 12, vp.y - 80), "滚轮/双指 = 缩放", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(0.3, 0.3, 0.3))
-	ui_ctrl.draw_string(font, Vector2(ux + 12, vp.y - 62), "中键拖拽/双指滑动 = 平移", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(0.3, 0.3, 0.3))
-	ui_ctrl.draw_string(font, Vector2(ux + 12, vp.y - 44), "Q/E = 旋转  C = 视角  R = 重开", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(0.3, 0.3, 0.3))
+		ui_ctrl.draw_string(font, Vector2(ux + 140, ly + 26 + i * 24), PLAYER_NAMES[i], HORIZONTAL_ALIGNMENT_LEFT, -1, 13, PLAYER_COLORS[i].darkened(0.18))
+	ui_ctrl.draw_line(Vector2(ux, vp.y - 95), Vector2(ux + 270, vp.y - 95), card_line, 1.0)
+	ui_ctrl.draw_string(font, Vector2(ux + 12, vp.y - 76), "滚轮/双指 = 缩放", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, muted)
+	ui_ctrl.draw_string(font, Vector2(ux + 12, vp.y - 58), "中键拖拽/双指滑动 = 平移", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, muted)
+	ui_ctrl.draw_string(font, Vector2(ux + 12, vp.y - 40), "Q/E = 旋转  C = 视角  R = 重开", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, muted)
 
 func _draw_title(vp: Vector2, font: Font):
 	ui_ctrl.draw_texture_rect_region(TITLE_BACKGROUND, Rect2(Vector2.ZERO, vp), _cover_source_rect(TITLE_BACKGROUND, vp))

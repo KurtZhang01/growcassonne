@@ -28,27 +28,27 @@ float cloud_field(vec3 p) {
 
 vec3 sky_gradient(vec3 direction) {
 	float height = clamp(direction.y * 0.5 + 0.5, 0.0, 1.0);
-	vec3 lower = vec3(0.110, 0.340, 0.400);
-	vec3 middle = vec3(0.180, 0.500, 0.540);
-	vec3 upper = vec3(0.050, 0.200, 0.270);
+	vec3 lower = vec3(0.360, 0.690, 0.720);
+	vec3 middle = vec3(0.500, 0.790, 0.760);
+	vec3 upper = vec3(0.270, 0.560, 0.650);
 	vec3 color = mix(lower, middle, smoothstep(0.0, 0.48, height));
 	color = mix(color, upper, smoothstep(0.48, 1.0, height));
 	float broad_haze = exp(-pow((height - 0.40) * 2.25, 2.0));
-	return color + vec3(0.030, 0.065, 0.068) * broad_haze;
+	return color + vec3(0.080, 0.110, 0.090) * broad_haze;
 }
 
 vec4 moving_clouds(vec3 direction) {
-	vec3 slow_wind = vec3(TIME * 0.010, TIME * 0.0015, TIME * -0.006);
-	vec3 fast_wind = vec3(TIME * -0.017, TIME * 0.002, TIME * 0.009);
+	vec3 slow_wind = vec3(TIME * 0.030, TIME * 0.004, TIME * -0.018);
+	vec3 fast_wind = vec3(TIME * -0.052, TIME * 0.006, TIME * 0.028);
 	float broad = cloud_field(direction * 3.15 + slow_wind);
 	float wisps = cloud_field(direction * 6.4 + fast_wind);
 	float height = direction.y * 0.5 + 0.5;
 	float cloud_band = smoothstep(0.02, 0.18, height) * (1.0 - smoothstep(0.78, 0.96, height));
 	float density = smoothstep(0.59, 0.76, broad * 0.82 + wisps * 0.18) * cloud_band;
 	float soft_edge = smoothstep(0.48, 0.70, broad) * cloud_band;
-	float alpha = clamp(density * 0.52 + soft_edge * 0.13, 0.0, 0.54);
-	vec3 shadow = vec3(0.27, 0.44, 0.47);
-	vec3 pearl = vec3(0.68, 0.80, 0.79);
+	float alpha = clamp(density * 0.42 + soft_edge * 0.10, 0.0, 0.42);
+	vec3 shadow = vec3(0.58, 0.76, 0.72);
+	vec3 pearl = vec3(0.92, 1.00, 0.94);
 	vec3 color = mix(shadow, pearl, smoothstep(0.50, 0.82, wisps));
 	return vec4(color, alpha);
 }
@@ -61,8 +61,8 @@ void sky() {
 	} else {
 		vec3 color = sky_gradient(EYEDIR);
 		color = mix(color, HALF_RES_COLOR.rgb, HALF_RES_COLOR.a);
-		float atmosphere = value_noise(EYEDIR * 2.2 + vec3(TIME * 0.002, 0.0, 0.0));
-		color += vec3(0.012, 0.030, 0.032) * atmosphere;
+		float atmosphere = value_noise(EYEDIR * 2.2 + vec3(TIME * 0.010, 0.0, 0.0));
+		color += vec3(0.026, 0.044, 0.036) * atmosphere;
 		COLOR = color;
 	}
 }
