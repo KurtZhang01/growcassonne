@@ -15,22 +15,22 @@ const DIRS := [Vector2i.UP, Vector2i.RIGHT, Vector2i.DOWN, Vector2i.LEFT]
 
 # ---- Terrain palette (Dorfromantik soft) ----
 const TERRAIN_TOP := [
-	Color("#76c85e"),  # GRASS
-	Color("#52acd5"),  # WATER
-	Color("#347f50"),  # FOREST
-	Color("#e2b765"),  # DESERT
+	Color("#5fae55"),  # GRASS
+	Color("#3f94bd"),  # WATER
+	Color("#2f7048"),  # FOREST
+	Color("#c8944e"),  # DESERT
 ]
 const TERRAIN_MID := [
-	Color("#4f8f42"),
-	Color("#377ba6"),
-	Color("#235b38"),
-	Color("#b98543"),
+	Color("#40793a"),
+	Color("#316b91"),
+	Color("#214d34"),
+	Color("#9f703a"),
 ]
 const TERRAIN_BOT := [
-	Color("#2f5631"),
-	Color("#22506e"),
-	Color("#173c2a"),
-	Color("#795332"),
+	Color("#29472c"),
+	Color("#1f4661"),
+	Color("#153324"),
+	Color("#69462d"),
 ]
 const TERRAIN_NAMES := ["草地", "水域", "森林", "荒漠"]
 const TERRAIN_SPREAD := [0.68, 0.55, 0.42, 0.30]
@@ -658,7 +658,7 @@ func _spawn_island_base(root: Node3D, terr: int):
 
 func _spawn_edge_trim(root: Node3D, terr: int):
 	var trim_material = StandardMaterial3D.new()
-	trim_material.albedo_color = TERRAIN_TOP[terr].lightened(0.22)
+	trim_material.albedo_color = TERRAIN_TOP[terr].lightened(0.08)
 	trim_material.roughness = 0.76
 	for side in 4:
 		var trim = MeshInstance3D.new(); var mesh = BoxMesh.new()
