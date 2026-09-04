@@ -73,6 +73,7 @@ const CAM_BASE_SIZE := 14.5
 var camera: Camera3D; var grid_root: Node3D; var plant_root: Node3D
 var decor_root: Node3D; var piece_preview_root: Node3D
 var hover_mesh: MeshInstance3D; var hover_material: StandardMaterial3D; var ui_ctrl: Control
+var sky_root: Node3D; var drifting_clouds := []; var sky_motes := []; var distant_islands := []
 
 func _ready():
 	_setup_scene()
@@ -98,23 +99,32 @@ func _setup_scene():
 	var fill = DirectionalLight3D.new()
 	fill.rotation_degrees = Vector3(30, 150, 0)
 	fill.light_energy = 0.22; fill.light_color = Color("#72b9c4")
+	fill.sky_mode = DirectionalLight3D.SKY_MODE_LIGHT_ONLY
 	add_child(fill)
 
 	var rim = DirectionalLight3D.new()
 	rim.rotation_degrees = Vector3(-10, -120, 0)
 	rim.light_energy = 0.16; rim.light_color = Color("#ffc975")
+	rim.sky_mode = DirectionalLight3D.SKY_MODE_LIGHT_ONLY
 	add_child(rim)
 
 	var env = WorldEnvironment.new()
 	var e = Environment.new()
-	e.background_mode = Environment.BG_COLOR
-	e.background_color = Color("#071619")
+	var sky_material = ProceduralSkyMaterial.new()
+	sky_material.sky_top_color = Color("#07191f")
+	sky_material.sky_horizon_color = Color("#2d6970")
+	sky_material.ground_horizon_color = Color("#173f46")
+	sky_material.ground_bottom_color = Color("#061216")
+	sky_material.sky_curve = 0.12; sky_material.ground_curve = 0.18
+	var sky = Sky.new(); sky.sky_material = sky_material
+	e.background_mode = Environment.BG_SKY; e.sky = sky
 	e.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	e.ambient_light_color = Color("#527b78")
 	e.ambient_light_energy = 0.48
 	e.tonemap_mode = Environment.TONE_MAPPER_FILMIC
 	e.glow_enabled = true; e.glow_intensity = 0.22; e.glow_bloom = 0.03
 	env.environment = e; add_child(env)
+	_setup_sky_world()
 
 	grid_root = Node3D.new(); add_child(grid_root)
 	edge_root = Node3D.new(); add_child(edge_root)
@@ -148,6 +158,101 @@ func _setup_scene():
 	var canvas = CanvasLayer.new(); canvas.layer = 10
 	add_child(canvas); canvas.add_child(ui_ctrl)
 	ui_ctrl.connect("draw", _draw_ui)
+
+func _setup_sky_world():
+	sky_root = Node3D.new(); sky_root.name = "LivingSky"; add_child(sky_root)
+	_spawn_cloud_layer()
+	_spawn_mist_banks()
+	_spawn_distant_islands()
+	_spawn_sky_motes()
+
+func _soft_material(color: Color, emission_energy: float = 0.0) -> StandardMaterial3D:
+	var material = StandardMaterial3D.new()
+	material.albedo_color = color; material.roughness = 1.0
+	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	if emission_energy > 0.0:
+		material.emission_enabled = true; material.emission = Color(color.r, color.g, color.b)
+		material.emission_energy_multiplier = emission_energy
+	return material
+
+func _spawn_cloud_layer():
+	var cloud_materials = [
+		_soft_material(Color(0.72, 0.88, 0.87, 0.16)),
+		_soft_material(Color(0.46, 0.72, 0.73, 0.12)),
+		_soft_material(Color(0.94, 0.83, 0.63, 0.09)),
+	]
+	var cloud_positions = [
+		Vector3(-11, 4.5, -5), Vector3(-8, 2.8, 8), Vector3(-4, 5.2, -11),
+		Vector3(5, 3.6, 10), Vector3(10, 5.0, 4), Vector3(12, 2.5, -7),
+		Vector3(-13, 1.5, 2), Vector3(3, 6.0, -13),
+	]
+	for cloud_index in cloud_positions.size():
+		var cloud = Node3D.new(); cloud.position = cloud_positions[cloud_index]
+		cloud.set_meta("speed", randf_range(0.16, 0.34)); cloud.set_meta("base_z", cloud.position.z)
+		cloud.set_meta("phase", randf() * TAU); sky_root.add_child(cloud); drifting_clouds.append(cloud)
+		var puff_count = randi_range(4, 7)
+		for puff_index in puff_count:
+			var puff = MeshInstance3D.new(); var mesh = SphereMesh.new()
+			mesh.radius = randf_range(0.65, 1.15); mesh.height = mesh.radius * 1.45
+			mesh.radial_segments = 12; mesh.rings = 6; puff.mesh = mesh
+			puff.material_override = cloud_materials[cloud_index % cloud_materials.size()]
+			puff.position = Vector3((puff_index - puff_count * 0.5) * randf_range(0.55, 0.85), randf_range(-0.12, 0.30), randf_range(-0.55, 0.55))
+			puff.scale = Vector3(randf_range(1.0, 1.5), randf_range(0.32, 0.50), randf_range(0.75, 1.15))
+			cloud.add_child(puff)
+
+func _spawn_mist_banks():
+	var mist_material = _soft_material(Color(0.28, 0.62, 0.64, 0.08))
+	for i in 18:
+		var mist = MeshInstance3D.new(); var mesh = SphereMesh.new()
+		mesh.radius = randf_range(1.3, 2.4); mesh.height = mesh.radius * 1.1
+		mesh.radial_segments = 10; mesh.rings = 5; mist.mesh = mesh
+		mist.material_override = mist_material
+		var angle = TAU * float(i) / 18.0 + randf_range(-0.12, 0.12)
+		var radius = randf_range(9.0, 16.0)
+		mist.position = Vector3(cos(angle) * radius, randf_range(-3.8, -2.2), sin(angle) * radius)
+		mist.scale = Vector3(randf_range(1.6, 2.7), randf_range(0.18, 0.30), randf_range(1.0, 1.8))
+		sky_root.add_child(mist)
+
+func _spawn_distant_islands():
+	var positions = [Vector3(-9.5, -1.2, -8.0), Vector3(9.0, -2.0, -7.5), Vector3(-10.5, -2.6, 6.0), Vector3(8.5, -1.5, 8.5)]
+	for i in positions.size():
+		var island = Node3D.new(); island.position = positions[i]
+		island.set_meta("base_y", island.position.y); island.set_meta("phase", i * 1.7 + randf())
+		sky_root.add_child(island); distant_islands.append(island)
+		var rock = MeshInstance3D.new(); var rock_mesh = CylinderMesh.new()
+		rock_mesh.top_radius = randf_range(0.65, 1.05); rock_mesh.bottom_radius = randf_range(0.18, 0.34); rock_mesh.height = randf_range(1.2, 2.0)
+		rock_mesh.radial_segments = 7; rock.mesh = rock_mesh
+		var rock_material = StandardMaterial3D.new(); rock_material.albedo_color = Color("#31483f").darkened(i * 0.04); rock_material.roughness = 1.0
+		rock.material_override = rock_material; rock.position.y = -0.65; island.add_child(rock)
+		var top = MeshInstance3D.new(); var top_mesh = CylinderMesh.new()
+		top_mesh.top_radius = rock_mesh.top_radius; top_mesh.bottom_radius = rock_mesh.top_radius * 0.94; top_mesh.height = 0.14; top_mesh.radial_segments = 7
+		top.mesh = top_mesh
+		var top_material = StandardMaterial3D.new(); top_material.albedo_color = Color("#477c50"); top_material.roughness = 0.95
+		top.material_override = top_material; top.position.y = 0.05; island.add_child(top)
+		_spawn_distant_tree(island, Vector3(randf_range(-0.22, 0.22), 0.13, randf_range(-0.22, 0.22)))
+
+func _spawn_distant_tree(parent: Node3D, position: Vector3):
+	var trunk = MeshInstance3D.new(); var trunk_mesh = CylinderMesh.new()
+	trunk_mesh.top_radius = 0.035; trunk_mesh.bottom_radius = 0.055; trunk_mesh.height = 0.34; trunk_mesh.radial_segments = 6
+	trunk.mesh = trunk_mesh; trunk.position = position + Vector3(0, 0.17, 0)
+	var trunk_material = StandardMaterial3D.new(); trunk_material.albedo_color = Color("#654c35"); trunk.material_override = trunk_material; parent.add_child(trunk)
+	var crown = MeshInstance3D.new(); var crown_mesh = SphereMesh.new()
+	crown_mesh.radius = 0.24; crown_mesh.height = 0.38; crown_mesh.radial_segments = 8; crown_mesh.rings = 4
+	crown.mesh = crown_mesh; crown.position = position + Vector3(0, 0.48, 0); crown.scale = Vector3(1.0, 1.25, 1.0)
+	var crown_material = StandardMaterial3D.new(); crown_material.albedo_color = Color("#4d8e57"); crown_material.roughness = 0.95
+	crown.material_override = crown_material; parent.add_child(crown)
+
+func _spawn_sky_motes():
+	var mote_material = _soft_material(Color(0.74, 1.0, 0.72, 0.72), 1.4)
+	for i in 28:
+		var mote = MeshInstance3D.new(); var mesh = SphereMesh.new()
+		mesh.radius = randf_range(0.018, 0.038); mesh.height = mesh.radius * 2.0; mesh.radial_segments = 6; mesh.rings = 3
+		mote.mesh = mesh; mote.material_override = mote_material
+		var angle = randf() * TAU; var radius = randf_range(5.5, 12.0)
+		mote.position = Vector3(cos(angle) * radius, randf_range(0.5, 4.5), sin(angle) * radius)
+		mote.set_meta("base_y", mote.position.y); mote.set_meta("phase", randf() * TAU); mote.set_meta("speed", randf_range(0.35, 0.75))
+		sky_root.add_child(mote); sky_motes.append(mote)
 
 # ================================================================
 #  GRID
@@ -1228,6 +1333,7 @@ func _rotate_selected_piece(delta: int):
 func _process(delta):
 	pulse += delta
 	if flash_timer > 0: flash_timer = max(0, flash_timer - delta * 2.5)
+	_animate_sky_world(delta)
 
 	# Smooth zoom interpolation
 	cam_zoom = lerp(cam_zoom, cam_zoom_target, delta * 10.0)
@@ -1240,6 +1346,19 @@ func _process(delta):
 	camera.position = base_pos + Vector3(cam_offset.x, 0, cam_offset.y)
 
 	ui_ctrl.queue_redraw()
+
+func _animate_sky_world(delta: float):
+	for cloud in drifting_clouds:
+		cloud.position.x += cloud.get_meta("speed") * delta
+		cloud.position.z = cloud.get_meta("base_z") + sin(pulse * 0.18 + cloud.get_meta("phase")) * 0.38
+		if cloud.position.x > 18.0: cloud.position.x = -18.0
+	for mote in sky_motes:
+		var mote_speed: float = mote.get_meta("speed")
+		mote.position.y = mote.get_meta("base_y") + sin(pulse * mote_speed + mote.get_meta("phase")) * 0.32
+		mote.rotation.y += delta * mote_speed
+	for island in distant_islands:
+		island.position.y = island.get_meta("base_y") + sin(pulse * 0.22 + island.get_meta("phase")) * 0.16
+		island.rotation.y += delta * 0.018
 
 func _input(event):
 	if state == S.TITLE:
