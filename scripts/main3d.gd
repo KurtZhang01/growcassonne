@@ -19,21 +19,21 @@ const TERRAIN_TOP := [
 	Color("#3f94bd"),  # WATER
 	Color("#2f7048"),  # FOREST
 	Color("#c8944e"),  # DESERT
-	Color("#b94f3f"),  # PAVILION
+	Color("#c7352e"),  # PAVILION
 ]
 const TERRAIN_MID := [
 	Color("#40793a"),
 	Color("#316b91"),
 	Color("#214d34"),
 	Color("#9f703a"),
-	Color("#8d3935"),
+	Color("#8f2427"),
 ]
 const TERRAIN_BOT := [
 	Color("#29472c"),
 	Color("#1f4661"),
 	Color("#153324"),
 	Color("#69462d"),
-	Color("#5f2c2b"),
+	Color("#5a1c21"),
 ]
 const TERRAIN_NAMES := ["草地", "水域", "森林", "荒漠", "楼阁"]
 const TERRAIN_SPREAD := [0.68, 0.55, 0.42, 0.30, 0.24]
@@ -100,19 +100,19 @@ func _setup_scene():
 
 	var sun = DirectionalLight3D.new()
 	sun.rotation_degrees = Vector3(-50, -25, 0)
-	sun.light_energy = 1.10; sun.light_color = Color("#fff4da")
+	sun.light_energy = 0.82; sun.light_color = Color("#ffe8c4")
 	sun.sky_mode = DirectionalLight3D.SKY_MODE_LIGHT_ONLY
 	sun.shadow_enabled = true; add_child(sun)
 
 	var fill = DirectionalLight3D.new()
 	fill.rotation_degrees = Vector3(30, 150, 0)
-	fill.light_energy = 0.34; fill.light_color = Color("#9bd7d9")
+	fill.light_energy = 0.22; fill.light_color = Color("#87c5c7")
 	fill.sky_mode = DirectionalLight3D.SKY_MODE_LIGHT_ONLY
 	add_child(fill)
 
 	var rim = DirectionalLight3D.new()
 	rim.rotation_degrees = Vector3(-10, -120, 0)
-	rim.light_energy = 0.16; rim.light_color = Color("#ffc975")
+	rim.light_energy = 0.10; rim.light_color = Color("#f5b766")
 	rim.sky_mode = DirectionalLight3D.SKY_MODE_LIGHT_ONLY
 	add_child(rim)
 
@@ -124,9 +124,9 @@ func _setup_scene():
 	e.background_mode = Environment.BG_SKY; e.sky = sky
 	e.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	e.ambient_light_color = Color("#a7d6c4")
-	e.ambient_light_energy = 0.76
+	e.ambient_light_energy = 0.60
 	e.tonemap_mode = Environment.TONE_MAPPER_FILMIC
-	e.glow_enabled = true; e.glow_intensity = 0.22; e.glow_bloom = 0.03
+	e.glow_enabled = true; e.glow_intensity = 0.14; e.glow_bloom = 0.02
 	env.environment = e; add_child(env)
 	_setup_sky_world()
 
@@ -890,61 +890,71 @@ func _tile_pavilion_surface(root: Node3D, road_mask: int):
 	var court = MeshInstance3D.new()
 	var court_mesh = BoxMesh.new(); court_mesh.size = Vector3(0.94, 0.055, 0.94)
 	court.mesh = court_mesh
-	var court_material = StandardMaterial3D.new(); court_material.albedo_color = Color("#9f7860"); court_material.roughness = 0.96
+	var court_material = StandardMaterial3D.new(); court_material.albedo_color = Color("#8f5f48"); court_material.roughness = 0.96
 	court.material_override = court_material; court.position.y = 0.13
 	root.add_child(court)
 
-	var gold = StandardMaterial3D.new(); gold.albedo_color = Color("#c28a38"); gold.roughness = 0.70
+	var gold = StandardMaterial3D.new(); gold.albedo_color = Color("#d39a2f"); gold.roughness = 0.72
 	var red = StandardMaterial3D.new(); red.albedo_color = TERRAIN_TOP[4]; red.roughness = 0.88
 	var dark_red = StandardMaterial3D.new(); dark_red.albedo_color = TERRAIN_MID[4]; dark_red.roughness = 0.92
-	var wall = StandardMaterial3D.new(); wall.albedo_color = Color("#dbc498"); wall.roughness = 0.86
-	var shadow = StandardMaterial3D.new(); shadow.albedo_color = Color("#654139"); shadow.roughness = 0.94
+	var wall = StandardMaterial3D.new(); wall.albedo_color = Color("#e2c08a"); wall.roughness = 0.86
+	var shadow = StandardMaterial3D.new(); shadow.albedo_color = Color("#5b2b2b"); shadow.roughness = 0.94
 
 	var building_pos = _feature_position(road_mask, 0.20)
 	var tower = Node3D.new(); tower.position = Vector3(building_pos.x, 0, building_pos.y); root.add_child(tower)
-	var tier_widths = [0.46, 0.36, 0.27]
-	var tier_heights = [0.13, 0.12, 0.10]
+	var tier_widths = [0.52, 0.42, 0.32, 0.23]
+	var tier_heights = [0.12, 0.105, 0.09, 0.075]
 	var base_y = 0.19
 	for tier in tier_widths.size():
 		var floor = MeshInstance3D.new(); var floor_mesh = BoxMesh.new()
-		floor_mesh.size = Vector3(tier_widths[tier], tier_heights[tier], tier_widths[tier] * 0.76)
-		floor.mesh = floor_mesh; floor.material_override = wall
-		floor.position.y = base_y + tier * 0.18
+		floor_mesh.size = Vector3(tier_widths[tier], tier_heights[tier], tier_widths[tier] * 0.72)
+		floor.mesh = floor_mesh; floor.material_override = red
+		floor.position.y = base_y + tier * 0.145
 		tower.add_child(floor)
+		var front_wall = MeshInstance3D.new(); var front_mesh = BoxMesh.new()
+		front_mesh.size = Vector3(tier_widths[tier] * 0.55, tier_heights[tier] * 0.58, 0.014)
+		front_wall.mesh = front_mesh; front_wall.material_override = wall
+		front_wall.position = Vector3(0, floor.position.y + 0.005, -floor_mesh.size.z * 0.51)
+		tower.add_child(front_wall)
 
 		var eave = MeshInstance3D.new(); var eave_mesh = BoxMesh.new()
-		eave_mesh.size = Vector3(tier_widths[tier] + 0.18, 0.035, tier_widths[tier] * 0.76 + 0.18)
+		eave_mesh.size = Vector3(tier_widths[tier] + 0.28, 0.032, tier_widths[tier] * 0.72 + 0.26)
 		eave.mesh = eave_mesh; eave.material_override = gold
 		eave.position.y = floor.position.y + tier_heights[tier] * 0.5 + 0.035
 		tower.add_child(eave)
+		var under_eave = MeshInstance3D.new(); var under_mesh = BoxMesh.new()
+		under_mesh.size = Vector3(eave_mesh.size.x * 0.88, 0.018, eave_mesh.size.z * 0.86)
+		under_eave.mesh = under_mesh; under_eave.material_override = shadow
+		under_eave.position.y = eave.position.y - 0.026
+		tower.add_child(under_eave)
 		for side in 4:
 			var tip = MeshInstance3D.new(); var tip_mesh = BoxMesh.new()
 			var horizontal = side < 2
-			tip_mesh.size = Vector3(0.12 if horizontal else 0.05, 0.028, 0.05 if horizontal else 0.12)
+			tip_mesh.size = Vector3(0.20 if horizontal else 0.065, 0.026, 0.065 if horizontal else 0.20)
 			tip.mesh = tip_mesh; tip.material_override = gold
 			var sx = 0.0 if horizontal else (-eave_mesh.size.x * 0.52 if side == 2 else eave_mesh.size.x * 0.52)
 			var sz = -eave_mesh.size.z * 0.52 if side == 0 else (eave_mesh.size.z * 0.52 if side == 1 else 0.0)
-			tip.position = Vector3(sx, eave.position.y + 0.018, sz)
-			tip.rotation_degrees.x = 0 if horizontal else randf_range(-7, 7)
-			tip.rotation_degrees.z = randf_range(-10, 10)
+			tip.position = Vector3(sx, eave.position.y + 0.030, sz)
+			tip.rotation_degrees.x = -10 if horizontal and side == 0 else (10 if horizontal else 0)
+			tip.rotation_degrees.z = 10 if side == 3 else (-10 if side == 2 else 0)
 			tower.add_child(tip)
 
-	for px in [-0.16, 0.16]:
-		for pz in [-0.11, 0.11]:
+	for px in [-0.20, 0.0, 0.20]:
+		for pz in [-0.14, 0.14]:
 			var pillar = MeshInstance3D.new(); var pillar_mesh = CylinderMesh.new()
-			pillar_mesh.top_radius = 0.018; pillar_mesh.bottom_radius = 0.022; pillar_mesh.height = 0.42; pillar_mesh.radial_segments = 7
+			pillar_mesh.top_radius = 0.016; pillar_mesh.bottom_radius = 0.020; pillar_mesh.height = 0.50; pillar_mesh.radial_segments = 7
 			pillar.mesh = pillar_mesh; pillar.material_override = red
-			pillar.position = Vector3(px, 0.37, pz); tower.add_child(pillar)
+			pillar.position = Vector3(px, 0.43, pz); tower.add_child(pillar)
 
 	var roof = MeshInstance3D.new(); var roof_mesh = CylinderMesh.new()
-	roof_mesh.top_radius = 0.02; roof_mesh.bottom_radius = 0.19; roof_mesh.height = 0.16; roof_mesh.radial_segments = 4
+	roof_mesh.top_radius = 0.025; roof_mesh.bottom_radius = 0.18; roof_mesh.height = 0.13; roof_mesh.radial_segments = 4
 	roof.mesh = roof_mesh; roof.material_override = gold
 	roof.position.y = 0.78; roof.rotation_degrees.y = 45; tower.add_child(roof)
 
 	var finial = MeshInstance3D.new(); var finial_mesh = CylinderMesh.new()
 	finial_mesh.top_radius = 0.008; finial_mesh.bottom_radius = 0.018; finial_mesh.height = 0.12; finial_mesh.radial_segments = 6
 	finial.mesh = finial_mesh; finial.material_override = dark_red
-	finial.position.y = 0.92; tower.add_child(finial)
+	finial.position.y = 0.91; tower.add_child(finial)
 
 	for lantern_index in 2:
 		var lantern = MeshInstance3D.new(); var lantern_mesh = SphereMesh.new()
