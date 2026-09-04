@@ -6,6 +6,7 @@ const WATER_TILE_SHADER: Shader = preload("res://shaders/water_tile.gdshader")
 
 # ---- Config ----
 const GRID_SIZE := 8
+const BOARD_GROW_MARGIN := 2
 const TILE_SPACING := 1.25
 const TOTAL_ROUNDS_PER_PLAYER := 10
 const STARTING_SEED_CARDS := 5
@@ -66,6 +67,7 @@ const PLAYER_NAMES := ["玩家1", "玩家2", "玩家3", "玩家4"]
 enum S { TITLE, PLACE_TILE, PLACE_SEED, PLAY_CARDS, GAME_OVER }
 
 var grid := []; var roads := []; var plants := []; var plant_age := []; var flowers := []
+var grid_origin := Vector2i.ZERO
 var tile_nodes := []; var plant_nodes := []; var decor_nodes := []
 var edge_root: Node3D  # container for edge bridge pieces
 var edge_materials := {}  # terrain_id -> StandardMaterial3D
@@ -75,15 +77,15 @@ var seeds := []; var total_turns := 0; var turns_played := 0
 var scores := []; var group_counts := []; var largest_groups := []; var diversity_counts := []; var road_scores := []
 var last_growth_count := 0
 var closed_road_ids := {}; var closed_road_cells := {}; var last_road_event := ""
-var hands := []; var current_hand := []; var selected_card := 0
+var hands := []; var current_hand := []; var selected_card := 0; var hand_page := 0
 var active_weather := {}; var rainbow_turns := 0; var last_settlement := ""
 var hovered_cell := Vector2i(-1, -1); var pulse := 0.0
 var flash_timer := 0.0; var flash_color := Color.WHITE
 
 # Camera zoom/pan
 var cam_zoom := 1.0; var cam_zoom_target := 1.0
-const CAM_ZOOM_MIN := 0.5; const CAM_ZOOM_MAX := 2.5
-const CAM_ZOOM_SPEED := 0.1
+const CAM_ZOOM_MIN := 0.22; const CAM_ZOOM_MAX := 3.2
+const CAM_ZOOM_SPEED := 0.16
 var cam_offset := Vector2.ZERO; var cam_offset_target := Vector2.ZERO
 var is_panning := false; var pan_start := Vector2.ZERO
 var cam_pan_start := Vector2.ZERO
@@ -111,7 +113,7 @@ func _setup_scene():
 	camera.size = 18
 	camera.position = Vector3(8, 16, 12)
 	camera.rotation_degrees = Vector3(-42, 42, 0)
-	camera.near = 0.1; camera.far = 200
+	camera.near = 0.1; camera.far = 1000
 	add_child(camera)
 
 	var sun = DirectionalLight3D.new()
@@ -268,6 +270,7 @@ func _init_grid():
 	for c in plant_root.get_children(): c.queue_free()
 	for c in decor_root.get_children(): c.queue_free()
 	grid = []; roads = []; plants = []; plant_age = []; flowers = []
+	grid_origin = Vector2i.ZERO
 	tile_nodes = []; plant_nodes = []; decor_nodes = []
 	for x in GRID_SIZE:
 		grid.append([]); roads.append([]); plants.append([]); plant_age.append([]); flowers.append([])
@@ -279,7 +282,75 @@ func _init_grid():
 
 func _world(pos: Vector2i) -> Vector3:
 	var off = (GRID_SIZE - 1) * TILE_SPACING * 0.5
-	return Vector3(pos.x * TILE_SPACING - off, 0, pos.y * TILE_SPACING - off)
+	var logical = pos - grid_origin
+	return Vector3(logical.x * TILE_SPACING - off, 0, logical.y * TILE_SPACING - off)
+
+func _grid_width() -> int:
+	return grid.size()
+
+func _grid_height() -> int:
+	return grid[0].size() if not grid.is_empty() else 0
+
+func _new_column(height: int) -> Array:
+	var column := []
+	for y in height: column.append(-1)
+	return column
+
+func _new_int_column(height: int, value: int = 0) -> Array:
+	var column := []
+	for y in height: column.append(value)
+	return column
+
+func _new_flower_column(height: int) -> Array:
+	var column := []
+	for y in height: column.append([0, 0, 0, 0])
+	return column
+
+func _new_node_column(height: int) -> Array:
+	var column := []
+	for y in height: column.append(null)
+	return column
+
+func _expand_board_ring():
+	var old_width = _grid_width(); var old_height = _grid_height()
+	for x in old_width:
+		grid[x].push_front(T_MOUNTAIN); grid[x].append(T_MOUNTAIN)
+		roads[x].push_front(0); roads[x].append(0)
+		plants[x].push_front(0); plants[x].append(0)
+		plant_age[x].push_front(0); plant_age[x].append(0)
+		flowers[x].push_front([0, 0, 0, 0]); flowers[x].append([0, 0, 0, 0])
+		tile_nodes[x].push_front(null); tile_nodes[x].append(null)
+		plant_nodes[x].push_front(null); plant_nodes[x].append(null)
+		decor_nodes[x].push_front(null); decor_nodes[x].append(null)
+	var new_height = old_height + 2
+	grid.push_front(_new_int_column(new_height, T_MOUNTAIN)); grid.append(_new_int_column(new_height, T_MOUNTAIN))
+	roads.push_front(_new_int_column(new_height)); roads.append(_new_int_column(new_height))
+	plants.push_front(_new_int_column(new_height)); plants.append(_new_int_column(new_height))
+	plant_age.push_front(_new_int_column(new_height)); plant_age.append(_new_int_column(new_height))
+	flowers.push_front(_new_flower_column(new_height)); flowers.append(_new_flower_column(new_height))
+	tile_nodes.push_front(_new_node_column(new_height)); tile_nodes.append(_new_node_column(new_height))
+	plant_nodes.push_front(_new_node_column(new_height)); plant_nodes.append(_new_node_column(new_height))
+	decor_nodes.push_front(_new_node_column(new_height)); decor_nodes.append(_new_node_column(new_height))
+	grid_origin += Vector2i.ONE
+	for x in _grid_width():
+		for y in _grid_height():
+			if x == 0 or y == 0 or x == _grid_width() - 1 or y == _grid_height() - 1:
+				if tile_nodes[x][y] == null: _spawn_tile(Vector2i(x, y), T_MOUNTAIN, true, 0)
+	for child in edge_root.get_children(): child.free()
+	closed_road_ids.clear(); closed_road_cells.clear()
+	for x in _grid_width():
+		for y in _grid_height():
+			var pos = Vector2i(x, y)
+			_update_edge_bridges(pos)
+			_update_road_bridges(pos)
+	_refresh_road_effects()
+
+func _ensure_growth_margin(cells: Array):
+	var needs_ring := false
+	for cell in cells:
+		if cell.x < BOARD_GROW_MARGIN or cell.y < BOARD_GROW_MARGIN or cell.x >= _grid_width() - BOARD_GROW_MARGIN or cell.y >= _grid_height() - BOARD_GROW_MARGIN:
+			needs_ring = true; break
+	if needs_ring: _expand_board_ring()
 
 func _draw_terrain() -> int:
 	var roll = randf()
@@ -376,8 +447,8 @@ func _consume_market_tile():
 	piece_rotation = 0
 
 func _has_any() -> bool:
-	for x in GRID_SIZE:
-		for y in GRID_SIZE:
+	for x in _grid_width():
+		for y in _grid_height():
 			if grid[x][y] != -1: return true
 	return false
 
@@ -386,19 +457,19 @@ func _can_place_piece_data(anchor: Vector2i, piece: Dictionary, rotation: int) -
 	var touches_board = not _has_any()
 	for local_cell in piece_cells:
 		var pos = anchor + local_cell
-		if pos.x < 0 or pos.x >= GRID_SIZE or pos.y < 0 or pos.y >= GRID_SIZE: return false
+		if not _in_bounds(pos): return false
 		if grid[pos.x][pos.y] != -1: return false
 		for dir in DIRS:
 			var neighbor = pos + dir
-			if neighbor.x >= 0 and neighbor.x < GRID_SIZE and neighbor.y >= 0 and neighbor.y < GRID_SIZE:
+			if _in_bounds(neighbor):
 				if grid[neighbor.x][neighbor.y] != -1: touches_board = true
 	return touches_board
 
 func _market_has_move() -> bool:
 	for piece in piece_market:
 		for rotation in 4:
-			for x in GRID_SIZE:
-				for y in GRID_SIZE:
+			for x in _grid_width():
+				for y in _grid_height():
 					if _can_place_piece_data(Vector2i(x, y), piece, rotation): return true
 	return false
 
@@ -430,7 +501,7 @@ func _force_tile(pos: Vector2i, terr: int, animate: bool, road_mask: int = 0):
 	_update_road_bridges(pos)
 
 func _set_tile_type(pos: Vector2i, terr: int, animate: bool = true, road_mask: int = -1):
-	if pos.x < 0 or pos.x >= GRID_SIZE or pos.y < 0 or pos.y >= GRID_SIZE: return
+	if not _in_bounds(pos): return
 	if grid[pos.x][pos.y] == T_BUILDING: return
 	var next_road = roads[pos.x][pos.y] if road_mask < 0 else road_mask
 	if tile_nodes[pos.x][pos.y] != null:
@@ -469,7 +540,7 @@ func _has_neighbor_bonus(pos: Vector2i, terr: int) -> bool:
 		for dy in [-1, 0, 1]:
 			if dx == 0 and dy == 0: continue
 			var p = pos + Vector2i(dx, dy)
-			if p.x >= 0 and p.x < GRID_SIZE and p.y >= 0 and p.y < GRID_SIZE:
+			if _in_bounds(p):
 				if grid[p.x][p.y] == terr: return true
 	return false
 
@@ -512,14 +583,14 @@ func _update_edge_bridges(pos: Vector2i):
 		var offset: Vector3 = d[1]
 		var size: Vector3 = d[2]
 		var neighbor = pos + dir
-		if neighbor.x >= 0 and neighbor.x < GRID_SIZE and neighbor.y >= 0 and neighbor.y < GRID_SIZE:
+		if _in_bounds(neighbor):
 			if grid[neighbor.x][neighbor.y] == terr:
 				_spawn_bridge(pos, terr, offset, size)
 
 	# Also update all neighbors' bridges (they might now connect to this new tile)
 	for dir in [Vector2i.UP, Vector2i.DOWN, Vector2i.LEFT, Vector2i.RIGHT]:
 		var neighbor = pos + dir
-		if neighbor.x >= 0 and neighbor.x < GRID_SIZE and neighbor.y >= 0 and neighbor.y < GRID_SIZE:
+		if _in_bounds(neighbor):
 			if grid[neighbor.x][neighbor.y] == terr:
 				# Rebuild bridges for neighbor
 				_rebuild_bridges_for(neighbor)
@@ -550,7 +621,7 @@ func _rebuild_bridges_for(pos: Vector2i):
 		var offset: Vector3 = d[1]
 		var size: Vector3 = d[2]
 		var neighbor = pos + dir
-		if neighbor.x >= 0 and neighbor.x < GRID_SIZE and neighbor.y >= 0 and neighbor.y < GRID_SIZE:
+		if _in_bounds(neighbor):
 			if grid[neighbor.x][neighbor.y] == terr:
 				_spawn_bridge(pos, terr, offset, size)
 
@@ -573,7 +644,7 @@ func _update_road_bridges(pos: Vector2i):
 	if grid[pos.x][pos.y] < 0: return
 	for dir in DIRS:
 		var neighbor = pos + dir
-		if neighbor.x < 0 or neighbor.x >= GRID_SIZE or neighbor.y < 0 or neighbor.y >= GRID_SIZE: continue
+		if not _in_bounds(neighbor): continue
 		if grid[neighbor.x][neighbor.y] < 0 or not _roads_connect(pos, neighbor): continue
 		var key = _road_pair_key(pos, neighbor); var exists = false
 		for child in edge_root.get_children():
@@ -600,8 +671,8 @@ func _refresh_road_effects():
 	var current_closed := {}
 
 	var visited := {}
-	for x in GRID_SIZE:
-		for y in GRID_SIZE:
+	for x in _grid_width():
+		for y in _grid_height():
 			var start := Vector2i(x, y)
 			if grid[x][y] < 0 or visited.has(start) or roads[x][y] == 0: continue
 			var component := _road_component(start, visited)
@@ -626,7 +697,7 @@ func _road_component(start: Vector2i, visited: Dictionary) -> Array:
 		visited[cell] = true; component.append(cell)
 		for dir in DIRS:
 			var neighbor = cell + dir
-			if neighbor.x >= 0 and neighbor.x < GRID_SIZE and neighbor.y >= 0 and neighbor.y < GRID_SIZE and not visited.has(neighbor) and _roads_connect(cell, neighbor):
+			if _in_bounds(neighbor) and not visited.has(neighbor) and _roads_connect(cell, neighbor):
 				pending.append(neighbor)
 	return component
 
@@ -636,7 +707,7 @@ func _road_component_is_closed(component: Array) -> bool:
 		for dir_index in DIRS.size():
 			if (mask & (1 << dir_index)) == 0: continue
 			var neighbor: Vector2i = cell + DIRS[dir_index]
-			if neighbor.x < 0 or neighbor.x >= GRID_SIZE or neighbor.y < 0 or neighbor.y >= GRID_SIZE: return false
+			if not _in_bounds(neighbor): return false
 			if grid[neighbor.x][neighbor.y] < 0 or not _roads_connect(cell, neighbor): return false
 	return true
 
@@ -680,8 +751,8 @@ func _spawn_road_fx(pos: Vector2i):
 #  STARTING BOARD
 # ================================================================
 func _generate_start_tiles():
-	for x in GRID_SIZE:
-		for y in GRID_SIZE:
+	for x in _grid_width():
+		for y in _grid_height():
 			var pos = Vector2i(x, y)
 			if x >= 2 and x <= 5 and y >= 2 and y <= 5:
 				_force_tile(pos, _draw_terrain(), false, _random_road_mask())
@@ -690,11 +761,9 @@ func _generate_start_tiles():
 	_refresh_road_effects()
 
 func _random_road_mask() -> int:
-	if randf() > 0.28: return 0
-	var dirs = [0, 1, 2, 3]; dirs.shuffle()
-	var mask = 1 << dirs[0]
-	if randf() < 0.55: mask |= 1 << dirs[1]
-	return mask
+	# Roads are created only by road cards, which always write both ends.
+	# This prevents isolated road stubs on newly generated terrain.
+	return 0
 
 # ================================================================
 #  TILE MESH — rich 3D per terrain
@@ -974,13 +1043,19 @@ func _tile_mountain_surface(root: Node3D):
 	tm.size = Vector3(0.96, 0.08, 0.96); top.mesh = tm
 	var mat = StandardMaterial3D.new(); mat.albedo_color = TERRAIN_TOP[T_MOUNTAIN]; mat.roughness = 1.0
 	top.material_override = mat; top.position.y = 0.14; root.add_child(top)
-	for i in 3:
+	for i in 5:
 		var rock = MeshInstance3D.new(); var rm = CylinderMesh.new()
-		rm.top_radius = randf_range(0.04, 0.08); rm.bottom_radius = randf_range(0.10, 0.16)
-		rm.height = randf_range(0.14, 0.24); rm.radial_segments = 5
+		rm.top_radius = randf_range(0.015, 0.055); rm.bottom_radius = randf_range(0.15, 0.25)
+		rm.height = randf_range(0.30, 0.58); rm.radial_segments = randi_range(5, 7)
 		rock.mesh = rm; rock.material_override = mat
-		rock.position = Vector3(randf_range(-0.25, 0.25), 0.22, randf_range(-0.25, 0.25))
+		rock.position = Vector3(randf_range(-0.27, 0.27), 0.19 + rm.height * 0.5, randf_range(-0.27, 0.27))
+		rock.scale = Vector3(randf_range(0.85, 1.25), 1.0, randf_range(0.85, 1.25))
 		rock.rotation_degrees.y = randf_range(0, 360); root.add_child(rock)
+		if i < 2:
+			var snow = MeshInstance3D.new(); var snow_mesh = CylinderMesh.new()
+			snow_mesh.top_radius = 0.006; snow_mesh.bottom_radius = rm.top_radius + 0.055; snow_mesh.height = 0.07; snow_mesh.radial_segments = rm.radial_segments
+			snow.mesh = snow_mesh; snow.material_override = _soft_material(Color("#d8e0d8"))
+			snow.position = rock.position + Vector3(0, rm.height * 0.48, 0); root.add_child(snow)
 
 func _tile_gap_surface(root: Node3D):
 	var ring_material = StandardMaterial3D.new()
@@ -1100,31 +1175,17 @@ func _spawn_decor(terr: int, parent: Node3D, road_mask: int):
 		4: pass
 
 func _decor_grass(p: Node3D, road_mask: int):
-	# Flowers
-	for i in randi_range(2, 5):
-		# Stem
-		var stem = MeshInstance3D.new()
-		var stm = CylinderMesh.new(); stm.top_radius = 0.008; stm.bottom_radius = 0.01; stm.height = randf_range(0.06, 0.12)
-		stem.mesh = stm
-		var stmat = StandardMaterial3D.new(); stmat.albedo_color = Color(0.3, 0.65, 0.2)
-		stem.material_override = stmat
-		var feature_pos = _feature_position(road_mask, 0.35)
-		var sx = feature_pos.x; var sz = feature_pos.y
-		stem.position = Vector3(sx, 0.18 + stm.height * 0.5, sz)
-		p.add_child(stem)
-		# Petal
-		var petal = MeshInstance3D.new()
-		var pm = SphereMesh.new(); pm.radius = randf_range(0.025, 0.05); pm.height = pm.radius * 2
-		petal.mesh = pm
-		var pmat = StandardMaterial3D.new()
-		var r = randf()
-		if r < 0.3: pmat.albedo_color = Color(1, 0.85, 0.2)    # yellow
-		elif r < 0.6: pmat.albedo_color = Color(1, 0.45, 0.55)  # pink
-		elif r < 0.8: pmat.albedo_color = Color(1, 1, 1)        # white
-		else: pmat.albedo_color = Color(0.7, 0.4, 1)            # purple
-		petal.material_override = pmat
-		petal.position = Vector3(sx, 0.18 + stm.height + pm.radius, sz)
-		p.add_child(petal)
+	# Low shrubs replace the old decorative flower dots.
+	var shrub_material = StandardMaterial3D.new(); shrub_material.albedo_color = Color("#397a3d"); shrub_material.roughness = 1.0
+	for shrub_index in randi_range(2, 4):
+		var shrub_pos = _feature_position(road_mask, 0.34)
+		for leaf_index in 4:
+			var leaf = MeshInstance3D.new(); var leaf_mesh = SphereMesh.new()
+			leaf_mesh.radius = randf_range(0.045, 0.075); leaf_mesh.height = leaf_mesh.radius * 1.45; leaf_mesh.radial_segments = 7; leaf_mesh.rings = 4
+			leaf.mesh = leaf_mesh; leaf.material_override = shrub_material
+			var angle = TAU * float(leaf_index) / 4.0
+			leaf.position = Vector3(shrub_pos.x + cos(angle) * 0.055, 0.205 + (leaf_index % 2) * 0.025, shrub_pos.y + sin(angle) * 0.055)
+			leaf.scale = Vector3(1.15, 0.78, 1.0); p.add_child(leaf)
 	# Tufts add a readable grassy edge silhouette at game distance.
 	var blade_material = StandardMaterial3D.new(); blade_material.albedo_color = Color("#4d9b43"); blade_material.roughness = 1.0
 	for tuft_index in 2:
@@ -1231,7 +1292,7 @@ func _place_seed(pos: Vector2i) -> bool:
 	return true
 
 func _can_seed(pos: Vector2i) -> bool:
-	if pos.x < 0 or pos.x >= GRID_SIZE or pos.y < 0 or pos.y >= GRID_SIZE: return false
+	if not _in_bounds(pos): return false
 	return _is_plant_terrain(grid[pos.x][pos.y]) and _flower_total(pos) < _tile_capacity(pos) and seeds[current_player] > 0
 
 func _add_flowers(pos: Vector2i, pid: int, amount: int) -> bool:
@@ -1258,37 +1319,40 @@ func _clear_plant_visual(pos: Vector2i):
 		plant_nodes[pos.x][pos.y] = null
 
 func _refresh_plant_visual(pos: Vector2i):
-	var pid = _dominant_flower_player(pos)
-	if pid < 0:
+	if _flower_total(pos) <= 0:
 		_clear_plant_visual(pos)
 		return
+	var pid = _dominant_flower_player(pos)
 	plants[pos.x][pos.y] = pid + 1
-	if plant_nodes[pos.x][pos.y] == null:
-		_spawn_plant(pos, pid)
-	else:
-		var fullness = float(_flower_total(pos)) / maxf(float(_tile_capacity(pos)), 1.0)
-		_animate_plant_growth(plant_nodes[pos.x][pos.y], clampf(0.32 + fullness * 0.72, 0.32, 1.08), pos, pid, 1)
+	if plant_nodes[pos.x][pos.y] != null: plant_nodes[pos.x][pos.y].queue_free()
+	_spawn_plant(pos, pid)
 
 func _spawn_plant(pos: Vector2i, pid: int):
 	var root = Node3D.new()
-	root.position = _world(pos); root.position.y = 0.06
+	root.position = _world(pos); root.position.y = 0.19
 	plant_root.add_child(root)
 	plant_nodes[pos.x][pos.y] = root
-
-	var col = PLAYER_COLORS[pid]
-	# Player-specific plant shape
-	match pid:
-		0: _plant_mushroom(root, col)    # P1: mushroom
-		1: _plant_flower(root, col)      # P2: flower bud
-		2: _plant_crystal(root, col)     # P3: crystal
-		3: _plant_star(root, col)        # P4: star
-
-	var mature_scale = _plant_mature_scale(pos)
+	var total_index := 0
+	for owner in player_count:
+		var count: int = flowers[pos.x][pos.y][owner]
+		var blossom_material = StandardMaterial3D.new()
+		blossom_material.albedo_color = PLAYER_COLORS[owner].lightened(0.16); blossom_material.roughness = 0.82
+		for flower_index in count:
+			var blossom = MeshInstance3D.new(); var blossom_mesh = SphereMesh.new()
+			blossom_mesh.radius = 0.018; blossom_mesh.height = 0.026; blossom_mesh.radial_segments = 5; blossom_mesh.rings = 3
+			blossom.mesh = blossom_mesh; blossom.material_override = blossom_material
+			var slot = total_index % 100
+			var row = slot / 10; var column = slot % 10
+			var ring = total_index / 100
+			var jitter_x = sin(float(total_index * 37 + pos.x * 11)) * 0.012
+			var jitter_z = cos(float(total_index * 29 + pos.y * 13)) * 0.012
+			blossom.position = Vector3(-0.405 + column * 0.09 + jitter_x, 0.035 + ring * 0.025, -0.405 + row * 0.09 + jitter_z)
+			root.add_child(blossom); total_index += 1
 	root.scale = Vector3(0.01, 0.01, 0.01)
 	var tw = create_tween()
 	tw.set_parallel(true)
-	tw.tween_property(root, "scale", Vector3.ONE * mature_scale, 0.72).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_BACK)
-	tw.tween_property(root, "position:y", 0.18, 0.72).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_BACK)
+	tw.tween_property(root, "scale", Vector3.ONE, 0.46).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_BACK)
+	tw.tween_property(root, "position:y", 0.21, 0.46).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_BACK)
 	tw.tween_property(root, "rotation:y", 0.24, 0.72).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_SINE)
 	_spawn_growth_burst(pos, pid, 0.72)
 
@@ -1464,6 +1528,7 @@ func _start_player_turn():
 	for i in CARDS_DRAWN_PER_TURN:
 		current_hand.append(_draw_public_card())
 	selected_card = 0
+	hand_page = 0
 	state = S.PLAY_CARDS
 	hover_mesh.visible = false
 	piece_preview_root.visible = false
@@ -1475,7 +1540,7 @@ func _start_game():
 	current_player = randi() % player_count; turns_played = 0
 	total_turns = TOTAL_ROUNDS_PER_PLAYER * player_count
 	seeds = []; scores = []; group_counts = []; largest_groups = []; diversity_counts = []; road_scores = []
-	hands = []; current_hand = []; selected_card = 0
+	hands = []; current_hand = []; selected_card = 0; hand_page = 0
 	piece_market = []; selected_market = 0; piece_rotation = 0; last_growth_count = 0
 	closed_road_ids = {}; closed_road_cells = {}; last_road_event = ""; last_settlement = ""
 	active_weather = {}; rainbow_turns = 0
@@ -1502,6 +1567,27 @@ func _selected_card() -> Dictionary:
 	if selected_card < 0 or selected_card >= current_hand.size(): return {}
 	return current_hand[selected_card]
 
+func _hand_card_rect(index: int, ux: float, iy: float) -> Rect2:
+	var column = index % 2; var row = index / 2
+	return Rect2(ux + 10 + column * 126, iy + 18 + row * 60, 118, 56)
+
+func _card_description(card: Dictionary) -> String:
+	match card["kind"]:
+		"seed": return "+%d 朵花" % (int(card["level"]) * 10)
+		"develop": return "开发 %d 格山体" % int(card["level"])
+		"building_develop": return "缺口建造楼阁"
+		"road": return "连接 %d 段道路" % int(card["level"])
+		"weather": return "改变本轮环境"
+	return ""
+
+func _card_accent(card: Dictionary) -> Color:
+	match card["kind"]:
+		"seed": return Color("#4f9c62")
+		"develop", "building_develop": return Color("#c47a42")
+		"road": return Color("#ae8b55")
+		"weather": return Color("#568eb0")
+	return Color.WHITE
+
 func _can_play_selected_card(pos: Vector2i) -> bool:
 	if not _in_bounds(pos): return false
 	var card = _selected_card()
@@ -1510,9 +1596,7 @@ func _can_play_selected_card(pos: Vector2i) -> bool:
 		"seed":
 			return seeds[current_player] > 0 and _is_plant_terrain(grid[pos.x][pos.y]) and _flower_total(pos) < _tile_capacity(pos)
 		"develop":
-			for cell in _develop_card_cells(pos, int(card["level"]), piece_rotation):
-				if not _in_bounds(cell) or not _is_developable(grid[cell.x][cell.y]): return false
-			return true
+			return _can_develop_cells(_develop_card_cells(pos, int(card["level"]), piece_rotation))
 		"building_develop":
 			var cells = [pos] if int(card["level"]) == 1 else [pos, pos + DIRS[piece_rotation]]
 			for cell in cells:
@@ -1546,22 +1630,34 @@ func _play_selected_card(pos: Vector2i) -> bool:
 	if ok:
 		current_hand.remove_at(selected_card)
 		selected_card = clampi(selected_card, 0, maxi(current_hand.size() - 1, 0))
+		hand_page = mini(hand_page, maxi(0, floori(float(current_hand.size() - 1) / 8.0)))
 		flash_timer = 0.18; flash_color = PLAYER_COLORS[current_player]
 		_calc_all_scores(); ui_ctrl.queue_redraw()
 	return ok
 
 func _apply_develop_card(pos: Vector2i, level: int) -> bool:
 	var cells = _develop_card_cells(pos, level, piece_rotation)
-	if cells.is_empty(): return false
-	for cell in cells:
-		if not _in_bounds(cell) or not _is_developable(grid[cell.x][cell.y]): return false
+	if not _can_develop_cells(cells): return false
 	for cell in cells:
 		_set_tile_type(cell, _draw_terrain(), true, _random_road_mask())
 	_update_gaps()
 	_refill_mountain_border()
+	_ensure_growth_margin(cells)
 	_refresh_road_effects()
 	last_settlement = "开发了 %d 格新地块" % cells.size()
 	return true
+
+func _can_develop_cells(cells: Array) -> bool:
+	if cells.is_empty(): return false
+	var touches_developed := false
+	for cell in cells:
+		# A mountain development card may never overwrite gaps or developed terrain.
+		if not _in_bounds(cell) or grid[cell.x][cell.y] != T_MOUNTAIN: return false
+		for dir in DIRS:
+			var neighbor = cell + dir
+			if _in_bounds(neighbor) and not cells.has(neighbor) and not _is_developable(grid[neighbor.x][neighbor.y]):
+				touches_developed = true
+	return touches_developed
 
 func _apply_building_develop_card(pos: Vector2i, level: int) -> bool:
 	var cells = [pos] if level == 1 else [pos, pos + DIRS[piece_rotation]]
@@ -1585,7 +1681,8 @@ func _develop_card_cells(pos: Vector2i, level: int, rotation: int = 0) -> Array:
 				[Vector2i.ZERO, Vector2i.LEFT, Vector2i.RIGHT, Vector2i.DOWN],
 			]
 			var result := []
-			for cell in shapes[randi() % shapes.size()]:
+			var shape_index = posmod(pos.x * 31 + pos.y * 17, shapes.size())
+			for cell in shapes[shape_index]:
 				result.append(pos + _rotate_cell(cell, rotation))
 			return result
 	return []
@@ -1642,20 +1739,20 @@ func _tick_weather():
 	if rainbow_turns > 0: rainbow_turns -= 1
 
 func _in_bounds(pos: Vector2i) -> bool:
-	return pos.x >= 0 and pos.x < GRID_SIZE and pos.y >= 0 and pos.y < GRID_SIZE
+	return pos.x >= 0 and pos.x < _grid_width() and pos.y >= 0 and pos.y < _grid_height()
 
 func _apply_weather_tile_changes():
 	if active_weather.has("台风"):
 		var waters := []
-		for x in GRID_SIZE:
-			for y in GRID_SIZE:
+		for x in _grid_width():
+			for y in _grid_height():
 				if grid[x][y] == T_WATER: waters.append(Vector2i(x, y))
 		for pos in waters:
 			_weather_convert_neighbor(pos, T_WATER)
 	if active_weather.has("沙尘暴"):
 		var deserts := []
-		for x in GRID_SIZE:
-			for y in GRID_SIZE:
+		for x in _grid_width():
+			for y in _grid_height():
 				if grid[x][y] == T_DESERT: deserts.append(Vector2i(x, y))
 		for pos in deserts:
 			_weather_convert_neighbor(pos, T_DESERT)
@@ -1671,8 +1768,8 @@ func _weather_convert_neighbor(pos: Vector2i, terr: int):
 
 func _apply_neighbor_terrain_changes():
 	var changes := []
-	for x in GRID_SIZE:
-		for y in GRID_SIZE:
+	for x in _grid_width():
+		for y in _grid_height():
 			var pos = Vector2i(x, y)
 			var terr = grid[x][y]
 			if not _is_plant_terrain(terr): continue
@@ -1697,8 +1794,8 @@ func _apply_neighbor_terrain_changes():
 		_set_tile_type(change[0], change[1], true)
 
 func _grow_flowers():
-	for x in GRID_SIZE:
-		for y in GRID_SIZE:
+	for x in _grid_width():
+		for y in _grid_height():
 			var pos = Vector2i(x, y)
 			if not _is_plant_terrain(grid[x][y]): continue
 			var cap = _tile_capacity(pos)
@@ -1722,8 +1819,8 @@ func _grow_flowers():
 
 func _spread_flowers():
 	var additions := []
-	for x in GRID_SIZE:
-		for y in GRID_SIZE:
+	for x in _grid_width():
+		for y in _grid_height():
 			var pos = Vector2i(x, y)
 			if not _is_plant_terrain(grid[x][y]) or roads[x][y] != 0: continue
 			var cap = _tile_capacity(pos)
@@ -1760,13 +1857,13 @@ func _has_extreme_weather() -> bool:
 	return active_weather.has("台风") or active_weather.has("沙尘暴") or active_weather.has("雨季") or active_weather.has("旱季")
 
 func _refresh_all_plants():
-	for x in GRID_SIZE:
-		for y in GRID_SIZE:
+	for x in _grid_width():
+		for y in _grid_height():
 			_refresh_plant_visual(Vector2i(x, y))
 
 func _update_gaps():
-	for x in range(1, GRID_SIZE - 1):
-		for y in range(1, GRID_SIZE - 1):
+	for x in range(1, _grid_width() - 1):
+		for y in range(1, _grid_height() - 1):
 			if grid[x][y] != T_MOUNTAIN: continue
 			var surrounded := true
 			for dir in DIRS:
@@ -1776,9 +1873,9 @@ func _update_gaps():
 			if surrounded: _set_tile_type(Vector2i(x, y), T_GAP, true, 0)
 
 func _refill_mountain_border():
-	for x in GRID_SIZE:
-		for y in GRID_SIZE:
-			if x == 0 or y == 0 or x == GRID_SIZE - 1 or y == GRID_SIZE - 1:
+	for x in _grid_width():
+		for y in _grid_height():
+			if x == 0 or y == 0 or x == _grid_width() - 1 or y == _grid_height() - 1:
 				if grid[x][y] == T_GAP:
 					_set_tile_type(Vector2i(x, y), T_MOUNTAIN, true, 0)
 
@@ -1822,19 +1919,19 @@ func _calc_all_scores():
 	for pid in player_count:
 		var flower_score := 0
 		var occupied_tiles := 0
-		for x in GRID_SIZE:
-			for y in GRID_SIZE:
+		for x in _grid_width():
+			for y in _grid_height():
 				var amount: int = flowers[x][y][pid]
 				if amount > 0:
 					flower_score += amount
 					if _is_plant_terrain(grid[x][y]): occupied_tiles += 1
 		var vis := []
-		for x in GRID_SIZE:
+		for x in _grid_width():
 			vis.append([])
-			for y in GRID_SIZE: vis[x].append(false)
+			for y in _grid_height(): vis[x].append(false)
 		var groups := 0; var largest := 0
-		for x in GRID_SIZE:
-			for y in GRID_SIZE:
+		for x in _grid_width():
+			for y in _grid_height():
 				if flowers[x][y][pid] > 0 and not vis[x][y]:
 					groups += 1
 					largest = maxi(largest, _flood_p(x, y, vis, pid + 1))
@@ -1850,19 +1947,19 @@ func _roads_connect(from: Vector2i, to: Vector2i) -> bool:
 
 func _player_road_score(pid: int) -> int:
 	var connections := 0
-	for x in GRID_SIZE:
-		for y in GRID_SIZE:
+	for x in _grid_width():
+		for y in _grid_height():
 			if flowers[x][y][pid - 1] <= 0: continue
 			var pos = Vector2i(x, y)
 			if closed_road_cells.has(pos): connections += 2
 			for dir in [Vector2i.RIGHT, Vector2i.DOWN]:
 				var neighbor = pos + dir
-				if neighbor.x < GRID_SIZE and neighbor.y < GRID_SIZE and flowers[neighbor.x][neighbor.y][pid - 1] > 0:
+				if _in_bounds(neighbor) and flowers[neighbor.x][neighbor.y][pid - 1] > 0:
 					if _roads_connect(pos, neighbor): connections += 1
 	return connections
 
 func _flood_p(x: int, y: int, v: Array, pid: int) -> int:
-	if x < 0 or x >= GRID_SIZE or y < 0 or y >= GRID_SIZE: return 0
+	if x < 0 or x >= _grid_width() or y < 0 or y >= _grid_height(): return 0
 	if v[x][y] or flowers[x][y][pid - 1] <= 0: return 0
 	v[x][y] = true
 	return 1 + _flood_p(x+1,y,v,pid) + _flood_p(x-1,y,v,pid) + _flood_p(x,y+1,v,pid) + _flood_p(x,y-1,v,pid)
@@ -1878,9 +1975,9 @@ func _mouse_to_grid(mp: Vector2) -> Vector2i:
 	if t < 0: return Vector2i(-1, -1)
 	var hit = from + dir * t
 	var off = (GRID_SIZE - 1) * TILE_SPACING * 0.5
-	var gx = roundi((hit.x + off) / TILE_SPACING)
-	var gy = roundi((hit.z + off) / TILE_SPACING)
-	if gx >= 0 and gx < GRID_SIZE and gy >= 0 and gy < GRID_SIZE: return Vector2i(gx, gy)
+	var gx = roundi((hit.x + off) / TILE_SPACING) + grid_origin.x
+	var gy = roundi((hit.z + off) / TILE_SPACING) + grid_origin.y
+	if gx >= 0 and gx < _grid_width() and gy >= 0 and gy < _grid_height(): return Vector2i(gx, gy)
 	return Vector2i(-1, -1)
 
 func _update_piece_preview():
@@ -1985,15 +2082,15 @@ func _input(event):
 	# ---- Zoom: scroll wheel ----
 	if event is InputEventMouseButton:
 		if event.button_index == MOUSE_BUTTON_WHEEL_UP:
-			cam_zoom_target = clamp(cam_zoom_target + CAM_ZOOM_SPEED, CAM_ZOOM_MIN, CAM_ZOOM_MAX)
+			cam_zoom_target = clamp(cam_zoom_target * (1.0 + CAM_ZOOM_SPEED), CAM_ZOOM_MIN, CAM_ZOOM_MAX)
 			return
 		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
-			cam_zoom_target = clamp(cam_zoom_target - CAM_ZOOM_SPEED, CAM_ZOOM_MIN, CAM_ZOOM_MAX)
+			cam_zoom_target = clamp(cam_zoom_target / (1.0 + CAM_ZOOM_SPEED), CAM_ZOOM_MIN, CAM_ZOOM_MAX)
 			return
 
 	# ---- Zoom: trackpad pinch (macOS MagnifyGesture) ----
 	if event is InputEventMagnifyGesture:
-		cam_zoom_target = clamp(cam_zoom_target + event.factor * 0.5, CAM_ZOOM_MIN, CAM_ZOOM_MAX)
+		cam_zoom_target = clamp(cam_zoom_target * maxf(event.factor, 0.1), CAM_ZOOM_MIN, CAM_ZOOM_MAX)
 		return
 
 	# ---- Pan: middle mouse button drag ----
@@ -2033,6 +2130,13 @@ func _input(event):
 		return
 
 	if event is InputEventMouseButton and event.pressed:
+		if event.button_index == MOUSE_BUTTON_LEFT and state == S.PLAY_CARDS:
+			var ui_pointer = _ui_point(event.position)
+			var ui_view = get_viewport().get_visible_rect().size / _ui_scale(get_viewport().get_visible_rect().size)
+			var hand_ux = ui_view.x - 320.0; var hand_iy = 292.0
+			for visible_index in mini(maxi(current_hand.size() - hand_page * 8, 0), 8):
+				if _hand_card_rect(visible_index, hand_ux, hand_iy).has_point(ui_pointer):
+					selected_card = hand_page * 8 + visible_index; ui_ctrl.queue_redraw(); return
 		var cell = _mouse_to_grid(event.position)
 		if event.button_index == MOUSE_BUTTON_LEFT:
 			if state == S.PLAY_CARDS:
@@ -2047,7 +2151,11 @@ func _input(event):
 	if event is InputEventKey and event.pressed:
 		if event.keycode == KEY_R: get_tree().reload_current_scene()
 		elif state == S.PLAY_CARDS and event.keycode >= KEY_1 and event.keycode <= KEY_9:
-			selected_card = clampi(event.keycode - KEY_1, 0, maxi(current_hand.size() - 1, 0)); ui_ctrl.queue_redraw()
+			selected_card = clampi(hand_page * 8 + event.keycode - KEY_1, 0, maxi(current_hand.size() - 1, 0)); ui_ctrl.queue_redraw()
+		elif state == S.PLAY_CARDS and event.keycode == KEY_Z:
+			hand_page = maxi(0, hand_page - 1); ui_ctrl.queue_redraw()
+		elif state == S.PLAY_CARDS and event.keycode == KEY_X:
+			hand_page = mini(maxi(0, floori(float(current_hand.size() - 1) / 8.0)), hand_page + 1); ui_ctrl.queue_redraw()
 		elif state == S.PLAY_CARDS and (event.keycode == KEY_ENTER or event.keycode == KEY_KP_ENTER or event.keycode == KEY_SPACE):
 			_end_turn()
 		elif state == S.PLAY_CARDS and event.keycode == KEY_Q:
@@ -2106,22 +2214,26 @@ func _draw_ui():
 		ui_ctrl.draw_string(font, Vector2(ux + 226, sy + 92 + i * 21), str(scores[i]), HORIZONTAL_ALIGNMENT_RIGHT, 30, 14, ink)
 
 	var iy = sy + 192
-	_draw_glass_card(Rect2(ux, iy - 8, 270, 170), glass, glass_line)
-	ui_ctrl.draw_string(font, Vector2(ux + 12, iy + 4), "手牌 · 数字键选择", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, muted)
-	for i in mini(current_hand.size(), 6):
-		var card: Dictionary = current_hand[i]
-		var cy = iy + 28 + i * 21
-		var line_color = pcol if i == selected_card else Color(1, 1, 1, 0.28)
-		ui_ctrl.draw_rect(Rect2(ux + 10, cy - 14, 250, 18), Color(1, 1, 1, 0.34) if i == selected_card else Color(1, 1, 1, 0.16), 0, true, 8.0)
-		ui_ctrl.draw_rect(Rect2(ux + 12, cy - 12, 3, 14), line_color, 0, true, 2.0)
-		ui_ctrl.draw_string(font, Vector2(ux + 22, cy), "%d  %s  [%s]" % [i + 1, card["name"], card["deck"]], HORIZONTAL_ALIGNMENT_LEFT, 220, 12, ink)
-	if current_hand.size() > 6:
-		ui_ctrl.draw_string(font, Vector2(ux + 18, iy + 156), "+%d 张未显示" % (current_hand.size() - 6), HORIZONTAL_ALIGNMENT_LEFT, -1, 12, muted)
+	_draw_glass_card(Rect2(ux, iy - 8, 270, 266), glass, glass_line)
+	ui_ctrl.draw_string(font, Vector2(ux + 12, iy + 4), "手牌", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, muted)
+	for i in mini(maxi(current_hand.size() - hand_page * 8, 0), 8):
+		var card_index = hand_page * 8 + i
+		var card: Dictionary = current_hand[card_index]
+		var card_rect = _hand_card_rect(i, ux, iy)
+		var accent = _card_accent(card)
+		_draw_glass_card(card_rect, Color(0.98, 0.99, 0.97, 0.74) if card_index == selected_card else Color(0.94, 0.97, 0.94, 0.48), accent if card_index == selected_card else glass_line, 10.0)
+		ui_ctrl.draw_rect(Rect2(card_rect.position, Vector2(card_rect.size.x, 8)), accent, 0, true, 10.0)
+		ui_ctrl.draw_circle(card_rect.position + Vector2(16, 21), 6, accent)
+		ui_ctrl.draw_string(font, card_rect.position + Vector2(27, 24), card["name"], HORIZONTAL_ALIGNMENT_LEFT, 84, 11, ink)
+		ui_ctrl.draw_string(font, card_rect.position + Vector2(10, 42), _card_description(card), HORIZONTAL_ALIGNMENT_LEFT, 100, 10, muted)
+		ui_ctrl.draw_string(font, card_rect.position + Vector2(82, 52), "%d·%s" % [i + 1, card["deck"]], HORIZONTAL_ALIGNMENT_RIGHT, 26, 9, accent.darkened(0.18))
+	if current_hand.size() > 8:
+		ui_ctrl.draw_string(font, Vector2(ux + 18, iy + 256), "Z/X翻页  %d/%d" % [hand_page + 1, ceili(float(current_hand.size()) / 8.0)], HORIZONTAL_ALIGNMENT_LEFT, -1, 11, muted)
 	else:
 		var dir_names = ["上", "右", "下", "左"]
-		ui_ctrl.draw_string(font, Vector2(ux + 18, iy + 156), "左键使用 · Q/E方向:%s · 右键结算" % dir_names[piece_rotation], HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color("#746239"))
+		ui_ctrl.draw_string(font, Vector2(ux + 18, iy + 256), "Q/E方向:%s · 右键结算" % dir_names[piece_rotation], HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color("#746239"))
 
-	var wy = iy + 182
+	var wy = iy + 284
 	_draw_glass_card(Rect2(ux, wy - 8, 270, 62), glass_soft, glass_line)
 	var weather_text := "天气："
 	if active_weather.is_empty() and rainbow_turns <= 0:
@@ -2133,18 +2245,8 @@ func _draw_ui():
 	ui_ctrl.draw_string(font, Vector2(ux + 12, wy + 4), weather_text, HORIZONTAL_ALIGNMENT_LEFT, 248, 13, ink)
 	ui_ctrl.draw_string(font, Vector2(ux + 12, wy + 29), last_settlement, HORIZONTAL_ALIGNMENT_LEFT, 248, 12, muted)
 
-	var ly = vp.y - 250.0
-	_draw_glass_card(Rect2(ux, ly - 10, 270, 174), glass_soft, glass_line)
-	ui_ctrl.draw_string(font, Vector2(ux + 12, ly), "地形", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, muted)
-	for i in TERRAIN_TOP.size():
-		ui_ctrl.draw_rect(Rect2(ux + 12, ly + 14 + i * 24, 14, 14), TERRAIN_TOP[i], 0, true, 4.0)
-		ui_ctrl.draw_string(font, Vector2(ux + 32, ly + 26 + i * 24), TERRAIN_NAMES[i], HORIZONTAL_ALIGNMENT_LEFT, -1, 13, ink)
-	ui_ctrl.draw_string(font, Vector2(ux + 120, ly), "玩家", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, muted)
-	for i in player_count:
-		ui_ctrl.draw_circle(Vector2(ux + 128, ly + 20 + i * 24), 6, PLAYER_COLORS[i])
-		ui_ctrl.draw_string(font, Vector2(ux + 140, ly + 26 + i * 24), PLAYER_NAMES[i], HORIZONTAL_ALIGNMENT_LEFT, -1, 13, PLAYER_COLORS[i].darkened(0.18))
 	ui_ctrl.draw_line(Vector2(ux + 4, vp.y - 55), Vector2(ux + 266, vp.y - 55), Color(1.0, 1.0, 1.0, 0.28), 1.0)
-	ui_ctrl.draw_string(font, Vector2(ux + 12, vp.y - 36), "缩放/平移照旧 · R 重开", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, muted)
+	ui_ctrl.draw_string(font, Vector2(ux + 12, vp.y - 36), "滚轮缩放 · 中键平移 · R 重开", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, muted)
 
 func _draw_glass_card(rect: Rect2, fill: Color, line: Color = Color(1.0, 1.0, 1.0, 0.45), radius: float = 18.0):
 	var shadow = StyleBoxFlat.new()
@@ -2206,8 +2308,8 @@ func _draw_gameover(vp: Vector2, font: Font):
 		ui_ctrl.draw_circle(Vector2(cx - 165, py + 16), 14, PLAYER_COLORS[i])
 		ui_ctrl.draw_string(font, Vector2(cx - 140, py + 24), PLAYER_NAMES[i], HORIZONTAL_ALIGNMENT_LEFT, -1, 24, PLAYER_COLORS[i])
 		var pc := 0
-		for x in GRID_SIZE:
-			for y in GRID_SIZE:
+		for x in _grid_width():
+			for y in _grid_height():
 				if plants[x][y] == i + 1: pc += 1
 		ui_ctrl.draw_string(font, Vector2(cx - 20, py + 10), "%d 花" % scores[i], HORIZONTAL_ALIGNMENT_LEFT, -1, 30, Color.YELLOW if is_w else Color(0.8, 0.8, 0.8))
 		ui_ctrl.draw_string(font, Vector2(cx + 90, py + 10), "占据%d格 · 最大%d格 · 路%d" % [diversity_counts[i], largest_groups[i], road_scores[i]], HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color(0.5, 0.5, 0.5))
