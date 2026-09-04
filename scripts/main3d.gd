@@ -885,7 +885,7 @@ func _tile_desert_surface(root: Node3D, road_mask: int):
 		shadow.rotation_degrees.y = randf_range(0, 360)
 		root.add_child(shadow)
 
-# ---- Pavilion: layered tower inspired by classic riverfront pagodas ----
+# ---- Pavilion: low-poly Yellow Crane Tower-inspired landmark ----
 func _tile_pavilion_surface(root: Node3D, road_mask: int):
 	var court = MeshInstance3D.new()
 	var court_mesh = BoxMesh.new(); court_mesh.size = Vector3(0.94, 0.055, 0.94)
@@ -894,23 +894,25 @@ func _tile_pavilion_surface(root: Node3D, road_mask: int):
 	court.material_override = court_material; court.position.y = 0.13
 	root.add_child(court)
 
-	var gold = StandardMaterial3D.new(); gold.albedo_color = Color("#d39a2f"); gold.roughness = 0.72
+	var gold = StandardMaterial3D.new(); gold.albedo_color = Color("#d99a26"); gold.roughness = 0.70
+	var gold_dark = StandardMaterial3D.new(); gold_dark.albedo_color = Color("#8d5a1f"); gold_dark.roughness = 0.86
 	var red = StandardMaterial3D.new(); red.albedo_color = TERRAIN_TOP[4]; red.roughness = 0.88
 	var dark_red = StandardMaterial3D.new(); dark_red.albedo_color = TERRAIN_MID[4]; dark_red.roughness = 0.92
 	var wall = StandardMaterial3D.new(); wall.albedo_color = Color("#e2c08a"); wall.roughness = 0.86
 	var shadow = StandardMaterial3D.new(); shadow.albedo_color = Color("#5b2b2b"); shadow.roughness = 0.94
+	var plaque = StandardMaterial3D.new(); plaque.albedo_color = Color("#252014"); plaque.roughness = 0.92
 
-	var building_pos = _feature_position(road_mask, 0.20)
-	var tower = Node3D.new(); tower.position = Vector3(building_pos.x, 0, building_pos.y); root.add_child(tower)
-	var tier_widths = [0.52, 0.42, 0.32, 0.23]
-	var tier_heights = [0.12, 0.105, 0.09, 0.075]
+	var tower = Node3D.new(); tower.position = Vector3.ZERO; root.add_child(tower)
+	var tier_widths = [0.60, 0.52, 0.44, 0.35, 0.26]
+	var tier_heights = [0.105, 0.095, 0.085, 0.078, 0.066]
 	var base_y = 0.19
 	for tier in tier_widths.size():
 		var floor = MeshInstance3D.new(); var floor_mesh = BoxMesh.new()
 		floor_mesh.size = Vector3(tier_widths[tier], tier_heights[tier], tier_widths[tier] * 0.72)
 		floor.mesh = floor_mesh; floor.material_override = red
-		floor.position.y = base_y + tier * 0.145
+		floor.position.y = base_y + tier * 0.118
 		tower.add_child(floor)
+
 		var front_wall = MeshInstance3D.new(); var front_mesh = BoxMesh.new()
 		front_mesh.size = Vector3(tier_widths[tier] * 0.55, tier_heights[tier] * 0.58, 0.014)
 		front_wall.mesh = front_mesh; front_wall.material_override = wall
@@ -918,43 +920,54 @@ func _tile_pavilion_surface(root: Node3D, road_mask: int):
 		tower.add_child(front_wall)
 
 		var eave = MeshInstance3D.new(); var eave_mesh = BoxMesh.new()
-		eave_mesh.size = Vector3(tier_widths[tier] + 0.28, 0.032, tier_widths[tier] * 0.72 + 0.26)
+		eave_mesh.size = Vector3(tier_widths[tier] + 0.34, 0.030, tier_widths[tier] * 0.72 + 0.32)
 		eave.mesh = eave_mesh; eave.material_override = gold
 		eave.position.y = floor.position.y + tier_heights[tier] * 0.5 + 0.035
 		tower.add_child(eave)
+
 		var under_eave = MeshInstance3D.new(); var under_mesh = BoxMesh.new()
 		under_mesh.size = Vector3(eave_mesh.size.x * 0.88, 0.018, eave_mesh.size.z * 0.86)
-		under_eave.mesh = under_mesh; under_eave.material_override = shadow
+		under_eave.mesh = under_mesh; under_eave.material_override = gold_dark
 		under_eave.position.y = eave.position.y - 0.026
 		tower.add_child(under_eave)
-		for side in 4:
+
+		for corner in [Vector2(-1, -1), Vector2(1, -1), Vector2(-1, 1), Vector2(1, 1)]:
 			var tip = MeshInstance3D.new(); var tip_mesh = BoxMesh.new()
-			var horizontal = side < 2
-			tip_mesh.size = Vector3(0.20 if horizontal else 0.065, 0.026, 0.065 if horizontal else 0.20)
+			tip_mesh.size = Vector3(0.13, 0.026, 0.13)
 			tip.mesh = tip_mesh; tip.material_override = gold
-			var sx = 0.0 if horizontal else (-eave_mesh.size.x * 0.52 if side == 2 else eave_mesh.size.x * 0.52)
-			var sz = -eave_mesh.size.z * 0.52 if side == 0 else (eave_mesh.size.z * 0.52 if side == 1 else 0.0)
-			tip.position = Vector3(sx, eave.position.y + 0.030, sz)
-			tip.rotation_degrees.x = -10 if horizontal and side == 0 else (10 if horizontal else 0)
-			tip.rotation_degrees.z = 10 if side == 3 else (-10 if side == 2 else 0)
+			tip.position = Vector3(corner.x * eave_mesh.size.x * 0.53, eave.position.y + 0.040, corner.y * eave_mesh.size.z * 0.53)
+			tip.rotation_degrees = Vector3(11.0 * -corner.y, 45.0, 11.0 * corner.x)
 			tower.add_child(tip)
 
-	for px in [-0.20, 0.0, 0.20]:
-		for pz in [-0.14, 0.14]:
+		var rail = MeshInstance3D.new(); var rail_mesh = BoxMesh.new()
+		rail_mesh.size = Vector3(tier_widths[tier] + 0.10, 0.020, 0.026)
+		rail.mesh = rail_mesh; rail.material_override = dark_red
+		rail.position = Vector3(0, floor.position.y - tier_heights[tier] * 0.18, -floor_mesh.size.z * 0.57)
+		tower.add_child(rail)
+
+		if tier == 4:
+			var name_plaque = MeshInstance3D.new(); var plaque_mesh = BoxMesh.new()
+			plaque_mesh.size = Vector3(0.18, 0.058, 0.018)
+			name_plaque.mesh = plaque_mesh; name_plaque.material_override = plaque
+			name_plaque.position = Vector3(0, eave.position.y - 0.055, -floor_mesh.size.z * 0.60)
+			tower.add_child(name_plaque)
+
+	for px in [-0.25, -0.13, 0.0, 0.13, 0.25]:
+		for pz in [-0.17, 0.17]:
 			var pillar = MeshInstance3D.new(); var pillar_mesh = CylinderMesh.new()
-			pillar_mesh.top_radius = 0.016; pillar_mesh.bottom_radius = 0.020; pillar_mesh.height = 0.50; pillar_mesh.radial_segments = 7
+			pillar_mesh.top_radius = 0.012; pillar_mesh.bottom_radius = 0.016; pillar_mesh.height = 0.62; pillar_mesh.radial_segments = 7
 			pillar.mesh = pillar_mesh; pillar.material_override = red
-			pillar.position = Vector3(px, 0.43, pz); tower.add_child(pillar)
+			pillar.position = Vector3(px, 0.50, pz); tower.add_child(pillar)
 
 	var roof = MeshInstance3D.new(); var roof_mesh = CylinderMesh.new()
-	roof_mesh.top_radius = 0.025; roof_mesh.bottom_radius = 0.18; roof_mesh.height = 0.13; roof_mesh.radial_segments = 4
+	roof_mesh.top_radius = 0.020; roof_mesh.bottom_radius = 0.17; roof_mesh.height = 0.12; roof_mesh.radial_segments = 4
 	roof.mesh = roof_mesh; roof.material_override = gold
-	roof.position.y = 0.78; roof.rotation_degrees.y = 45; tower.add_child(roof)
+	roof.position.y = 0.83; roof.rotation_degrees.y = 45; tower.add_child(roof)
 
 	var finial = MeshInstance3D.new(); var finial_mesh = CylinderMesh.new()
-	finial_mesh.top_radius = 0.008; finial_mesh.bottom_radius = 0.018; finial_mesh.height = 0.12; finial_mesh.radial_segments = 6
+	finial_mesh.top_radius = 0.007; finial_mesh.bottom_radius = 0.017; finial_mesh.height = 0.13; finial_mesh.radial_segments = 6
 	finial.mesh = finial_mesh; finial.material_override = dark_red
-	finial.position.y = 0.91; tower.add_child(finial)
+	finial.position.y = 0.96; tower.add_child(finial)
 
 	for lantern_index in 2:
 		var lantern = MeshInstance3D.new(); var lantern_mesh = SphereMesh.new()
