@@ -1,8 +1,8 @@
 extends Node3D
 
 const TITLE_BACKGROUND: Texture2D = preload("res://assets/title-background.png")
-const GAME_SKY_BACKGROUND: Texture2D = preload("res://assets/game-sky-background-v3.png")
 const CLOUD_SPRITE: Texture2D = preload("res://assets/cloud-sprite-v2.png")
+const DYNAMIC_SKY_SHADER: Shader = preload("res://shaders/dynamic_sky.gdshader")
 
 # ---- Config ----
 const GRID_SIZE := 9
@@ -113,15 +113,16 @@ func _setup_scene():
 
 	var env = WorldEnvironment.new()
 	var e = Environment.new()
-	e.background_mode = Environment.BG_CANVAS
-	e.background_canvas_max_layer = -10
+	var sky_material = ShaderMaterial.new(); sky_material.shader = DYNAMIC_SKY_SHADER
+	var sky = Sky.new(); sky.sky_material = sky_material
+	sky.process_mode = Sky.PROCESS_MODE_REALTIME; sky.radiance_size = Sky.RADIANCE_SIZE_128
+	e.background_mode = Environment.BG_SKY; e.sky = sky
 	e.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	e.ambient_light_color = Color("#527b78")
 	e.ambient_light_energy = 0.48
 	e.tonemap_mode = Environment.TONE_MAPPER_FILMIC
 	e.glow_enabled = true; e.glow_intensity = 0.22; e.glow_bloom = 0.03
 	env.environment = e; add_child(env)
-	_setup_game_backdrop()
 	_setup_sky_world()
 
 	grid_root = Node3D.new(); add_child(grid_root)
@@ -157,17 +158,6 @@ func _setup_scene():
 	add_child(canvas); canvas.add_child(ui_ctrl)
 	ui_ctrl.connect("draw", _draw_ui)
 
-func _setup_game_backdrop():
-	var backdrop_canvas = CanvasLayer.new(); backdrop_canvas.layer = -10
-	backdrop_canvas.name = "PaintedSkyBackdrop"; add_child(backdrop_canvas)
-	var backdrop = TextureRect.new()
-	backdrop.texture = GAME_SKY_BACKGROUND
-	backdrop.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	backdrop.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
-	backdrop.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	backdrop_canvas.add_child(backdrop)
-	backdrop.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-
 func _setup_sky_world():
 	sky_root = Node3D.new(); sky_root.name = "LivingSky"; add_child(sky_root)
 	_spawn_cloud_layer()
@@ -193,6 +183,7 @@ func _spawn_cloud_layer():
 	for cloud_index in cloud_positions.size():
 		var cloud = Node3D.new(); cloud.position = cloud_positions[cloud_index]
 		cloud.set_meta("speed", randf_range(0.10, 0.22)); cloud.set_meta("base_z", cloud.position.z)
+		cloud.set_meta("base_y", cloud.position.y); cloud.set_meta("bob", randf_range(0.08, 0.22))
 		cloud.set_meta("phase", randf() * TAU); sky_root.add_child(cloud); drifting_clouds.append(cloud)
 		var sprite = Sprite3D.new(); sprite.texture = CLOUD_SPRITE
 		sprite.billboard = BaseMaterial3D.BILLBOARD_ENABLED
@@ -209,6 +200,7 @@ func _spawn_mist_banks():
 		var radius = randf_range(9.0, 16.0)
 		mist.position = Vector3(cos(angle) * radius, randf_range(-3.8, -2.2), sin(angle) * radius)
 		mist.set_meta("speed", randf_range(0.035, 0.075)); mist.set_meta("base_z", mist.position.z)
+		mist.set_meta("base_y", mist.position.y); mist.set_meta("bob", randf_range(0.04, 0.10))
 		mist.set_meta("phase", randf() * TAU); sky_root.add_child(mist); drifting_clouds.append(mist)
 		var sprite = Sprite3D.new(); sprite.texture = CLOUD_SPRITE
 		sprite.billboard = BaseMaterial3D.BILLBOARD_ENABLED; sprite.pixel_size = randf_range(0.0032, 0.0048)
@@ -1324,6 +1316,7 @@ func _animate_sky_world(delta: float):
 	for cloud in drifting_clouds:
 		cloud.position.x += cloud.get_meta("speed") * delta
 		cloud.position.z = cloud.get_meta("base_z") + sin(pulse * 0.18 + cloud.get_meta("phase")) * 0.38
+		cloud.position.y = cloud.get_meta("base_y") + sin(pulse * 0.13 + cloud.get_meta("phase")) * cloud.get_meta("bob")
 		if cloud.position.x > 18.0: cloud.position.x = -18.0
 	for mote in sky_motes:
 		var mote_speed: float = mote.get_meta("speed")
