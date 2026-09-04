@@ -55,6 +55,7 @@ var player_count := 2; var current_player := 0
 var seeds := []; var total_turns := 0; var turns_played := 0
 var scores := []; var group_counts := []; var largest_groups := []; var diversity_counts := []; var road_scores := []
 var last_growth_count := 0
+var closed_road_ids := {}; var closed_road_cells := {}; var last_road_event := ""
 var hovered_cell := Vector2i(-1, -1); var pulse := 0.0
 var flash_timer := 0.0; var flash_color := Color.WHITE
 
@@ -307,6 +308,7 @@ func _place_piece(anchor: Vector2i) -> bool:
 	for local_cell in piece_cells:
 		_update_edge_bridges(anchor + local_cell)
 		_update_road_bridges(anchor + local_cell)
+	_refresh_road_effects()
 	piece_preview_root.visible = false
 	return true
 
@@ -406,9 +408,98 @@ func _update_road_bridges(pos: Vector2i):
 		var bridge = MeshInstance3D.new(); var mesh = BoxMesh.new()
 		var horizontal = dir.x != 0
 		mesh.size = Vector3(0.34 if horizontal else 0.16, 0.03, 0.16 if horizontal else 0.34)
-		bridge.mesh = mesh; bridge.material_override = _road_material(Color("#d8bd80"), 0.88)
+		var bridge_material = _road_material(Color("#f2d99b"), 0.72)
+		bridge_material.emission_enabled = true; bridge_material.emission = Color("#8be5d1")
+		bridge_material.emission_energy_multiplier = 2.2
+		bridge.mesh = mesh; bridge.material_override = bridge_material
 		bridge.position = (_world(pos) + _world(neighbor)) * 0.5 + Vector3(0, 0.285, 0)
 		bridge.set_meta("road_key", key); edge_root.add_child(bridge)
+		var flash = create_tween()
+		flash.tween_property(bridge_material, "emission_energy_multiplier", 0.08, 0.9).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_QUAD)
+
+func _refresh_road_effects():
+	last_road_event = ""
+	for child in edge_root.get_children():
+		if child.has_meta("road_fx"): child.free()
+	closed_road_cells.clear()
+	var current_closed := {}
+
+	var visited := {}
+	for x in GRID_SIZE:
+		for y in GRID_SIZE:
+			var start := Vector2i(x, y)
+			if grid[x][y] < 0 or visited.has(start) or roads[x][y] == 0: continue
+			var component := _road_component(start, visited)
+			var connected = component.size() > 1
+			var closed = connected and _road_component_is_closed(component)
+			for cell in component:
+				_set_road_visual(cell, connected, closed)
+				if closed: closed_road_cells[cell] = true
+			if closed:
+				var component_id = _road_component_key(component)
+				current_closed[component_id] = true
+				_spawn_closed_road_fx(component)
+				if not closed_road_ids.has(component_id): last_road_event = "道路闭合！沿线生态获得奖励"
+	closed_road_ids = current_closed
+
+func _road_component(start: Vector2i, visited: Dictionary) -> Array:
+	var component := []
+	var pending := [start]
+	while not pending.is_empty():
+		var cell: Vector2i = pending.pop_back()
+		if visited.has(cell): continue
+		visited[cell] = true; component.append(cell)
+		for dir in DIRS:
+			var neighbor = cell + dir
+			if neighbor.x >= 0 and neighbor.x < GRID_SIZE and neighbor.y >= 0 and neighbor.y < GRID_SIZE and not visited.has(neighbor) and _roads_connect(cell, neighbor):
+				pending.append(neighbor)
+	return component
+
+func _road_component_is_closed(component: Array) -> bool:
+	for cell in component:
+		var mask: int = roads[cell.x][cell.y]
+		for dir_index in DIRS.size():
+			if (mask & (1 << dir_index)) == 0: continue
+			var neighbor: Vector2i = cell + DIRS[dir_index]
+			if neighbor.x < 0 or neighbor.x >= GRID_SIZE or neighbor.y < 0 or neighbor.y >= GRID_SIZE: return false
+			if grid[neighbor.x][neighbor.y] < 0 or not _roads_connect(cell, neighbor): return false
+	return true
+
+func _road_component_key(component: Array) -> String:
+	var labels := []
+	for cell in component: labels.append("%02d,%02d" % [cell.x, cell.y])
+	labels.sort()
+	var key := ""
+	for label in labels: key += label + "|"
+	return key
+
+func _set_road_visual(pos: Vector2i, connected: bool, closed: bool):
+	var tile = tile_nodes[pos.x][pos.y]
+	if tile == null or not tile.has_meta("road_material"): return
+	var material: StandardMaterial3D = tile.get_meta("road_material")
+	material.albedo_color = Color("#d8bd80")
+	material.emission_enabled = connected
+	material.emission = Color("#8be5d1") if not closed else Color("#ffd66b")
+	material.emission_energy_multiplier = 0.16 if connected and not closed else (1.1 if closed else 0.0)
+
+func _spawn_closed_road_fx(component: Array):
+	for index in component.size():
+		if index % 2 == 0: _spawn_road_fx(component[index])
+
+func _spawn_road_fx(pos: Vector2i):
+	var ring = MeshInstance3D.new()
+	var mesh = TorusMesh.new(); mesh.inner_radius = 0.125; mesh.outer_radius = 0.16
+	mesh.rings = 12; mesh.ring_segments = 16
+	ring.mesh = mesh
+	var material = _road_material(Color("#f7e6a5"), 0.35)
+	material.emission_enabled = true; material.emission = Color("#ffd66b"); material.emission_energy_multiplier = 1.8
+	ring.material_override = material; ring.position = _world(pos) + Vector3(0, 0.315, 0)
+	ring.set_meta("road_fx", true); edge_root.add_child(ring)
+	var tw = create_tween().set_loops()
+	tw.tween_property(ring, "rotation:y", TAU, 2.4)
+	var pulse_tw = create_tween().set_loops()
+	pulse_tw.tween_property(ring, "scale", Vector3(1.18, 1.18, 1.18), 0.55).set_trans(Tween.TRANS_SINE)
+	pulse_tw.tween_property(ring, "scale", Vector3.ONE, 0.55).set_trans(Tween.TRANS_SINE)
 
 # ================================================================
 #  STARTING TILES — pre-generate a cross shape
@@ -428,6 +519,7 @@ func _generate_start_tiles():
 		for dy in [-1, 1]:
 			if randf() < 0.6:
 				_force_tile(center + Vector2i(dx, dy), randi() % 4, false)
+	_refresh_road_effects()
 
 # ================================================================
 #  TILE MESH — rich 3D per terrain
@@ -435,31 +527,14 @@ func _generate_start_tiles():
 func _spawn_tile(pos: Vector2i, terr: int, animate: bool, road_mask: int = 0):
 	var root = Node3D.new(); root.position = _world(pos)
 	grid_root.add_child(root); tile_nodes[pos.x][pos.y] = root
-
-	# --- Base slab (dark edge) ---
-	var base = MeshInstance3D.new()
-	var bm = BoxMesh.new(); bm.size = Vector3(1.06, 0.14, 1.06)
-	base.mesh = bm
-	var bmat = StandardMaterial3D.new(); bmat.albedo_color = TERRAIN_BOT[terr]
-	bmat.roughness = 0.92
-	base.material_override = bmat; base.position.y = -0.07
-	root.add_child(base)
-
-	# --- Mid layer ---
-	var mid = MeshInstance3D.new()
-	var mm = BoxMesh.new(); mm.size = Vector3(1.00, 0.10, 1.00)
-	mid.mesh = mm
-	var mmat = StandardMaterial3D.new(); mmat.albedo_color = TERRAIN_MID[terr]
-	mmat.roughness = 0.82
-	mid.material_override = mmat; mid.position.y = 0.05
-	root.add_child(mid)
+	_spawn_island_base(root, terr)
 
 	# --- Top surface with terrain-specific shape ---
 	match terr:
-		0: _tile_grass_surface(root)
-		1: _tile_water_surface(root)
-		2: _tile_forest_surface(root)
-		3: _tile_desert_surface(root)
+		0: _tile_grass_surface(root, road_mask)
+		1: _tile_water_surface(root, road_mask)
+		2: _tile_forest_surface(root, road_mask)
+		3: _tile_desert_surface(root, road_mask)
 
 	# --- Edge highlight ---
 	var bevel = MeshInstance3D.new()
@@ -473,22 +548,52 @@ func _spawn_tile(pos: Vector2i, terr: int, animate: bool, road_mask: int = 0):
 	bevel.material_override = bvmat; bevel.position.y = 0.16
 	root.add_child(bevel)
 
-	# --- Dark gap border (visible when adjacent to different terrain) ---
-	var gap = MeshInstance3D.new()
-	var gm = BoxMesh.new(); gm.size = Vector3(1.12, 0.025, 1.12)
-	gap.mesh = gm
-	var gmat = StandardMaterial3D.new(); gmat.albedo_color = Color(0.03, 0.03, 0.05)
-	gap.material_override = gmat; gap.position.y = -0.14
-	root.add_child(gap)
-
 	# --- Decorations ---
-	_spawn_decor(terr, root)
+	_spawn_decor(terr, root, road_mask)
 	if road_mask != 0: _spawn_road(root, road_mask)
 
 	if animate:
 		root.scale = Vector3(0.01, 0.01, 0.01)
 		var tw = create_tween()
 		tw.tween_property(root, "scale", Vector3(1, 1, 1), 0.4).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_ELASTIC)
+
+func _spawn_island_base(root: Node3D, terr: int):
+	var layers = [
+		[Vector3(1.08, 0.14, 1.08), 0.02, TERRAIN_MID[terr]],
+		[Vector3(0.94, 0.13, 0.94), -0.105, TERRAIN_BOT[terr]],
+		[Vector3(0.72, 0.15, 0.72), -0.235, TERRAIN_BOT[terr].darkened(0.22)],
+	]
+	for layer_data in layers:
+		var layer = MeshInstance3D.new(); var mesh = BoxMesh.new()
+		mesh.size = layer_data[0]; layer.mesh = mesh
+		var material = StandardMaterial3D.new(); material.albedo_color = layer_data[2]; material.roughness = 0.94
+		layer.material_override = material; layer.position.y = layer_data[1]; root.add_child(layer)
+	for i in 3:
+		var shard = MeshInstance3D.new(); var shard_mesh = BoxMesh.new()
+		shard_mesh.size = Vector3(randf_range(0.12, 0.22), randf_range(0.12, 0.24), randf_range(0.12, 0.22))
+		shard.mesh = shard_mesh
+		var shard_material = StandardMaterial3D.new(); shard_material.albedo_color = TERRAIN_BOT[terr].darkened(randf_range(0.18, 0.32)); shard_material.roughness = 1.0
+		shard.material_override = shard_material
+		shard.position = Vector3(randf_range(-0.28, 0.28), randf_range(-0.38, -0.29), randf_range(-0.28, 0.28))
+		shard.rotation_degrees = Vector3(randf_range(-18, 18), randf_range(0, 360), randf_range(-18, 18))
+		root.add_child(shard)
+
+func _feature_position(road_mask: int, extent: float = 0.34) -> Vector2:
+	for attempt in 12:
+		var candidate = Vector2(randf_range(-extent, extent), randf_range(-extent, extent))
+		if _position_clear_of_road(candidate, road_mask): return candidate
+	return Vector2(extent * 0.82, extent * 0.82)
+
+func _position_clear_of_road(pos: Vector2, road_mask: int) -> bool:
+	if road_mask == 0: return true
+	if pos.length() < 0.20: return false
+	for dir_index in DIRS.size():
+		if (road_mask & (1 << dir_index)) == 0: continue
+		var direction = Vector2(DIRS[dir_index])
+		var along = pos.dot(direction)
+		var across = absf(pos.x * direction.y - pos.y * direction.x)
+		if along > -0.03 and across < 0.18: return false
+	return true
 
 func _road_material(color: Color, roughness: float) -> StandardMaterial3D:
 	var material = StandardMaterial3D.new()
@@ -498,6 +603,7 @@ func _road_material(color: Color, roughness: float) -> StandardMaterial3D:
 func _spawn_road(root: Node3D, road_mask: int):
 	var under_material = _road_material(Color("#73583f"), 0.95)
 	var road_material = _road_material(Color("#d8bd80"), 0.88)
+	root.set_meta("road_material", road_material)
 	for dir_index in DIRS.size():
 		if (road_mask & (1 << dir_index)) == 0: continue
 		var dir: Vector2i = DIRS[dir_index]
@@ -523,7 +629,7 @@ func _spawn_road(root: Node3D, road_mask: int):
 	hub.position.y = 0.285; root.add_child(hub)
 
 # ---- Grass: gentle rolling hills ----
-func _tile_grass_surface(root: Node3D):
+func _tile_grass_surface(root: Node3D, road_mask: int):
 	# Main flat top
 	var top = MeshInstance3D.new()
 	var tm = BoxMesh.new(); tm.size = Vector3(0.95, 0.06, 0.95)
@@ -541,12 +647,13 @@ func _tile_grass_surface(root: Node3D):
 		var bm2 = StandardMaterial3D.new()
 		bm2.albedo_color = TERRAIN_TOP[0].lerp(Color(0.4, 0.75, 0.3), randf_range(0, 0.3))
 		bump.material_override = bm2
-		bump.position = Vector3(randf_range(-0.32, 0.32), 0.16, randf_range(-0.32, 0.32))
+		var feature_pos = _feature_position(road_mask, 0.32)
+		bump.position = Vector3(feature_pos.x, 0.16, feature_pos.y)
 		bump.scale.y = randf_range(0.4, 0.7)
 		root.add_child(bump)
 
 # ---- Water: depressed pool with ripple rings ----
-func _tile_water_surface(root: Node3D):
+func _tile_water_surface(root: Node3D, _road_mask: int):
 	# Water surface (slightly lower)
 	var top = MeshInstance3D.new()
 	var tm = BoxMesh.new(); tm.size = Vector3(0.92, 0.04, 0.92)
@@ -597,7 +704,7 @@ func _tile_water_surface(root: Node3D):
 	root.add_child(spec)
 
 # ---- Forest: raised terrain with visible tree trunks ----
-func _tile_forest_surface(root: Node3D):
+func _tile_forest_surface(root: Node3D, road_mask: int):
 	# Raised earth mound
 	var top = MeshInstance3D.new()
 	var tm = CylinderMesh.new()
@@ -628,11 +735,12 @@ func _tile_forest_surface(root: Node3D):
 		var smat2 = StandardMaterial3D.new()
 		smat2.albedo_color = Color(0.40, 0.28, 0.15).lerp(Color(0.55, 0.38, 0.22), randf())
 		stump.material_override = smat2
-		stump.position = Vector3(randf_range(-0.28, 0.28), 0.20, randf_range(-0.28, 0.28))
+		var feature_pos = _feature_position(road_mask, 0.28)
+		stump.position = Vector3(feature_pos.x, 0.20, feature_pos.y)
 		root.add_child(stump)
 
 # ---- Desert: flat with dune ridges ----
-func _tile_desert_surface(root: Node3D):
+func _tile_desert_surface(root: Node3D, road_mask: int):
 	# Flat sand surface
 	var top = MeshInstance3D.new()
 	var tm = BoxMesh.new(); tm.size = Vector3(0.95, 0.05, 0.95)
@@ -651,7 +759,8 @@ func _tile_desert_surface(root: Node3D):
 		var dmat2 = StandardMaterial3D.new()
 		dmat2.albedo_color = TERRAIN_TOP[3].lerp(Color(0.85, 0.72, 0.40), randf_range(0, 0.4))
 		dune.material_override = dmat2
-		dune.position = Vector3(randf_range(-0.3, 0.3), 0.16, randf_range(-0.3, 0.3))
+		var feature_pos = _feature_position(road_mask, 0.30)
+		dune.position = Vector3(feature_pos.x, 0.16, feature_pos.y)
 		dune.rotation_degrees.y = randf_range(0, 360)
 		root.add_child(dune)
 
@@ -664,22 +773,23 @@ func _tile_desert_surface(root: Node3D):
 		shmat.albedo_color = Color(0, 0, 0, 0.08)
 		shmat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 		shadow.material_override = shmat
-		shadow.position = Vector3(randf_range(-0.3, 0.3), 0.165, randf_range(-0.3, 0.3))
+		var feature_pos = _feature_position(road_mask, 0.30)
+		shadow.position = Vector3(feature_pos.x, 0.165, feature_pos.y)
 		shadow.rotation_degrees.x = -90; shadow.rotation_degrees.z = randf_range(0, 360)
 		root.add_child(shadow)
 
 # ================================================================
 #  DECORATIONS
 # ================================================================
-func _spawn_decor(terr: int, parent: Node3D):
+func _spawn_decor(terr: int, parent: Node3D, road_mask: int):
 	var d = Node3D.new(); parent.add_child(d)
 	match terr:
-		0: _decor_grass(d)
-		1: _decor_water(d)
-		2: _decor_forest(d)
-		3: _decor_desert(d)
+		0: _decor_grass(d, road_mask)
+		1: _decor_water(d, road_mask)
+		2: _decor_forest(d, road_mask)
+		3: _decor_desert(d, road_mask)
 
-func _decor_grass(p: Node3D):
+func _decor_grass(p: Node3D, road_mask: int):
 	# Flowers
 	for i in randi_range(2, 5):
 		var flower = MeshInstance3D.new()
@@ -689,7 +799,8 @@ func _decor_grass(p: Node3D):
 		stem.mesh = stm
 		var stmat = StandardMaterial3D.new(); stmat.albedo_color = Color(0.3, 0.65, 0.2)
 		stem.material_override = stmat
-		var sx = randf_range(-0.35, 0.35); var sz = randf_range(-0.35, 0.35)
+		var feature_pos = _feature_position(road_mask, 0.35)
+		var sx = feature_pos.x; var sz = feature_pos.y
 		stem.position = Vector3(sx, 0.18 + stm.height * 0.5, sz)
 		p.add_child(stem)
 		# Petal
@@ -706,14 +817,15 @@ func _decor_grass(p: Node3D):
 		petal.position = Vector3(sx, 0.18 + stm.height + pm.radius, sz)
 		p.add_child(petal)
 
-func _decor_water(p: Node3D):
+func _decor_water(p: Node3D, road_mask: int):
 	# Lily pad
 	var pad = MeshInstance3D.new()
 	var pm2 = CylinderMesh.new(); pm2.top_radius = randf_range(0.08, 0.13); pm2.bottom_radius = pm2.top_radius; pm2.height = 0.012
 	pad.mesh = pm2
 	var pmat2 = StandardMaterial3D.new(); pmat2.albedo_color = Color(0.22, 0.65, 0.28)
 	pad.material_override = pmat2
-	pad.position = Vector3(randf_range(-0.25, 0.25), 0.12, randf_range(-0.25, 0.25))
+	var feature_pos = _feature_position(road_mask, 0.28)
+	pad.position = Vector3(feature_pos.x, 0.12, feature_pos.y)
 	p.add_child(pad)
 	# Tiny lotus
 	if randf() < 0.5:
@@ -725,14 +837,15 @@ func _decor_water(p: Node3D):
 		lotus.position = pad.position + Vector3(0, 0.03, 0)
 		p.add_child(lotus)
 
-func _decor_forest(p: Node3D):
+func _decor_forest(p: Node3D, road_mask: int):
 	# Pine tree with trunk + 2-3 cone layers
 	var trunk = MeshInstance3D.new()
 	var tm = CylinderMesh.new(); tm.top_radius = 0.018; tm.bottom_radius = 0.028; tm.height = randf_range(0.18, 0.30)
 	trunk.mesh = tm
 	var tmat = StandardMaterial3D.new(); tmat.albedo_color = Color(0.42, 0.28, 0.14)
 	trunk.material_override = tmat
-	var tx = randf_range(-0.25, 0.25); var tz = randf_range(-0.25, 0.25)
+	var feature_pos = _feature_position(road_mask, 0.29)
+	var tx = feature_pos.x; var tz = feature_pos.y
 	trunk.position = Vector3(tx, 0.20 + tm.height * 0.5, tz)
 	p.add_child(trunk)
 	for layer in randi_range(2, 3):
@@ -747,7 +860,7 @@ func _decor_forest(p: Node3D):
 		fol.position = Vector3(tx, 0.20 + tm.height * 0.3 + layer * 0.09, tz)
 		p.add_child(fol)
 
-func _decor_desert(p: Node3D):
+func _decor_desert(p: Node3D, road_mask: int):
 	# Rocks
 	for i in randi_range(1, 3):
 		var rock = MeshInstance3D.new()
@@ -756,7 +869,8 @@ func _decor_desert(p: Node3D):
 		var rmat = StandardMaterial3D.new()
 		rmat.albedo_color = Color(0.62, 0.52, 0.35).lerp(Color(0.78, 0.68, 0.48), randf())
 		rock.material_override = rmat
-		rock.position = Vector3(randf_range(-0.3, 0.3), 0.18, randf_range(-0.3, 0.3))
+		var feature_pos = _feature_position(road_mask, 0.31)
+		rock.position = Vector3(feature_pos.x, 0.18, feature_pos.y)
 		rock.rotation_degrees = Vector3(randf_range(-10, 10), randf_range(0, 360), randf_range(-10, 10))
 		p.add_child(rock)
 	# Cactus
@@ -766,7 +880,8 @@ func _decor_desert(p: Node3D):
 		cac.mesh = cm
 		var cmat = StandardMaterial3D.new(); cmat.albedo_color = Color(0.28, 0.58, 0.22)
 		cac.material_override = cmat
-		cac.position = Vector3(randf_range(-0.2, 0.2), 0.18 + cm.height * 0.5, randf_range(-0.2, 0.2))
+		var cactus_pos = _feature_position(road_mask, 0.29)
+		cac.position = Vector3(cactus_pos.x, 0.18 + cm.height * 0.5, cactus_pos.y)
 		p.add_child(cac)
 
 # ================================================================
@@ -787,7 +902,7 @@ func _can_seed(pos: Vector2i) -> bool:
 
 func _spawn_plant(pos: Vector2i, pid: int):
 	var root = Node3D.new()
-	root.position = _world(pos); root.position.y = 0.18
+	root.position = _world(pos); root.position.y = 0.06
 	plant_root.add_child(root)
 	plant_nodes[pos.x][pos.y] = root
 
@@ -799,9 +914,47 @@ func _spawn_plant(pos: Vector2i, pid: int):
 		2: _plant_crystal(root, col)     # P3: crystal
 		3: _plant_star(root, col)        # P4: star
 
+	var mature_scale = _plant_mature_scale(pos)
 	root.scale = Vector3(0.01, 0.01, 0.01)
 	var tw = create_tween()
-	tw.tween_property(root, "scale", Vector3(1, 1, 1), 0.45).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_ELASTIC)
+	tw.set_parallel(true)
+	tw.tween_property(root, "scale", Vector3.ONE * mature_scale, 0.72).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_BACK)
+	tw.tween_property(root, "position:y", 0.18, 0.72).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_BACK)
+	tw.tween_property(root, "rotation:y", 0.24, 0.72).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_SINE)
+	_spawn_growth_burst(pos, pid, 0.72)
+
+func _plant_mature_scale(pos: Vector2i) -> float:
+	return minf(1.0, 0.36 + plant_age[pos.x][pos.y] * 0.22)
+
+func _animate_plant_growth(root: Node3D, mature_scale: float, pos: Vector2i, pid: int, age: int):
+	var tw = create_tween()
+	tw.set_parallel(true)
+	tw.tween_property(root, "scale", Vector3.ONE * mature_scale, 0.58).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_BACK)
+	tw.tween_property(root, "position:y", 0.18 + minf(age, 3) * 0.018, 0.58).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_SINE)
+	tw.tween_property(root, "rotation:y", root.rotation.y + 0.16, 0.58).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_SINE)
+	var settle = create_tween()
+	settle.tween_property(root, "rotation:z", deg_to_rad(3.5), 0.18).set_trans(Tween.TRANS_SINE)
+	settle.tween_property(root, "rotation:z", deg_to_rad(-2.0), 0.20).set_trans(Tween.TRANS_SINE)
+	settle.tween_property(root, "rotation:z", 0.0, 0.18).set_trans(Tween.TRANS_SINE)
+	if age == 2: _spawn_growth_burst(pos, pid, 0.62)
+
+func _spawn_growth_burst(pos: Vector2i, pid: int, duration: float):
+	var burst = Node3D.new(); burst.position = _world(pos) + Vector3(0, 0.28, 0)
+	plant_root.add_child(burst)
+	for i in 6:
+		var mote = MeshInstance3D.new(); var mesh = SphereMesh.new()
+		mesh.radius = 0.022; mesh.height = 0.044; mote.mesh = mesh
+		var material = StandardMaterial3D.new(); material.albedo_color = PLAYER_COLORS[pid].lightened(0.32)
+		material.emission_enabled = true; material.emission = PLAYER_COLORS[pid]; material.emission_energy_multiplier = 1.2
+		mote.material_override = material; burst.add_child(mote)
+		var angle = TAU * float(i) / 6.0 + randf_range(-0.18, 0.18)
+		var target = Vector3(cos(angle) * 0.18, randf_range(0.14, 0.26), sin(angle) * 0.18)
+		var mote_tw = create_tween(); mote_tw.set_parallel(true)
+		mote_tw.tween_property(mote, "position", target, duration).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_QUAD)
+		mote_tw.tween_property(mote, "scale", Vector3.ZERO, duration).set_ease(Tween.EASE_IN).set_trans(Tween.TRANS_QUAD)
+	var cleanup = create_tween()
+	cleanup.tween_interval(duration + 0.05)
+	cleanup.tween_callback(burst.queue_free)
 
 # P1: Mushroom
 func _plant_mushroom(root: Node3D, col: Color):
@@ -925,6 +1078,7 @@ func _start_game():
 	total_turns = ROUNDS_BY_PLAYERS[player_count] * player_count
 	seeds = []; scores = []; group_counts = []; largest_groups = []; diversity_counts = []; road_scores = []
 	piece_market = []; selected_market = 0; piece_rotation = 0; last_growth_count = 0
+	closed_road_ids = {}; closed_road_cells = {}; last_road_event = ""
 	for i in player_count:
 		seeds.append(STARTING_SEEDS); scores.append(0); group_counts.append(0)
 		largest_groups.append(0); diversity_counts.append(0); road_scores.append(0)
@@ -973,10 +1127,9 @@ func _do_grow():
 				_spawn_plant(Vector2i(x, y), plants[x][y] - 1)
 			elif plants[x][y] != 0:
 				plant_age[x][y] = new_a[x][y] + 1
-				if plant_nodes[x][y] != null:
-					var s = min(1.0, plant_age[x][y] * 0.10)
-					var tw = create_tween()
-					tw.tween_property(plant_nodes[x][y], "scale", Vector3(s, s, s), 0.25).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_SPRING)
+				if plant_nodes[x][y] != null and plant_age[x][y] <= 3:
+					var pos = Vector2i(x, y)
+					_animate_plant_growth(plant_nodes[x][y], _plant_mature_scale(pos), pos, plants[x][y] - 1, plant_age[x][y])
 
 func _calc_all_scores():
 	for pid in player_count:
@@ -1014,6 +1167,7 @@ func _player_road_score(pid: int) -> int:
 		for y in GRID_SIZE:
 			if plants[x][y] != pid: continue
 			var pos = Vector2i(x, y)
+			if closed_road_cells.has(pos): connections += 2
 			for dir in [Vector2i.RIGHT, Vector2i.DOWN]:
 				var neighbor = pos + dir
 				if neighbor.x < GRID_SIZE and neighbor.y < GRID_SIZE and plants[neighbor.x][neighbor.y] == pid:
@@ -1241,6 +1395,8 @@ func _draw_ui():
 		ui_ctrl.draw_string(font, Vector2(ux + 12, iy + 22), "左键 → 放种子", HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color(0.5, 1, 0.5))
 		ui_ctrl.draw_string(font, Vector2(ux + 12, iy + 44), "右键 → 直接生长", HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color(0.6, 0.6, 0.6))
 		ui_ctrl.draw_string(font, Vector2(ux + 12, iy + 72), "上回合新生长 %d 格" % last_growth_count, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(0.65, 0.8, 0.65))
+		if not last_road_event.is_empty():
+			ui_ctrl.draw_string(font, Vector2(ux + 12, iy + 96), last_road_event, HORIZONTAL_ALIGNMENT_LEFT, 250, 13, Color("#ffd66b"))
 
 	var ly = vp.y - 200.0
 	ui_ctrl.draw_string(font, Vector2(ux + 12, ly), "地形", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(0.4, 0.4, 0.4))
