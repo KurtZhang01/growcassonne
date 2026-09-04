@@ -28,13 +28,13 @@ float cloud_field(vec3 p) {
 
 vec3 sky_gradient(vec3 direction) {
 	float height = clamp(direction.y * 0.5 + 0.5, 0.0, 1.0);
-	vec3 lower = vec3(0.035, 0.125, 0.150);
-	vec3 middle = vec3(0.070, 0.255, 0.285);
-	vec3 upper = vec3(0.018, 0.080, 0.105);
+	vec3 lower = vec3(0.110, 0.340, 0.400);
+	vec3 middle = vec3(0.180, 0.500, 0.540);
+	vec3 upper = vec3(0.050, 0.200, 0.270);
 	vec3 color = mix(lower, middle, smoothstep(0.0, 0.48, height));
 	color = mix(color, upper, smoothstep(0.48, 1.0, height));
 	float broad_haze = exp(-pow((height - 0.40) * 2.25, 2.0));
-	return color + vec3(0.018, 0.045, 0.048) * broad_haze;
+	return color + vec3(0.030, 0.065, 0.068) * broad_haze;
 }
 
 vec4 moving_clouds(vec3 direction) {
@@ -47,8 +47,8 @@ vec4 moving_clouds(vec3 direction) {
 	float density = smoothstep(0.59, 0.76, broad * 0.82 + wisps * 0.18) * cloud_band;
 	float soft_edge = smoothstep(0.48, 0.70, broad) * cloud_band;
 	float alpha = clamp(density * 0.52 + soft_edge * 0.13, 0.0, 0.54);
-	vec3 shadow = vec3(0.19, 0.34, 0.38);
-	vec3 pearl = vec3(0.58, 0.72, 0.72);
+	vec3 shadow = vec3(0.27, 0.44, 0.47);
+	vec3 pearl = vec3(0.68, 0.80, 0.79);
 	vec3 color = mix(shadow, pearl, smoothstep(0.50, 0.82, wisps));
 	return vec4(color, alpha);
 }
@@ -62,7 +62,7 @@ void sky() {
 		vec3 color = sky_gradient(EYEDIR);
 		color = mix(color, HALF_RES_COLOR.rgb, HALF_RES_COLOR.a);
 		float atmosphere = value_noise(EYEDIR * 2.2 + vec3(TIME * 0.002, 0.0, 0.0));
-		color += vec3(0.008, 0.020, 0.021) * atmosphere;
+		color += vec3(0.012, 0.030, 0.032) * atmosphere;
 		COLOR = color;
 	}
 }

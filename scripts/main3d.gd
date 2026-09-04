@@ -70,6 +70,8 @@ var is_panning := false; var pan_start := Vector2.ZERO
 var cam_pan_start := Vector2.ZERO
 const CAM_PAN_SPEED := 0.015
 const CAM_BASE_SIZE := 14.5
+const UI_DESIGN_SIZE := Vector2(1280.0, 720.0)
+const UI_SIDEBAR_WIDTH := 350.0
 
 # Nodes
 var camera: Camera3D; var grid_root: Node3D; var plant_root: Node3D
@@ -118,8 +120,8 @@ func _setup_scene():
 	sky.process_mode = Sky.PROCESS_MODE_REALTIME; sky.radiance_size = Sky.RADIANCE_SIZE_128
 	e.background_mode = Environment.BG_SKY; e.sky = sky
 	e.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	e.ambient_light_color = Color("#527b78")
-	e.ambient_light_energy = 0.48
+	e.ambient_light_color = Color("#72a39b")
+	e.ambient_light_energy = 0.58
 	e.tonemap_mode = Environment.TONE_MAPPER_FILMIC
 	e.glow_enabled = true; e.glow_intensity = 0.22; e.glow_bloom = 0.03
 	env.environment = e; add_child(env)
@@ -1300,15 +1302,25 @@ func _process(delta):
 	if flash_timer > 0: flash_timer = max(0, flash_timer - delta * 2.5)
 	_animate_sky_world(delta)
 
-	# Smooth zoom interpolation
+	var viewport_size = get_viewport().get_visible_rect().size
+	var interface_scale = _ui_scale(viewport_size)
+	var panel_width = UI_SIDEBAR_WIDTH * interface_scale
+	var play_width = maxf(viewport_size.x - panel_width, viewport_size.x * 0.45)
+	var play_aspect = maxf(play_width / maxf(viewport_size.y, 1.0), 0.35)
+	var camera_fit = maxf(1.0, 1.05 / play_aspect)
+
+	# Smooth zoom interpolation while keeping the board inside the free play area.
 	cam_zoom = lerp(cam_zoom, cam_zoom_target, delta * 10.0)
-	camera.size = CAM_BASE_SIZE / cam_zoom
+	camera.size = CAM_BASE_SIZE * camera_fit / cam_zoom
 
 	# Smooth pan interpolation
 	cam_offset = cam_offset.lerp(cam_offset_target, delta * 10.0)
 	var base_pos = Vector3(7.2, 14.2, 10.8)
 	# Convert 2D offset to 3D (isometric axes)
-	camera.position = base_pos + Vector3(cam_offset.x, 0, cam_offset.y)
+	var ortho_width = camera.size * viewport_size.x / maxf(viewport_size.y, 1.0)
+	var panel_ratio = panel_width / maxf(viewport_size.x, 1.0)
+	var camera_shift = camera.transform.basis.x * ortho_width * panel_ratio * 0.42
+	camera.position = base_pos + Vector3(cam_offset.x, 0, cam_offset.y) + camera_shift
 
 	ui_ctrl.queue_redraw()
 
@@ -1323,6 +1335,22 @@ func _animate_sky_world(delta: float):
 		mote.position.y = mote.get_meta("base_y") + sin(pulse * mote_speed + mote.get_meta("phase")) * 0.32
 		mote.rotation.y += delta * mote_speed
 
+func _ui_scale(viewport_size: Vector2) -> float:
+	return clampf(minf(viewport_size.x / UI_DESIGN_SIZE.x, viewport_size.y / UI_DESIGN_SIZE.y), 0.35, 1.5)
+
+func _ui_point(screen_point: Vector2) -> Vector2:
+	return screen_point / _ui_scale(get_viewport().get_visible_rect().size)
+
+func _cover_source_rect(texture: Texture2D, target_size: Vector2) -> Rect2:
+	var source_size = texture.get_size()
+	var source_aspect = source_size.x / source_size.y
+	var target_aspect = target_size.x / maxf(target_size.y, 1.0)
+	if source_aspect > target_aspect:
+		var crop_width = source_size.y * target_aspect
+		return Rect2(Vector2((source_size.x - crop_width) * 0.5, 0.0), Vector2(crop_width, source_size.y))
+	var crop_height = source_size.x / target_aspect
+	return Rect2(Vector2(0.0, (source_size.y - crop_height) * 0.5), Vector2(source_size.x, crop_height))
+
 func _input(event):
 	if state == S.TITLE:
 		if event is InputEventKey and event.pressed:
@@ -1330,10 +1358,11 @@ func _input(event):
 			elif event.keycode == KEY_3: player_count = 3; state = S.PLACE_TILE; _start_game()
 			elif event.keycode == KEY_4: player_count = 4; state = S.PLACE_TILE; _start_game()
 		if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
-			var vp = get_viewport().get_visible_rect().size
+			var vp = get_viewport().get_visible_rect().size / _ui_scale(get_viewport().get_visible_rect().size)
+			var ui_pointer = _ui_point(event.position)
 			for i in 3:
 				var button_rect = Rect2(vp.x * 0.5 - 110 + i * 130.0, vp.y * 0.53, 100, 50)
-				if button_rect.has_point(event.position):
+				if button_rect.has_point(ui_pointer):
 					player_count = i + 2; state = S.PLACE_TILE; _start_game(); return
 		return
 
@@ -1385,11 +1414,12 @@ func _input(event):
 
 	if event is InputEventMouseButton and event.pressed:
 		if state == S.PLACE_TILE and event.button_index == MOUSE_BUTTON_LEFT:
-			var vp = get_viewport().get_visible_rect().size
+			var vp = get_viewport().get_visible_rect().size / _ui_scale(get_viewport().get_visible_rect().size)
+			var ui_pointer = _ui_point(event.position)
 			var market_y = 288.0
 			for i in piece_market.size():
 				var market_rect = Rect2(vp.x - 308.0 + i * 86.0, market_y, 76, 98)
-				if market_rect.has_point(event.position): _select_market(i); return
+				if market_rect.has_point(ui_pointer): _select_market(i); return
 		var cell = _mouse_to_grid(event.position)
 		if event.button_index == MOUSE_BUTTON_LEFT:
 			if state == S.PLACE_TILE:
@@ -1414,7 +1444,10 @@ func _input(event):
 # ================================================================
 func _draw_ui():
 	var font = ThemeDB.fallback_font
-	var vp = get_viewport().get_visible_rect().size
+	var screen_size = get_viewport().get_visible_rect().size
+	var interface_scale = _ui_scale(screen_size)
+	ui_ctrl.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE * interface_scale)
+	var vp = screen_size / interface_scale
 	var ux = vp.x - 320.0; var uy = 30.0
 
 	ui_ctrl.draw_rect(Rect2(ux - 15, uy - 10, 305, vp.y - 40), Color(0.018, 0.055, 0.060, 0.92), 0, true, 8.0)
@@ -1494,7 +1527,7 @@ func _draw_ui():
 	ui_ctrl.draw_string(font, Vector2(ux + 12, vp.y - 44), "Q/E = 旋转  C = 视角  R = 重开", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(0.3, 0.3, 0.3))
 
 func _draw_title(vp: Vector2, font: Font):
-	ui_ctrl.draw_texture_rect(TITLE_BACKGROUND, Rect2(Vector2.ZERO, vp), false)
+	ui_ctrl.draw_texture_rect_region(TITLE_BACKGROUND, Rect2(Vector2.ZERO, vp), _cover_source_rect(TITLE_BACKGROUND, vp))
 	ui_ctrl.draw_rect(Rect2(0, 0, vp.x, vp.y), Color(0.008, 0.035, 0.04, 0.27))
 	ui_ctrl.draw_rect(Rect2(0, 0, vp.x, vp.y * 0.46), Color(0.01, 0.06, 0.065, 0.28))
 
