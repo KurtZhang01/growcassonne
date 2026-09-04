@@ -28,13 +28,13 @@ float cloud_field(vec3 p) {
 
 vec3 sky_gradient(vec3 direction) {
 	float height = clamp(direction.y * 0.5 + 0.5, 0.0, 1.0);
-	vec3 lower = vec3(0.360, 0.690, 0.720);
-	vec3 middle = vec3(0.500, 0.790, 0.760);
-	vec3 upper = vec3(0.270, 0.560, 0.650);
+	vec3 lower = vec3(0.520, 0.810, 0.800);
+	vec3 middle = vec3(0.650, 0.880, 0.820);
+	vec3 upper = vec3(0.430, 0.700, 0.810);
 	vec3 color = mix(lower, middle, smoothstep(0.0, 0.48, height));
 	color = mix(color, upper, smoothstep(0.48, 1.0, height));
-	float broad_haze = exp(-pow((height - 0.40) * 2.25, 2.0));
-	return color + vec3(0.080, 0.110, 0.090) * broad_haze;
+	float broad_haze = exp(-pow((height - 0.34) * 2.10, 2.0));
+	return color + vec3(0.095, 0.105, 0.070) * broad_haze;
 }
 
 vec4 moving_clouds(vec3 direction) {
@@ -44,11 +44,11 @@ vec4 moving_clouds(vec3 direction) {
 	float wisps = cloud_field(direction * 6.4 + fast_wind);
 	float height = direction.y * 0.5 + 0.5;
 	float cloud_band = smoothstep(0.02, 0.18, height) * (1.0 - smoothstep(0.78, 0.96, height));
-	float density = smoothstep(0.59, 0.76, broad * 0.82 + wisps * 0.18) * cloud_band;
-	float soft_edge = smoothstep(0.48, 0.70, broad) * cloud_band;
-	float alpha = clamp(density * 0.42 + soft_edge * 0.10, 0.0, 0.42);
-	vec3 shadow = vec3(0.58, 0.76, 0.72);
-	vec3 pearl = vec3(0.92, 1.00, 0.94);
+	float density = smoothstep(0.66, 0.84, broad * 0.82 + wisps * 0.18) * cloud_band;
+	float soft_edge = smoothstep(0.58, 0.78, broad) * cloud_band;
+	float alpha = clamp(density * 0.24 + soft_edge * 0.06, 0.0, 0.24);
+	vec3 shadow = vec3(0.76, 0.90, 0.85);
+	vec3 pearl = vec3(0.98, 1.00, 0.92);
 	vec3 color = mix(shadow, pearl, smoothstep(0.50, 0.82, wisps));
 	return vec4(color, alpha);
 }
@@ -62,7 +62,7 @@ void sky() {
 		vec3 color = sky_gradient(EYEDIR);
 		color = mix(color, HALF_RES_COLOR.rgb, HALF_RES_COLOR.a);
 		float atmosphere = value_noise(EYEDIR * 2.2 + vec3(TIME * 0.010, 0.0, 0.0));
-		color += vec3(0.026, 0.044, 0.036) * atmosphere;
+		color += vec3(0.018, 0.030, 0.024) * atmosphere;
 		COLOR = color;
 	}
 }
