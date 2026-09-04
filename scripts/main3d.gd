@@ -44,6 +44,8 @@ enum S { TITLE, PLACE_TILE, PLACE_SEED, GAME_OVER }
 
 var grid := []; var plants := []; var plant_age := []
 var tile_nodes := []; var plant_nodes := []; var decor_nodes := []
+var edge_root: Node3D  # container for edge bridge pieces
+var edge_materials := {}  # terrain_id -> StandardMaterial3D
 var current_tile := 0; var state := S.TITLE
 var player_count := 2; var current_player := 0
 var seeds := []; var total_turns := 0; var turns_played := 0
@@ -107,8 +109,17 @@ func _setup_scene():
 	env.environment = e; add_child(env)
 
 	grid_root = Node3D.new(); add_child(grid_root)
+	edge_root = Node3D.new(); add_child(edge_root)
 	plant_root = Node3D.new(); add_child(plant_root)
 	decor_root = Node3D.new(); add_child(decor_root)
+
+	# Pre-create edge materials
+	for i in TERRAIN_TOP.size():
+		var mat = StandardMaterial3D.new()
+		mat.albedo_color = TERRAIN_TOP[i]
+		mat.emission_enabled = true; mat.emission = TERRAIN_TOP[i].darkened(0.2)
+		mat.emission_energy_multiplier = 0.15
+		edge_materials[i] = mat
 
 	# Ground
 	var ground = MeshInstance3D.new()
@@ -142,6 +153,7 @@ func _setup_scene():
 # ================================================================
 func _init_grid():
 	for c in grid_root.get_children(): c.queue_free()
+	for c in edge_root.get_children(): c.queue_free()
 	for c in plant_root.get_children(): c.queue_free()
 	for c in decor_root.get_children(): c.queue_free()
 	grid = []; plants = []; plant_age = []
@@ -181,11 +193,84 @@ func _place_tile(pos: Vector2i, terr: int, animate: bool = true) -> bool:
 	if not _can_place(pos): return false
 	grid[pos.x][pos.y] = terr
 	_spawn_tile(pos, terr, animate)
+	_update_edge_bridges(pos)
 	return true
 
 func _force_tile(pos: Vector2i, terr: int, animate: bool):
 	grid[pos.x][pos.y] = terr
 	_spawn_tile(pos, terr, animate)
+	_update_edge_bridges(pos)
+
+# ================================================================
+#  EDGE BRIDGES — seamless terrain connections
+# ================================================================
+func _update_edge_bridges(pos: Vector2i):
+	"""Spawn bridge pieces between pos and all matching neighbors."""
+	var terr = grid[pos.x][pos.y]
+	if terr < 0: return
+
+	var dirs = [
+		[Vector2i.UP, Vector3(0, 0, -TILE_SPACING * 0.5), Vector3(TILE_SPACING * 0.7, 0.04, 0.12)],
+		[Vector2i.DOWN, Vector3(0, 0, TILE_SPACING * 0.5), Vector3(TILE_SPACING * 0.7, 0.04, 0.12)],
+		[Vector2i.LEFT, Vector3(-TILE_SPACING * 0.5, 0, 0), Vector3(0.12, 0.04, TILE_SPACING * 0.7)],
+		[Vector2i.RIGHT, Vector3(TILE_SPACING * 0.5, 0, 0), Vector3(0.12, 0.04, TILE_SPACING * 0.7)],
+	]
+
+	for d in dirs:
+		var dir: Vector2i = d[0]
+		var offset: Vector3 = d[1]
+		var size: Vector3 = d[2]
+		var neighbor = pos + dir
+		if neighbor.x >= 0 and neighbor.x < GRID_SIZE and neighbor.y >= 0 and neighbor.y < GRID_SIZE:
+			if grid[neighbor.x][neighbor.y] == terr:
+				_spawn_bridge(pos, terr, offset, size)
+
+	# Also update all neighbors' bridges (they might now connect to this new tile)
+	for dir in [Vector2i.UP, Vector2i.DOWN, Vector2i.LEFT, Vector2i.RIGHT]:
+		var neighbor = pos + dir
+		if neighbor.x >= 0 and neighbor.x < GRID_SIZE and neighbor.y >= 0 and neighbor.y < GRID_SIZE:
+			if grid[neighbor.x][neighbor.y] == terr:
+				# Rebuild bridges for neighbor
+				_rebuild_bridges_for(neighbor)
+
+func _rebuild_bridges_for(pos: Vector2i):
+	"""Remove old bridges for a tile and rebuild them."""
+	# Remove existing bridge children from edge_root that belong to this position
+	var to_remove := []
+	for child in edge_root.get_children():
+		if child.has_meta("bridge_owner") and child.get_meta("bridge_owner") == str(pos):
+			to_remove.append(child)
+	for child in to_remove:
+		child.queue_free()
+
+	var terr = grid[pos.x][pos.y]
+	if terr < 0: return
+
+	var dirs = [
+		[Vector2i.UP, Vector3(0, 0, -TILE_SPACING * 0.5), Vector3(TILE_SPACING * 0.7, 0.04, 0.12)],
+		[Vector2i.DOWN, Vector3(0, 0, TILE_SPACING * 0.5), Vector3(TILE_SPACING * 0.7, 0.04, 0.12)],
+		[Vector2i.LEFT, Vector3(-TILE_SPACING * 0.5, 0, 0), Vector3(0.12, 0.04, TILE_SPACING * 0.7)],
+		[Vector2i.RIGHT, Vector3(TILE_SPACING * 0.5, 0, 0), Vector3(0.12, 0.04, TILE_SPACING * 0.7)],
+	]
+
+	for d in dirs:
+		var dir: Vector2i = d[0]
+		var offset: Vector3 = d[1]
+		var size: Vector3 = d[2]
+		var neighbor = pos + dir
+		if neighbor.x >= 0 and neighbor.x < GRID_SIZE and neighbor.y >= 0 and neighbor.y < GRID_SIZE:
+			if grid[neighbor.x][neighbor.y] == terr:
+				_spawn_bridge(pos, terr, offset, size)
+
+func _spawn_bridge(owner_pos: Vector2i, terr: int, offset: Vector3, size: Vector3):
+	"""Spawn a single bridge piece connecting two tiles."""
+	var mi = MeshInstance3D.new()
+	var bm = BoxMesh.new(); bm.size = size
+	mi.mesh = bm
+	mi.material_override = edge_materials[terr]
+	mi.position = _world(owner_pos) + offset + Vector3(0, 0.13, 0)
+	mi.set_meta("bridge_owner", str(owner_pos))
+	edge_root.add_child(mi)
 
 # ================================================================
 #  STARTING TILES — pre-generate a cross shape
@@ -245,6 +330,14 @@ func _spawn_tile(pos: Vector2i, terr: int, animate: bool):
 	bvmat.emission_energy_multiplier = 0.25
 	bevel.material_override = bvmat; bevel.position.y = 0.16
 	root.add_child(bevel)
+
+	# --- Dark gap border (visible when adjacent to different terrain) ---
+	var gap = MeshInstance3D.new()
+	var gm = BoxMesh.new(); gm.size = Vector3(1.12, 0.025, 1.12)
+	gap.mesh = gm
+	var gmat = StandardMaterial3D.new(); gmat.albedo_color = Color(0.03, 0.03, 0.05)
+	gap.material_override = gmat; gap.position.y = -0.14
+	root.add_child(gap)
 
 	# --- Decorations ---
 	_spawn_decor(terr, root)
