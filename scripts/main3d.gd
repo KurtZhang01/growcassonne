@@ -79,6 +79,7 @@ var last_growth_count := 0
 var closed_road_ids := {}; var closed_road_cells := {}; var last_road_event := ""
 var hands := []; var current_hand := []; var selected_card := 0; var hand_page := 0
 var active_weather := {}; var rainbow_turns := 0; var last_settlement := ""
+var special_buildings := {}
 var draws_remaining := 0
 var dragging_card := false; var drag_card_index := -1; var drag_pointer := Vector2.ZERO
 var hovered_card_index := -1
@@ -289,6 +290,9 @@ func _world(pos: Vector2i) -> Vector3:
 	var off = (GRID_SIZE - 1) * TILE_SPACING * 0.5
 	var logical = pos - grid_origin
 	return Vector3(logical.x * TILE_SPACING - off, 0, logical.y * TILE_SPACING - off)
+
+func _logical_cell(pos: Vector2i) -> Vector2i:
+	return pos - grid_origin
 
 func _grid_width() -> int:
 	return grid.size()
@@ -803,7 +807,10 @@ func _spawn_tile(pos: Vector2i, terr: int, animate: bool, road_mask: int = 0):
 		1: _tile_water_surface(root, road_mask)
 		2: _tile_forest_surface(root, road_mask)
 		3: _tile_desert_surface(root, road_mask)
-		4: _tile_pavilion_surface(root, road_mask)
+		4:
+			var building_data: Dictionary = special_buildings.get(_logical_cell(pos), {})
+			if building_data.get("kind", "") == "hongshan_tech": _tile_hongshan_tech_surface(root, building_data)
+			else: _tile_pavilion_surface(root, road_mask)
 		5: _tile_mountain_surface(root)
 		6: _tile_gap_surface(root)
 
@@ -1184,6 +1191,52 @@ func _tile_pavilion_surface(root: Node3D, road_mask: int):
 		lantern.mesh = lantern_mesh; lantern.material_override = red
 		lantern.position = Vector3(-0.28 + lantern_index * 0.56, 0.25, -0.30)
 		root.add_child(lantern)
+
+# ---- Level-2 landmark: Hongshan Technology Building across two tiles ----
+func _tile_hongshan_tech_surface(root: Node3D, data: Dictionary):
+	var direction_index: int = int(data.get("direction", 1)); var part: int = int(data.get("part", 0))
+	var direction: Vector2i = DIRS[direction_index]
+	var toward_joint = Vector3(direction.x, 0, direction.y) * (1.0 if part == 0 else -1.0)
+	var along_x = direction.x != 0
+	var stone = _soft_material(Color("#aeb4b3")); var stone_dark = _soft_material(Color("#737d7e"))
+	var glass = _soft_material(Color("#315d67"), 0.10); glass.metallic = 0.18; glass.roughness = 0.28
+	var glass_light = _soft_material(Color("#6f9fa5"), 0.08); glass_light.metallic = 0.12; glass_light.roughness = 0.32
+	var frame = _soft_material(Color("#d4d8d4")); var green = _soft_material(Color("#527d54"))
+
+	# A continuous two-tile podium and plaza establish the building as one complex.
+	_building_box(root, Vector3(1.02, 0.055, 1.02), Vector3(0, 0.15, 0), stone)
+	var podium_size = Vector3(1.18 if along_x else 0.76, 0.20, 0.76 if along_x else 1.18)
+	_building_box(root, podium_size, toward_joint * 0.12 + Vector3(0, 0.27, 0), stone_dark)
+	_building_box(root, Vector3(1.20 if along_x else 0.18, 0.10, 0.18 if along_x else 1.20), toward_joint * 0.46 + Vector3(0, 0.36, 0), glass_light)
+
+	# Twin offset tower slabs echo the real complex's glass-and-aluminium facade.
+	var lateral = Vector3(-direction.y, 0, direction.x)
+	var tower_offset = toward_joint * 0.17 + lateral * (-0.10 if part == 0 else 0.10)
+	var tower_size = Vector3(0.48 if along_x else 0.66, 1.08 + part * 0.12, 0.66 if along_x else 0.48)
+	_building_box(root, tower_size, tower_offset + Vector3(0, 0.86 + part * 0.06, 0), glass)
+
+	# Pale vertical fins and horizontal floor bands make the curtain wall readable at game distance.
+	for band in 7:
+		var band_y = 0.46 + band * 0.135
+		var band_size = Vector3(tower_size.x + 0.018, 0.018, tower_size.z + 0.018)
+		_building_box(root, band_size, tower_offset + Vector3(0, band_y, 0), frame)
+	for fin_index in [-1, 0, 1]:
+		var fin_shift = lateral * fin_index * 0.16
+		var fin_size = Vector3(0.022 if along_x else tower_size.x + 0.025, tower_size.y + 0.035, tower_size.z + 0.025 if along_x else 0.022)
+		_building_box(root, fin_size, tower_offset + fin_shift + Vector3(0, 0.86 + part * 0.06, 0), frame)
+
+	# Roof crown, entrance canopy and small landscaped planters.
+	_building_box(root, Vector3(tower_size.x * 0.72, 0.08, tower_size.z * 0.72), tower_offset + Vector3(0, 1.44 + part * 0.12, 0), frame)
+	_building_box(root, Vector3(0.32 if along_x else 0.62, 0.035, 0.62 if along_x else 0.32), -toward_joint * 0.27 + Vector3(0, 0.34, 0), glass_light)
+	for planter_side in [-1, 1]:
+		var planter_pos = lateral * planter_side * 0.36 - toward_joint * 0.30
+		_building_box(root, Vector3(0.18, 0.07, 0.18), planter_pos + Vector3(0, 0.20, 0), stone_dark)
+		var shrub = MeshInstance3D.new(); var shrub_mesh = SphereMesh.new(); shrub_mesh.radius = 0.09; shrub_mesh.height = 0.12; shrub_mesh.radial_segments = 7; shrub_mesh.rings = 4
+		shrub.mesh = shrub_mesh; shrub.material_override = green; shrub.position = planter_pos + Vector3(0, 0.29, 0); shrub.scale = Vector3(1.2, 0.72, 1.0); root.add_child(shrub)
+
+func _building_box(root: Node3D, size: Vector3, position: Vector3, material: Material):
+	var mesh_instance = MeshInstance3D.new(); var mesh = BoxMesh.new(); mesh.size = size
+	mesh_instance.mesh = mesh; mesh_instance.material_override = material; mesh_instance.position = position; root.add_child(mesh_instance)
 
 # ================================================================
 #  DECORATIONS
@@ -1625,7 +1678,7 @@ func _start_game():
 	hands = []; current_hand = []; selected_card = 0; hand_page = 0
 	piece_market = []; selected_market = 0; piece_rotation = 0; last_growth_count = 0
 	closed_road_ids = {}; closed_road_cells = {}; last_road_event = ""; last_settlement = ""
-	active_weather = {}; rainbow_turns = 0
+	active_weather = {}; rainbow_turns = 0; special_buildings.clear()
 	for i in player_count:
 		seeds.append(STARTING_SEED_CARDS); scores.append(0); group_counts.append(0)
 		largest_groups.append(0); diversity_counts.append(0); road_scores.append(0)
@@ -1659,7 +1712,7 @@ func _card_description(card: Dictionary) -> String:
 	match card["kind"]:
 		"seed": return "+%d 朵花" % (int(card["level"]) * 10)
 		"develop": return "开发 %d 格山体" % int(card["level"])
-		"building_develop": return "缺口建造楼阁"
+		"building_develop": return "洪山科技大厦" if int(card["level"]) == 2 else "缺口建造黄鹤楼"
 		"road": return "连接 %d 段道路" % int(card["level"])
 		"weather": return "改变本轮环境"
 	return ""
@@ -1874,10 +1927,15 @@ func _apply_building_develop_card(pos: Vector2i, level: int) -> bool:
 	var cells = [pos] if level == 1 else [pos, pos + DIRS[piece_rotation]]
 	for cell in cells:
 		if not _in_bounds(cell) or grid[cell.x][cell.y] != T_GAP: return false
-	for cell in cells:
-		_set_tile_type(cell, T_BUILDING, true, 0)
+	if level == 1:
+		special_buildings.erase(_logical_cell(pos))
+		_set_tile_type(pos, T_BUILDING, true, 0)
+	else:
+		for i in cells.size():
+			special_buildings[_logical_cell(cells[i])] = {"kind": "hongshan_tech", "part": i, "direction": piece_rotation}
+			_set_tile_type(cells[i], T_BUILDING, true, 0)
 	_refill_mountain_border()
-	last_settlement = "缺口变为建筑"
+	last_settlement = "建成洪山科技大厦" if level == 2 else "缺口变为黄鹤楼"
 	return true
 
 func _develop_card_cells(pos: Vector2i, level: int, rotation: int = 0) -> Array:
@@ -2254,6 +2312,12 @@ func _update_card_drag_preview(cell: Vector2i):
 		preview_cells = _develop_card_cells(cell, int(card["level"]), piece_rotation)
 		preview_terrains = pending_develop.get("terrains", [])
 		valid = _can_develop_cells(preview_cells)
+	elif card["kind"] == "building_develop" and _in_bounds(cell):
+		preview_cells = [cell] if int(card["level"]) == 1 else [cell, cell + DIRS[piece_rotation]]
+		for building_cell in preview_cells: preview_terrains.append(T_BUILDING)
+		valid = true
+		for building_cell in preview_cells:
+			if not _in_bounds(building_cell) or grid[building_cell.x][building_cell.y] != T_GAP: valid = false
 	elif card["kind"] == "road":
 		preview_cells = road_drag_cells
 		for road_cell in preview_cells: preview_terrains.append(grid[road_cell.x][road_cell.y])
