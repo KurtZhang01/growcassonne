@@ -150,13 +150,13 @@ func _setup_scene():
 
 	var fill = DirectionalLight3D.new()
 	fill.rotation_degrees = Vector3(30, 150, 0)
-	fill.light_energy = 0.18; fill.light_color = Color("#b9ddf0")
+	fill.light_energy = 0.22; fill.light_color = Color("#87c5c7")
 	fill.sky_mode = DirectionalLight3D.SKY_MODE_LIGHT_ONLY
 	add_child(fill)
 
 	var rim = DirectionalLight3D.new()
 	rim.rotation_degrees = Vector3(-10, -120, 0)
-	rim.light_energy = 0.08; rim.light_color = Color("#d8ecf7")
+	rim.light_energy = 0.10; rim.light_color = Color("#f5b766")
 	rim.sky_mode = DirectionalLight3D.SKY_MODE_LIGHT_ONLY
 	add_child(rim)
 
@@ -167,8 +167,8 @@ func _setup_scene():
 	sky.process_mode = Sky.PROCESS_MODE_REALTIME; sky.radiance_size = Sky.RADIANCE_SIZE_128
 	e.background_mode = Environment.BG_SKY; e.sky = sky
 	e.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	e.ambient_light_color = Color("#e8f5fb")
-	e.ambient_light_energy = 0.66
+	e.ambient_light_color = Color("#a7d6c4")
+	e.ambient_light_energy = 0.60
 	e.tonemap_mode = Environment.TONE_MAPPER_FILMIC
 	e.glow_enabled = true; e.glow_intensity = 0.14; e.glow_bloom = 0.02
 	env.environment = e; add_child(env)
