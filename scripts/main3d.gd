@@ -61,6 +61,7 @@ const PLAYER_COLORS := [
 	Color("#1c497d"),
 ]
 const PLAYER_NAMES := ["玩家1", "玩家2", "玩家3", "玩家4"]
+const FLOWER_NAMES := ["虞美人", "风铃草", "万寿菊", "鸢尾花"]
 
 # ---- State ----
 enum S { TITLE, DRAW_CARDS, PLACE_TILE, PLACE_SEED, PLAY_CARDS, GAME_OVER }
@@ -106,7 +107,7 @@ const UI_TOP_HEIGHT := 54.0
 const UI_RAIL_HEIGHT := 188.0
 const UI_SIDE_TOP := 82.0
 const UI_SIDE_BOTTOM := 228.0
-const RULE_TICKER_TEXT := "道路封闭时，沿线有花朵的玩家各获得1张1级播种卡    |    水域使3x3范围内植物地块的正升级概率翻倍    |    建筑使3x3范围内植物地块容积翻倍    |    有道路的植物地块可以生长，但不会向外扩散    |    成功开发地块或建造建筑后获得1张1级播种卡    |    森林、草地、荒漠的基础容积分别为100、50、10    |    山体只能使用开发卡，缺口只能使用建筑开发卡    |    "
+const RULE_TICKER_TEXT := "每回合任意组合抽3张牌，随后可打出任意数量卡牌    |    道路封闭时，沿线有花朵的玩家各获得1张1级播种卡，每条闭合道路只奖励一次    |    水域使3x3范围内植物地块的正升级概率翻倍，多个水域不叠加    |    建筑使3x3范围内植物地块容积翻倍，多个建筑不叠加    |    植物地块没有基础升降级概率，只计算上下左右四邻影响，并且每回合最多变化一级    |    有道路的植物地块可以生长和接收花朵，但不会向外扩散    |    花朵扩散按相邻同色花朵占相邻总容量的比例计算    |    成功开发地块或建造建筑后获得1张1级播种卡    |    森林、草地、荒漠的基础容积分别为100、50、10    |    山体只能使用开发卡，缺口只能使用建筑开发卡    |    回合结算顺序为地块改变、花朵增值、花朵扩散    |    地块降级时花朵按新容量比例缩减并向下取整    |    总回合数为玩家数乘10；花朵最多者获胜，平局比较占据植物地块数    |    "
 
 # Nodes
 var camera: Camera3D; var grid_root: Node3D; var plant_root: Node3D
@@ -133,6 +134,7 @@ var ui_glass_root: Control; var ui_glass_panels := []
 var ui_preview_mode := "card"; var ui_preview_index := 0
 var rule_ticker_clip: Control; var rule_ticker_label: Label
 var rule_ticker_text_width := 1.0; var rule_ticker_font_size := -1
+var flower_chart_glass: ColorRect
 
 func _ready():
 	_setup_scene()
@@ -235,6 +237,11 @@ func _setup_scene():
 		glass_material.set_shader_parameter("blur_lod", 3.2 if panel_index < 3 else 3.4)
 		glass_material.set_shader_parameter("blur_radius", 10.0 if panel_index == 0 else 12.0)
 		panel.material = glass_material; ui_glass_root.add_child(panel); ui_glass_panels.append(panel)
+	flower_chart_glass = ColorRect.new(); flower_chart_glass.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var chart_material = ShaderMaterial.new(); chart_material.shader = UI_FROSTED_GLASS_SHADER
+	chart_material.set_shader_parameter("tint_color", Color(0.78, 0.78, 0.78, 0.42))
+	chart_material.set_shader_parameter("blur_lod", 3.2); chart_material.set_shader_parameter("blur_radius", 12.0)
+	flower_chart_glass.material = chart_material; ui_glass_root.add_child(flower_chart_glass)
 	ui_ctrl = Control.new(); ui_ctrl.set_anchors_preset(Control.PRESET_FULL_RECT)
 	ui_ctrl.mouse_filter = Control.MOUSE_FILTER_IGNORE; canvas.add_child(ui_ctrl)
 	ui_ctrl.connect("draw", _draw_ui)
@@ -2192,10 +2199,10 @@ func _card_has_valid_target(card: Dictionary) -> bool:
 		for x in _grid_width():
 			for y in _grid_height():
 				var pos = Vector2i(x, y)
-				if grid[x][y] < 0 or _is_developable(grid[x][y]): continue
+				if grid[x][y] < 0 or _is_developable(grid[x][y]) or grid[x][y] == T_BUILDING: continue
 				for direction in DIRS:
 					var neighbor = pos + direction
-					if _in_bounds(neighbor) and grid[neighbor.x][neighbor.y] >= 0 and not _is_developable(grid[neighbor.x][neighbor.y]): return true
+					if _in_bounds(neighbor) and grid[neighbor.x][neighbor.y] >= 0 and not _is_developable(grid[neighbor.x][neighbor.y]) and grid[neighbor.x][neighbor.y] != T_BUILDING: return true
 		return false
 	if card["kind"] == "seed":
 		for x in _grid_width():
@@ -2221,7 +2228,7 @@ func _card_has_valid_target(card: Dictionary) -> bool:
 	return false
 
 func _extend_road_drag(cell: Vector2i):
-	if not _in_bounds(cell) or _is_developable(grid[cell.x][cell.y]) or grid[cell.x][cell.y] < 0: return
+	if not _in_bounds(cell) or _is_developable(grid[cell.x][cell.y]) or grid[cell.x][cell.y] < 0 or grid[cell.x][cell.y] == T_BUILDING: return
 	if road_drag_cells.is_empty():
 		road_drag_cells.append(cell); return
 	var last: Vector2i = road_drag_cells.back()
@@ -2234,6 +2241,8 @@ func _extend_road_drag(cell: Vector2i):
 
 func _apply_road_path(cells: Array) -> bool:
 	if cells.size() != road_drag_level + 1: return false
+	for cell in cells:
+		if not _in_bounds(cell) or _is_developable(grid[cell.x][cell.y]) or grid[cell.x][cell.y] == T_BUILDING: return false
 	for i in cells.size() - 1: _connect_road(cells[i], cells[i + 1])
 	for cell in cells: _update_road_bridges(cell)
 	_refresh_road_effects(); last_settlement = "修建了长度%d道路" % road_drag_level
@@ -2370,7 +2379,7 @@ func _can_play_selected_card(pos: Vector2i) -> bool:
 		"road":
 			for i in range(int(card["level"]) + 1):
 				var cell = pos + DIRS[piece_rotation] * i
-				if not _in_bounds(cell) or _is_developable(grid[cell.x][cell.y]): return false
+				if not _in_bounds(cell) or _is_developable(grid[cell.x][cell.y]) or grid[cell.x][cell.y] == T_BUILDING: return false
 			return true
 		"weather":
 			var weather: String = card.get("weather", "")
@@ -2475,7 +2484,7 @@ func _apply_road_card(pos: Vector2i, level: int) -> bool:
 	for i in range(level + 1):
 		cells.append(pos + DIRS[piece_rotation] * i)
 	for cell in cells:
-		if not _in_bounds(cell) or _is_developable(grid[cell.x][cell.y]): return false
+		if not _in_bounds(cell) or _is_developable(grid[cell.x][cell.y]) or grid[cell.x][cell.y] == T_BUILDING: return false
 	for i in cells.size() - 1:
 		var a: Vector2i = cells[i]; var b: Vector2i = cells[i + 1]
 		_connect_road(a, b)
@@ -3168,6 +3177,13 @@ func _ui_right_rect(vp: Vector2) -> Rect2:
 	var width = _ui_right_width(vp)
 	return Rect2(vp.x - UI_MARGIN - width, UI_SIDE_TOP, width, maxf(120.0, vp.y - UI_SIDE_TOP - UI_SIDE_BOTTOM))
 
+func _flower_chart_rect(vp: Vector2) -> Rect2:
+	var left_panel = _ui_left_rect(vp)
+	return Rect2(left_panel.end.x + 10.0, left_panel.position.y, 206.0, minf(258.0, left_panel.size.y))
+
+func _flower_chart_visible() -> bool:
+	return ui_preview_mode == "tile" and _in_bounds(selected_tile) and grid[selected_tile.x][selected_tile.y] >= 0
+
 func _ui_rail_rect(vp: Vector2) -> Rect2:
 	return Rect2(UI_MARGIN, vp.y - UI_MARGIN - UI_RAIL_HEIGHT, vp.x - UI_MARGIN * 2.0, UI_RAIL_HEIGHT)
 
@@ -3175,7 +3191,8 @@ func _end_turn_rect(vp: Vector2) -> Rect2:
 	return Rect2(vp.x - UI_MARGIN - 67.0, vp.y - UI_MARGIN - 67.0, 46.0, 46.0)
 
 func _pointer_over_ui(pointer: Vector2, vp: Vector2) -> bool:
-	return _ui_top_rect(vp).has_point(pointer) or _ui_left_rect(vp).has_point(pointer) or _ui_right_rect(vp).has_point(pointer) or _ui_rail_rect(vp).has_point(pointer)
+	var over_chart = _flower_chart_visible() and _flower_chart_rect(vp).has_point(pointer)
+	return _ui_top_rect(vp).has_point(pointer) or _ui_left_rect(vp).has_point(pointer) or _ui_right_rect(vp).has_point(pointer) or _ui_rail_rect(vp).has_point(pointer) or over_chart
 
 func _history_capacity(vp: Vector2) -> int:
 	var inner = _ui_right_rect(vp).grow(-20.0)
@@ -3192,6 +3209,11 @@ func _layout_glass_panels(vp: Vector2, interface_scale: float):
 		panel.position = rects[index].position * interface_scale
 		panel.size = rects[index].size * interface_scale
 		panel.visible = state != S.TITLE and state != S.GAME_OVER
+	if is_instance_valid(flower_chart_glass):
+		var chart_rect = _flower_chart_rect(vp)
+		flower_chart_glass.position = chart_rect.position * interface_scale
+		flower_chart_glass.size = chart_rect.size * interface_scale
+		flower_chart_glass.visible = state != S.TITLE and state != S.GAME_OVER and _flower_chart_visible()
 	_layout_rule_ticker(vp, interface_scale)
 
 func _layout_rule_ticker(vp: Vector2, interface_scale: float):
@@ -3201,7 +3223,7 @@ func _layout_rule_ticker(vp: Vector2, interface_scale: float):
 	var rect = _top_rule_ticker_rect(vp)
 	rule_ticker_clip.position = rect.position * interface_scale
 	rule_ticker_clip.size = rect.size * interface_scale
-	var font_size = maxi(8, roundi(11.0 * interface_scale))
+	var font_size: int = maxi(8, roundi(11.0 * interface_scale))
 	if font_size != rule_ticker_font_size:
 		rule_ticker_font_size = font_size
 		rule_ticker_label.add_theme_font_size_override("font_size", font_size)
@@ -3403,6 +3425,7 @@ func _draw_ui():
 		ui_ctrl.draw_rect(panel, Color(1.0, 1.0, 1.0, 0.40), false, 1.0)
 	_draw_top_info_bar(vp, font, ink, muted)
 	_draw_context_preview_panel(vp, font, ink, muted)
+	if _flower_chart_visible(): _draw_tile_flower_chart(vp, font, ink, muted)
 	_draw_right_info_panel(vp, font, ink, muted)
 	_draw_card_rail_labels(vp, font, muted)
 	_draw_public_decks(vp, font, ink, muted)
@@ -3410,6 +3433,45 @@ func _draw_ui():
 	_draw_active_card_hint(vp, font)
 	_draw_end_turn_button(vp, font)
 	_draw_center_notices(vp, font)
+
+func _draw_tile_flower_chart(vp: Vector2, font: Font, ink: Color, muted: Color):
+	var panel = _flower_chart_rect(vp); var inner = panel.grow(-16.0)
+	ui_ctrl.draw_rect(panel, Color(1.0, 1.0, 1.0, 0.40), false, 1.0)
+	_draw_fitted_text("花朵比例", Rect2(inner.position, Vector2(inner.size.x, 22.0)), font, 13, ink)
+	var terrain: int = grid[selected_tile.x][selected_tile.y]
+	_draw_fitted_text(TERRAIN_NAMES[terrain] + "当前容量", Rect2(inner.position + Vector2(0, 23), Vector2(inner.size.x, 18.0)), font, 10, muted)
+	var capacity = _tile_capacity(selected_tile)
+	var total = _flower_total(selected_tile)
+	var empty = maxi(0, capacity - total)
+	var chart_total = maxi(capacity, total)
+	var values := []; var colors := []
+	for player_id in player_count:
+		values.append(flowers[selected_tile.x][selected_tile.y][player_id])
+		colors.append(PLAYER_COLORS[player_id])
+	values.append(empty if chart_total > 0 else 1)
+	colors.append(Color("#d7dad8"))
+	var center = Vector2(panel.get_center().x, panel.position.y + 91.0)
+	var start_angle = -PI * 0.5; var denominator = maxf(float(chart_total), 1.0)
+	for segment_index in values.size():
+		var amount = float(values[segment_index])
+		if amount <= 0.0: continue
+		var end_angle = start_angle + TAU * amount / denominator
+		ui_ctrl.draw_arc(center, 34.0, start_angle, end_angle, maxi(4, ceili(36.0 * amount / denominator)), colors[segment_index], 12.0, true)
+		start_angle = end_angle
+	ui_ctrl.draw_circle(center, 23.0, Color(0.93, 0.94, 0.93, 0.90))
+	ui_ctrl.draw_string(font, center + Vector2(-27.0, 4.0), "%d/%d" % [total, capacity], HORIZONTAL_ALIGNMENT_CENTER, 54.0, 12, ink)
+	var legend_y = panel.position.y + 140.0
+	for player_id in player_count:
+		var amount: int = flowers[selected_tile.x][selected_tile.y][player_id]
+		var percent = float(amount) / denominator * 100.0 if chart_total > 0 else 0.0
+		ui_ctrl.draw_circle(Vector2(inner.position.x + 5.0, legend_y + 7.0), 4.0, PLAYER_COLORS[player_id])
+		_draw_fitted_text("%s %s" % [PLAYER_NAMES[player_id], FLOWER_NAMES[player_id]], Rect2(inner.position.x + 15.0, legend_y, 105.0, 18.0), font, 10, PLAYER_COLORS[player_id])
+		_draw_fitted_text("%d  %.0f%%" % [amount, percent], Rect2(inner.end.x - 52.0, legend_y, 52.0, 18.0), font, 10, ink)
+		legend_y += 20.0
+	var empty_percent = float(empty) / denominator * 100.0 if chart_total > 0 else 100.0
+	ui_ctrl.draw_circle(Vector2(inner.position.x + 5.0, legend_y + 7.0), 4.0, Color("#d7dad8"))
+	_draw_fitted_text("空白容量", Rect2(inner.position.x + 15.0, legend_y, 90.0, 18.0), font, 10, muted)
+	_draw_fitted_text("%d  %.0f%%" % [empty, empty_percent], Rect2(inner.end.x - 52.0, legend_y, 52.0, 18.0), font, 10, ink)
 
 func _draw_active_card_hint(vp: Vector2, font: Font):
 	if not (dragging_card or card_armed or road_drawing) or not _drag_card_index_is_valid(): return
@@ -3434,7 +3496,7 @@ func _draw_context_preview_panel(vp: Vector2, font: Font, ink: Color, muted: Col
 	var panel = _ui_left_rect(vp); var inner = panel.grow(-18.0)
 	var title = "卡牌预览"; var name = "暂无可预览内容"; var status = "点击牌库、卡牌或棋盘地块查看详情"
 	var meta: Array = []
-	var stage_height = minf(190.0, maxf(120.0, inner.size.y - 208.0))
+	var stage_height = minf(140.0, maxf(112.0, inner.size.y - 234.0))
 	var stage = Rect2(inner.position + Vector2(0, 74), Vector2(inner.size.x, stage_height))
 	var active_card_index = drag_card_index if (dragging_card or card_armed or road_drawing) and _drag_card_index_is_valid() else -1
 	if active_card_index >= 0:
@@ -3451,7 +3513,7 @@ func _draw_context_preview_panel(vp: Vector2, font: Font, ink: Color, muted: Col
 		meta = _current_weather_meta()
 		status = "天气效果在回合结束时按规则结算"
 	elif ui_preview_mode == "terrain":
-		var terrain_type = clampi(ui_preview_index, T_GRASS, T_BUILDING)
+		var terrain_type: int = clampi(ui_preview_index, T_GRASS, T_BUILDING)
 		title = "地块图鉴"; name = TERRAIN_NAMES[terrain_type]
 		_rebuild_terrain_type_preview(terrain_type)
 		_draw_preview_texture(card_preview_viewport.get_texture(), stage)
@@ -3460,8 +3522,8 @@ func _draw_context_preview_panel(vp: Vector2, font: Font, ink: Color, muted: Col
 	elif ui_preview_mode == "deck":
 		title = "牌库概率"; name = ["开发卡堆", "道路卡堆", "天气卡堆"][clampi(ui_preview_index, 0, 2)]
 		_draw_deck_probability_preview(ui_preview_index, stage, font, ink, muted)
-		meta = [["抽牌状态", "%d / %d" % [CARDS_DRAWN_PER_TURN - draws_remaining, CARDS_DRAWN_PER_TURN]], ["剩余次数", str(draws_remaining)]]
-		status = "抽牌后按类别、等级自动整理"
+		meta = _deck_preview_meta(ui_preview_index)
+		status = _deck_preview_status(ui_preview_index)
 	elif ui_preview_mode == "tile" and _in_bounds(selected_tile) and grid[selected_tile.x][selected_tile.y] >= 0:
 		var terrain: int = grid[selected_tile.x][selected_tile.y]
 		title = "地块属性"; name = TERRAIN_NAMES[terrain]
@@ -3481,10 +3543,10 @@ func _draw_context_preview_panel(vp: Vector2, font: Font, ink: Color, muted: Col
 	ui_ctrl.draw_line(Vector2(stage.position.x, stage.position.y - 8), Vector2(stage.end.x, stage.position.y - 8), Color(0.20, 0.30, 0.26, 0.18), 1.0)
 	ui_ctrl.draw_line(Vector2(stage.position.x, stage.end.y + 4), Vector2(stage.end.x, stage.end.y + 4), Color(0.20, 0.30, 0.26, 0.18), 1.0)
 	var meta_y = stage.end.y + 16.0
-	for row in mini(meta.size(), 4):
-		_draw_fitted_text(str(meta[row][0]), Rect2(inner.position.x, meta_y + row * 20.0, inner.size.x * 0.50, 18), font, 11, muted)
-		_draw_fitted_text(str(meta[row][1]), Rect2(inner.position.x + inner.size.x * 0.50, meta_y + row * 20.0, inner.size.x * 0.50, 18), font, 11, ink)
-	var status_y = minf(panel.end.y - 31.0, meta_y + mini(meta.size(), 4) * 20.0 + 8.0)
+	for row in mini(meta.size(), 6):
+		_draw_fitted_text(str(meta[row][0]), Rect2(inner.position.x, meta_y + row * 18.0, inner.size.x * 0.46, 17), font, 10, muted)
+		_draw_fitted_text(str(meta[row][1]), Rect2(inner.position.x + inner.size.x * 0.46, meta_y + row * 18.0, inner.size.x * 0.54, 17), font, 10, ink)
+	var status_y = minf(panel.end.y - 31.0, meta_y + mini(meta.size(), 6) * 18.0 + 8.0)
 	ui_ctrl.draw_line(Vector2(inner.position.x, status_y - 8), Vector2(inner.end.x, status_y - 8), Color(0.20, 0.30, 0.26, 0.18), 1.0)
 	_draw_fitted_text(status, Rect2(inner.position.x, status_y, inner.size.x, 20), font, 11, Color("#367052"))
 
@@ -3505,7 +3567,7 @@ func _draw_weather_state_preview(rect: Rect2, font: Font, ink: Color, muted: Col
 	if rainbow_turns > 0: rows.append(["彩虹", "生长率与扩散总概率 x2", Color("#7faa72")])
 	if rows.is_empty():
 		rows = [["晴朗", "地块与花朵按基础概率正常结算", Color("#65a9d8")], ["地块变化", "只计算相邻水域、森林与荒漠影响", Color("#75a06e")]]
-	var row_height = minf(41.0, rect.size.y / maxf(float(rows.size()), 1.0))
+	var row_height = minf(41.0, (rect.size.y - 8.0) / maxf(float(rows.size()), 1.0))
 	for row_index in rows.size():
 		var row: Array = rows[row_index]; var y = rect.position.y + row_index * row_height + 4.0
 		ui_ctrl.draw_circle(Vector2(rect.position.x + 6.0, y + 7.0), 4.0, row[2])
@@ -3520,8 +3582,12 @@ func _current_weather_meta() -> Array:
 	var turns := []
 	for weather in active_weather.keys(): turns.append("%s:%d" % [weather, active_weather[weather]])
 	if rainbow_turns > 0: turns.append("彩虹:%d" % rainbow_turns)
+	var growth_multiplier = "x0.5" if _has_extreme_weather() else ("x2" if rainbow_turns > 0 else "x1")
+	var spread_multiplier = "x2" if rainbow_turns > 0 else "x1"
 	return [
 		["剩余回合", "无" if turns.is_empty() else "  ".join(turns)],
+		["花朵生长率", growth_multiplier],
+		["扩散总概率", spread_multiplier],
 		["升级概率", "x2" if active_weather.has("雨季") else "基础值"],
 		["降级概率", "x2" if active_weather.has("旱季") else "基础值"],
 		["地块变化", tile_change],
@@ -3542,14 +3608,42 @@ func _draw_deck_probability_preview(deck_index: int, rect: Rect2, font: Font, in
 		ui_ctrl.draw_rect(Rect2(bar.position, Vector2(bar.size.x * float(row[1]) / 100.0, bar.size.y)), row[2], true)
 		_draw_fitted_text("%.1f%%" % float(row[1]), Rect2(rect.end.x - 31, y, 31, 18), font, 9, ink)
 
+func _deck_preview_meta(deck_index: int) -> Array:
+	var draw_state = "%d/3 已抽 剩%d" % [CARDS_DRAWN_PER_TURN - draws_remaining, draws_remaining]
+	match clampi(deck_index, 0, 2):
+		0: return [["本回合抽牌", draw_state], ["山体开发", "1至4级各20.5%"], ["建筑开发", "合计18% 两级均分"], ["地块生成", "森林39 草地28"], ["地块生成", "荒漠19 水域11 建筑3"], ["整理顺序", "开发卡按等级从左到右"]]
+		1: return [["本回合抽牌", draw_state], ["1级道路", "33.3% / 连接2格"], ["2级道路", "33.3% / 连接3格"], ["3级道路", "33.4% / 连接4格"], ["路径规则", "连续 可转弯 可接旧路"], ["整理顺序", "道路卡按等级从左到右"]]
+		_: return [["本回合抽牌", draw_state], ["五种天气", "各20%"], ["极端天气", "持续3回合"], ["彩虹", "立即生效并清除极端天气"], ["同类天气", "不可叠加"], ["整理顺序", "台风/沙尘/雨/旱/彩虹"]]
+
+func _deck_preview_status(deck_index: int) -> String:
+	if deck_index == 0: return "开发生成概率与开局中心4x4相同"
+	if deck_index == 1: return "道路闭合后，沿线玩家各获得1张播种卡"
+	return "任意组合抽满3张后自动进入出牌阶段"
+
 func _draw_card_context_stage(card: Dictionary, rect: Rect2, font: Font, ink: Color, muted: Color):
 	ui_ctrl.draw_rect(rect, Color(0.24, 0.34, 0.29, 0.07), true)
 	if card["kind"] == "develop" or card["kind"] == "building_develop":
 		_rebuild_card_model_preview(card)
 		_draw_preview_texture(card_preview_viewport.get_texture(), rect)
 	else:
-		_draw_card_model_icon(card, rect.get_center() + Vector2(0, -12), _card_accent(card).lightened(0.08), 1.28)
-		_draw_fitted_text(_card_effect_text(card), Rect2(rect.position + Vector2(8, rect.size.y - 39), Vector2(rect.size.x - 16, 30)), font, 11, ink)
+		var icon_center = rect.get_center() + Vector2(0, -18 if card["kind"] == "weather" else -12)
+		_draw_card_model_icon(card, icon_center, _card_accent(card).lightened(0.08), 1.28)
+		if card["kind"] == "weather":
+			var effect_lines = _weather_card_effect_lines(str(card.get("weather", "")))
+			var start_y = rect.end.y - effect_lines.size() * 17.0 - 5.0
+			for line_index in effect_lines.size():
+				_draw_fitted_text(effect_lines[line_index], Rect2(rect.position.x + 8.0, start_y + line_index * 17.0, rect.size.x - 16.0, 16.0), font, 10, ink)
+		else:
+			_draw_fitted_text(_card_effect_text(card), Rect2(rect.position + Vector2(8, rect.size.y - 39), Vector2(rect.size.x - 16, 30)), font, 11, ink)
+
+func _weather_card_effect_lines(weather: String) -> Array:
+	match weather:
+		"台风": return ["水域向相邻地块扩张", "花朵生长率 x0.5"]
+		"沙尘暴": return ["荒漠向相邻地块扩张", "花朵生长率 x0.5"]
+		"雨季": return ["植物地块升级概率 x2", "花朵生长率 x0.5"]
+		"旱季": return ["植物地块降级概率 x2", "水域30%变草地；生长率 x0.5"]
+		"彩虹": return ["立即清除全部极端天气", "生长率与扩散总概率 x2"]
+	return ["按当前天气规则改变全棋盘"]
 
 func _draw_preview_texture(texture: Texture2D, rect: Rect2):
 	var texture_size = Vector2(texture.get_size())
@@ -3569,32 +3663,40 @@ func _card_preview_title(card: Dictionary) -> String:
 
 func _card_preview_meta(card: Dictionary) -> Array:
 	match card["kind"]:
-		"seed": return [["花朵数量", "%d朵" % (int(card["level"]) * 10)], ["目标", "植物地块"], ["容量检查", "需要"], ["玩家", PLAYER_NAMES[current_player]]]
+		"seed": return [["卡牌等级", "%d级 / 增加%d朵" % [int(card["level"]), int(card["level"]) * 10]], ["目标", "森林/草地/荒漠"], ["使用条件", "花朵未满且有播种卡"], ["容量", "森林100 草地50 荒漠10"], ["建筑增益", "相邻时容量x2"], ["连续使用", "可重复播种直到满"]]
 		"develop":
 			var roads_data: Array = card.get("rolled_roads", [])
 			var segment_count := 0
 			for mask in roads_data: segment_count += _count_mask_bits(int(mask))
-			return [["形状", "%d格组合" % int(card["level"])], ["旋转", "%d°" % (piece_rotation * 90)], ["生成道路", "%d段" % (segment_count / 2)], ["落点要求", "相邻开发区"]]
-		"building_develop": return [["占地", "1 × 2" if int(card["level"]) == 2 else "1 × 1"], ["建筑", "洪山科技大厦" if int(card["level"]) == 2 else "黄鹤楼"], ["旋转", "%d°" % (piece_rotation * 90)], ["目标", "完整缺口"]]
-		"road": return [["路径长度", "%d格" % (int(card["level"]) + 1)], ["允许转弯", "是"], ["目标", "植物/增益地块"], ["建筑地块", "不可通过"]]
-		"weather": return [["作用范围", "全棋盘"], ["持续时间", "%d回合" % (1 if card.get("weather", "") == "彩虹" else 3)], ["天气效果", _card_effect_text(card)], ["互斥天气", _weather_conflicts(str(card.get("weather", "")))]]
+			return [["等级与形状", _develop_shape_label(card)], ["使用目标", "形状内全部为山体"], ["邻接条件", "至少一格邻接已开发区"], ["旋转/取消", "Q/E旋转 右键或Esc取消"], ["随机内容", "按地块概率生成 路%d段" % (segment_count / 2)], ["完成后", "补山/检测缺口/奖励播种卡"]]
+		"building_develop": return [["占地", "1x2相邻缺口" if int(card["level"]) == 2 else "1x1单个缺口"], ["建筑", "洪山科技大厦" if int(card["level"]) == 2 else "黄鹤楼"], ["相邻条件", "不检查"], ["旋转/取消", "Q/E旋转 右键或Esc取消"], ["建筑增益", "3x3植物容积x2"], ["完成奖励", "获得1张1级播种卡"]]
+		"road": return [["等级", "%d级 / 长度%d" % [int(card["level"]), int(card["level"])]], ["连接地块", "%d个" % (int(card["level"]) + 1)], ["绘制", "连续拖动 可转弯"], ["接入规则", "可接旧路并叠加"], ["地块限制", "山体/缺口/建筑不可通过"], ["闭合奖励", "沿线玩家各获1级播种卡"]]
+		"weather": return [["作用范围", "全棋盘 无位置限制"], ["持续时间", "立即/本回合" if card.get("weather", "") == "彩虹" else "3回合"], ["具体效果", "见上方完整说明"], ["保护地块", "建筑/山体/缺口不改变"], ["同类叠加", "不可叠加"], ["互斥天气", _weather_conflicts(str(card.get("weather", "")))]]
 	return []
+
+func _develop_shape_label(card: Dictionary) -> String:
+	var level = int(card.get("level", 1))
+	if level == 1: return "1级 1x1"
+	if level == 2: return "2级 1x2"
+	if level == 3: return "3级 L形"
+	return "4级 " + ["2x2", "Z字形", "T字形"][clampi(int(card.get("shape", 0)), 0, 2)]
 
 func _card_preview_status(card: Dictionary) -> String:
 	match card["kind"]:
-		"develop", "building_develop": return "拖出后显示真实地块并支持旋转放置"
-		"road": return "拖出后在棋盘连续绘制道路"
-		"weather": return "拖出界面即可使用，并立即改变环境"
-	return "拖出界面后选择可播种的植物地块"
+		"develop": return "拖出后半透明预览；放置后外围自动补山"
+		"building_develop": return "形状必须完整覆盖缺口；建筑永久不被改变"
+		"road": return "道路地块可生长和接收花朵，但不向外扩散"
+		"weather": return "每回合可用多张天气卡；同类型不叠加"
+	return "增加后不超过容量；每张卡按等级增加10至50朵"
 
 func _card_effect_text(card: Dictionary) -> String:
 	if card["kind"] != "weather": return _card_description(card)
 	match str(card.get("weather", "")):
-		"台风": return "生长与扩散减半"
-		"沙尘暴": return "生长与扩散减半"
-		"雨季": return "植物升级概率翻倍"
-		"旱季": return "植物降级，水域可能变草地"
-		"彩虹": return "清除极端天气，生长翻倍"
+		"台风": return "水域向外扩张；花朵生长率x0.5"
+		"沙尘暴": return "荒漠向外扩张；花朵生长率x0.5"
+		"雨季": return "植物升级概率x2；花朵生长率x0.5"
+		"旱季": return "降级概率x2；水域30%变草地；生长x0.5"
+		"彩虹": return "清除极端天气；生长率和扩散总概率x2"
 	return "改变本轮环境"
 
 func _weather_conflicts(weather: String) -> String:
@@ -3612,33 +3714,50 @@ func _count_mask_bits(mask: int) -> int:
 func _tile_preview_meta(pos: Vector2i) -> Array:
 	var terrain: int = grid[pos.x][pos.y]; var road_text = _road_mask_text(roads[pos.x][pos.y])
 	if _is_plant_terrain(terrain):
-		var growth: float = TERRAIN_GROWTH[terrain]; var spread: float = TERRAIN_SPREAD[terrain]
-		if _has_extreme_weather(): growth *= 0.5; spread *= 0.5
-		if rainbow_turns > 0: growth *= 2.0; spread *= 2.0
-		var flower_parts := []
-		for player_id in player_count:
-			if flowers[pos.x][pos.y][player_id] > 0: flower_parts.append("P%d:%d" % [player_id + 1, flowers[pos.x][pos.y][player_id]])
-		return [["花朵/容量", "%d / %d" % [_flower_total(pos), _tile_capacity(pos)]], ["玩家花朵", "  ".join(flower_parts) if not flower_parts.is_empty() else "暂无"], ["生长/扩散", "%.2f / %.2f" % [growth, spread]], ["道路", road_text]]
-	if terrain == T_WATER: return [["类型", "增益地块"], ["相邻增益", "升级概率翻倍"], ["旱季影响", "30%变为草地"], ["道路", road_text]]
-	if terrain == T_BUILDING: return [["类型", "建筑地块"], ["相邻增益", "植物容积翻倍"], ["影响范围", "3 × 3"], ["道路", "不可修建"]]
-	if terrain == T_MOUNTAIN: return [["类型", "非开发地块"], ["开发条件", "邻接已开发区"], ["覆盖", "不可覆盖缺口"], ["道路", "无"]]
-	return [["类型", "封闭缺口"], ["形成条件", "被地块完全包围"], ["可用卡牌", "建筑开发卡"], ["道路", "无"]]
+		var growth: float = TERRAIN_GROWTH[terrain]
+		if _has_extreme_weather(): growth *= 0.5
+		if rainbow_turns > 0: growth *= 2.0
+		var change_chance: float = _tile_change_chance(pos)
+		return [["花朵/容量", "%d / %d" % [_flower_total(pos), _tile_capacity(pos)]], ["当前生长率", "%.0f%%" % (growth * 100.0)], ["升降级概率", "%+.0f%%" % (change_chance * 100.0)], ["水域3x3", "正概率x2" if _has_neighbor_bonus(pos, T_WATER) else "无增益"], ["建筑3x3", "容量x2" if _has_neighbor_bonus(pos, T_BUILDING) else "无增益"], ["道路", road_text + (" 不向外扩散" if roads[pos.x][pos.y] != 0 else " 可正常扩散")]]
+	if terrain == T_WATER: return [["类型/容积", "增益地块 / 0"], ["四邻影响", "每格升级概率+20%"], ["3x3增益", "植物正升级概率x2"], ["增益叠加", "多个水域不叠加"], ["旱季影响", "每回合30%变草地"], ["道路", road_text]]
+	if terrain == T_BUILDING:
+		var building: Dictionary = special_buildings.get(_logical_cell(pos), {})
+		var building_name = "洪山科技大厦" if building.get("kind", "") == "hongshan_tech" else "黄鹤楼"
+		return [["建筑/容积", building_name + " / 0"], ["3x3增益", "植物花朵容积x2"], ["增益叠加", "多个建筑不叠加"], ["地块改变", "永久不改变"], ["道路", "不可修建"], ["花朵", "不可播种"]]
+	if terrain == T_MOUNTAIN: return [["类型/容积", "可开发地块 / 0"], ["可用卡牌", "山体开发卡"], ["放置要求", "整组山体且邻接开发区"], ["极端天气", "不会改变"], ["缺口检测", "开发完成后执行"], ["道路/播种", "均不可"]]
+	return [["类型/容积", "封闭缺口 / 0"], ["形成条件", "内部山体被完全包围"], ["检测时机", "仅开发卡完成后"], ["可用卡牌", "建筑开发卡"], ["极端天气", "不会改变"], ["道路/播种", "均不可"]]
+
+func _tile_change_chance(pos: Vector2i) -> float:
+	var chance := 0.0
+	for direction in DIRS:
+		var neighbor = pos + direction
+		if not _in_bounds(neighbor): continue
+		match grid[neighbor.x][neighbor.y]:
+			T_WATER: chance += 0.20
+			T_FOREST: chance += 0.10
+			T_DESERT: chance -= 0.10
+	if chance > 0.0 and _has_neighbor_bonus(pos, T_WATER): chance *= 2.0
+	if chance > 0.0 and active_weather.has("雨季"): chance *= 2.0
+	if chance < 0.0 and active_weather.has("旱季"): chance *= 2.0
+	return chance
 
 func _tile_preview_status(pos: Vector2i) -> String:
 	var terrain: int = grid[pos.x][pos.y]
-	if _is_plant_terrain(terrain): return "可播种 · 可修建道路"
-	if terrain == T_WATER: return "增益地块 · 可修建道路"
+	if terrain == T_FOREST: return "最高级；降为草地时各玩家花朵减半取整"
+	if terrain == T_GRASS: return "可升森林或降荒漠；降荒漠时花朵变为1/5"
+	if terrain == T_DESERT: return "最低级不能再降；可升级为草地"
+	if terrain == T_WATER: return "不能播种；可修路；正概率只翻倍一次"
 	if terrain == T_GAP: return "可放置黄鹤楼或洪山科技大厦"
 	if terrain == T_MOUNTAIN: return "可使用山体开发卡"
-	return "建筑会提升相邻植物地块容量"
+	return "建筑永久不变，并提升周围植物地块容量"
 
 func _terrain_type_meta(terrain: int) -> Array:
 	match terrain:
-		T_GRASS: return [["类型", "植物地块"], ["花朵容积", "50"], ["生长率", "30%"], ["变化", "可升森林/降荒漠"]]
-		T_WATER: return [["类型", "增益地块"], ["相邻影响", "升级概率 +20%"], ["3x3增益", "正升级概率 x2"], ["旱季", "每回合30%变草地"]]
-		T_FOREST: return [["类型", "植物地块"], ["花朵容积", "100"], ["生长率", "50%"], ["变化", "最高级，可降为草地"]]
-		T_DESERT: return [["类型", "植物地块"], ["花朵容积", "10"], ["生长率", "10%"], ["相邻影响", "升级概率 -10%"]]
-		T_BUILDING: return [["类型", "增益地块"], ["3x3增益", "植物容积 x2"], ["道路", "不可修建"], ["结算", "不会改变类型"]]
+		T_GRASS: return [["外观/类型", "绿色 / 植物"], ["容积/生长", "50 / 30%"], ["四邻贡献", "升级概率+0%"], ["升级", "草地变森林"], ["降级", "草地变荒漠"], ["花朵处理", "降级后变为1/5"]]
+		T_WATER: return [["外观/类型", "蓝色 / 增益"], ["花朵容积", "0"], ["四邻贡献", "升级概率+20%"], ["3x3增益", "正升级概率x2"], ["叠加", "多个水域不叠加"], ["旱季", "每回合30%变草地"]]
+		T_FOREST: return [["外观/类型", "深绿 / 植物"], ["容积/生长", "100 / 50%"], ["四邻贡献", "升级概率+10%"], ["等级", "最高级不能再升级"], ["降级", "森林变草地"], ["花朵处理", "降级后减半取整"]]
+		T_DESERT: return [["外观/类型", "黄色 / 植物"], ["容积/生长", "10 / 10%"], ["四邻贡献", "升级概率-10%"], ["等级", "最低级不能再降级"], ["升级", "荒漠变草地"], ["道路/播种", "均可"]]
+		T_BUILDING: return [["外观/类型", "红色 / 增益"], ["花朵容积", "0"], ["3x3增益", "植物容积x2"], ["叠加", "多个建筑不叠加"], ["地块改变", "永久不改变"], ["道路/播种", "均不可"]]
 	return []
 
 func _terrain_type_status(terrain: int) -> String:
@@ -3773,7 +3892,7 @@ func _draw_top_info_bar(vp: Vector2, font: Font, ink: Color, muted: Color):
 	_draw_fitted_text(weather_text.strip_edges(), Rect2(weather_rect.position.x + 42.0, center_y - 9.0, weather_rect.size.x - 48.0, 20.0), font, 11, Color("#37657a"))
 
 func _non_developable_terrain_counts() -> Array:
-	var count_tick = floori(pulse * 4.0)
+	var count_tick: int = floori(pulse * 4.0)
 	if count_tick == top_terrain_count_tick: return top_terrain_counts
 	top_terrain_count_tick = count_tick
 	top_terrain_counts = [0, 0, 0, 0, 0]
