@@ -228,7 +228,7 @@ func _setup_scene():
 		var panel = ColorRect.new(); panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		var glass_material = ShaderMaterial.new(); glass_material.shader = UI_FROSTED_GLASS_SHADER
 		var tint_strength = 0.40 if panel_index == 0 else (0.43 if panel_index == 3 else 0.42)
-		glass_material.set_shader_parameter("tint_color", Color(0.76, 0.80, 0.78, tint_strength))
+		glass_material.set_shader_parameter("tint_color", Color(0.78, 0.78, 0.78, tint_strength))
 		glass_material.set_shader_parameter("blur_lod", 3.2 if panel_index < 3 else 3.4)
 		glass_material.set_shader_parameter("blur_radius", 10.0 if panel_index == 0 else 12.0)
 		panel.material = glass_material; ui_glass_root.add_child(panel); ui_glass_panels.append(panel)
