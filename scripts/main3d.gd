@@ -810,6 +810,7 @@ func _generate_start_tiles():
 				_force_tile(pos, T_MOUNTAIN, false, 0)
 	_generate_development_roads(center_cells)
 	_refresh_road_effects()
+	_refresh_building_auras()
 
 func _random_road_mask() -> int:
 	# Roads are created only by road cards, which always write both ends.
@@ -2132,6 +2133,7 @@ func _apply_develop_card(pos: Vector2i, level: int) -> bool:
 	_ensure_growth_margin(cells)
 	_update_gaps()
 	_refresh_road_effects()
+	_refresh_building_auras()
 	last_settlement = "开发了 %d 格新地块" % cells.size()
 	return true
 
@@ -2160,6 +2162,7 @@ func _apply_building_develop_card(pos: Vector2i, level: int) -> bool:
 			_set_tile_type(cells[i], T_BUILDING, true, 0)
 	_refill_mountain_border()
 	_refresh_building_auras()
+	_refresh_road_effects()
 	last_settlement = "建成洪山科技大厦" if level == 2 else "缺口变为黄鹤楼"
 	return true
 
