@@ -3451,16 +3451,23 @@ func _draw_hand_card_face(card: Dictionary, rect: Rect2, font: Font, ink: Color,
 	# 1. 投影
 	var shadow_alpha = 0.28 if active else 0.18
 	ui_ctrl.draw_rect(Rect2(rect.position + Vector2(5, 8), rect.size), Color(0, 0, 0, shadow_alpha), true)
-	# 2. 四边边框 + 阴影
+	# 2. 四边边框
 	var border_w = 4.0
 	var border_color = accent.lerp(Color.WHITE, 0.20)
-	# 边框阴影（向内偏移）
-	ui_ctrl.draw_rect(Rect2(rect.position + Vector2(border_w, border_w), rect.size - Vector2(border_w * 2, border_w * 2)), Color(0, 0, 0, 0.10), true)
-	# 边框本体（四边）
 	ui_ctrl.draw_rect(rect, border_color, true)
 	# 3. 内容区域（边框内部）
 	var inner = Rect2(rect.position + Vector2(border_w, border_w), rect.size - Vector2(border_w * 2, border_w * 2))
 	ui_ctrl.draw_rect(inner, Color(1.0, 1.0, 0.98, 0.96), true)
+	# 4. 边框立体阴影：边框向卡面右下方投射阴影
+	var sh = 3.0  # 阴影宽度
+	# 顶部内阴影（从边框内边缘向下渐变）
+	for s in sh:
+		var a = 0.12 * (1.0 - s / sh)
+		ui_ctrl.draw_rect(Rect2(inner.position.x, inner.position.y + s, inner.size.x, 1.0), Color(0, 0, 0, a), true)
+	# 左侧内阴影（从边框内边缘向右渐变）
+	for s in sh:
+		var a = 0.10 * (1.0 - s / sh)
+		ui_ctrl.draw_rect(Rect2(inner.position.x + s, inner.position.y, 1.0, inner.size.y), Color(0, 0, 0, a), true)
 	# 4. 连续渐变：accent(顶) → base → 暗base(底) → 白，从上到下越来越淡
 	var rows = 24
 	for row in rows:
