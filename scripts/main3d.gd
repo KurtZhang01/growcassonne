@@ -2,6 +2,7 @@ extends Node3D
 
 const DYNAMIC_SKY_SHADER: Shader = preload("res://shaders/dynamic_sky.gdshader")
 const WATER_TILE_SHADER: Shader = preload("res://shaders/water_tile.gdshader")
+const UI_FROSTED_GLASS_SHADER: Shader = preload("res://shaders/ui_frosted_glass.gdshader")
 
 # ---- Config ----
 const GRID_SIZE := 8
@@ -83,6 +84,7 @@ var draws_remaining := 0
 var dragging_card := false; var drag_card_index := -1; var drag_pointer := Vector2.ZERO
 var card_armed := false; var road_drawing := false
 var hovered_card_index := -1
+var hovered_deck_index := -1
 var pending_develop := {}; var develop_preview_cells := []
 var road_drag_cells := []; var road_drag_level := 0
 var hovered_cell := Vector2i(-1, -1); var pulse := 0.0
@@ -99,7 +101,11 @@ var cam_pan_start := Vector2.ZERO
 const CAM_PAN_SPEED := 0.015
 const CAM_BASE_SIZE := 14.5
 const UI_DESIGN_SIZE := Vector2(1280.0, 720.0)
-const UI_SIDEBAR_WIDTH := 350.0
+const UI_MARGIN := 18.0
+const UI_TOP_HEIGHT := 54.0
+const UI_RAIL_HEIGHT := 214.0
+const UI_SIDE_TOP := 82.0
+const UI_SIDE_BOTTOM := 254.0
 
 # Nodes
 var camera: Camera3D; var grid_root: Node3D; var plant_root: Node3D
@@ -117,6 +123,8 @@ var ranking_y: Dictionary = {}
 var ranking_values: Dictionary = {}
 var card_preview_viewport: SubViewport; var card_preview_root: Node3D; var card_preview_camera: Camera3D
 var card_preview_signature := ""
+var ui_glass_root: Control; var ui_glass_panels := []
+var ui_preview_mode := "card"; var ui_preview_index := 0
 
 func _ready():
 	_setup_scene()
@@ -198,10 +206,21 @@ func _setup_scene():
 	add_child(hover_mesh)
 
 	# UI
-	ui_ctrl = Control.new()
-	ui_ctrl.set_anchors_preset(Control.PRESET_FULL_RECT)
 	var canvas = CanvasLayer.new(); canvas.layer = 10
-	add_child(canvas); canvas.add_child(ui_ctrl)
+	add_child(canvas)
+	var back_buffer = BackBufferCopy.new(); back_buffer.copy_mode = BackBufferCopy.COPY_MODE_VIEWPORT
+	canvas.add_child(back_buffer)
+	ui_glass_root = Control.new(); ui_glass_root.set_anchors_preset(Control.PRESET_FULL_RECT)
+	ui_glass_root.mouse_filter = Control.MOUSE_FILTER_IGNORE; canvas.add_child(ui_glass_root)
+	for panel_index in 4:
+		var panel = ColorRect.new(); panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var glass_material = ShaderMaterial.new(); glass_material.shader = UI_FROSTED_GLASS_SHADER
+		glass_material.set_shader_parameter("tint_color", Color(0.96, 0.96, 0.93, 0.42 if panel_index == 0 else (0.44 if panel_index == 3 else 0.40)))
+		glass_material.set_shader_parameter("blur_lod", 3.2 if panel_index < 3 else 3.4)
+		glass_material.set_shader_parameter("blur_radius", 10.0 if panel_index == 0 else 12.0)
+		panel.material = glass_material; ui_glass_root.add_child(panel); ui_glass_panels.append(panel)
+	ui_ctrl = Control.new(); ui_ctrl.set_anchors_preset(Control.PRESET_FULL_RECT)
+	ui_ctrl.mouse_filter = Control.MOUSE_FILTER_IGNORE; canvas.add_child(ui_ctrl)
 	ui_ctrl.connect("draw", _draw_ui)
 	_setup_card_preview_viewport()
 
@@ -1304,6 +1323,8 @@ func _tile_gap_surface(root: Node3D):
 
 func _clear_tile_selection():
 	selected_tile = Vector2i(-1, -1)
+	if ui_preview_mode == "tile":
+		ui_preview_mode = "card"; ui_preview_index = clampi(selected_card, 0, maxi(current_hand.size() - 1, 0))
 	if not is_instance_valid(tile_select_root): return
 	for child in tile_select_root.get_children(): child.free()
 
@@ -1312,6 +1333,7 @@ func _try_select_tile(pos: Vector2i):
 		_clear_tile_selection(); return
 	_clear_tile_selection()
 	selected_tile = pos
+	ui_preview_mode = "tile"; ui_preview_index = 0
 	var highlight = MeshInstance3D.new(); var mesh = BoxMesh.new()
 	mesh.size = Vector3(1.07, 0.018, 1.07); highlight.mesh = mesh
 	var material = StandardMaterial3D.new()
@@ -1324,29 +1346,7 @@ func _try_select_tile(pos: Vector2i):
 	var tween = create_tween().set_loops()
 	tween.tween_property(material, "albedo_color:a", 0.40, 1.2).set_trans(Tween.TRANS_SINE)
 	tween.tween_property(material, "albedo_color:a", 0.18, 1.2).set_trans(Tween.TRANS_SINE)
-
-	var label = Label3D.new()
-	label.text = _tile_info_text(pos); label.font_size = 20; label.pixel_size = 0.005
-	label.modulate = Color("#f8fbf5"); label.outline_size = 7
-	label.outline_modulate = Color(0.05, 0.08, 0.07, 0.90)
-	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED; label.no_depth_test = true
-	label.render_priority = 100
-	label.position = _world(pos) + Vector3(0, 1.38, 0)
-	tile_select_root.add_child(label)
-	if _is_plant_terrain(grid[pos.x][pos.y]):
-		var player_line := 0
-		for player_id in player_count:
-			var amount: int = flowers[pos.x][pos.y][player_id]
-			if amount <= 0: continue
-			var player_label = Label3D.new()
-			player_label.text = "%s  %d朵" % [PLAYER_NAMES[player_id], amount]
-			player_label.font_size = 18; player_label.pixel_size = 0.0055
-			player_label.modulate = PLAYER_COLORS[player_id]; player_label.outline_size = 7
-			player_label.outline_modulate = Color(0.05, 0.08, 0.07, 0.90)
-			player_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED; player_label.no_depth_test = true
-			player_label.render_priority = 101
-			player_label.position = _world(pos) + Vector3(0, 0.98 - player_line * 0.16, 0)
-			tile_select_root.add_child(player_label); player_line += 1
+	ui_ctrl.queue_redraw()
 
 func _tile_info_text(pos: Vector2i) -> String:
 	var terr: int = grid[pos.x][pos.y]
@@ -1968,6 +1968,7 @@ func _take_card_from_deck(deck_index: int) -> bool:
 func _start_player_turn():
 	current_hand = hands[current_player]
 	selected_card = 0
+	ui_preview_mode = "card"; ui_preview_index = 0
 	draws_remaining = CARDS_DRAWN_PER_TURN
 	state = S.DRAW_CARDS
 	hover_mesh.visible = false
@@ -2042,12 +2043,14 @@ func _card_base_color(card: Dictionary) -> Color:
 
 func _bottom_card_rect(index: int, count: int, vp: Vector2) -> Rect2:
 	var card_size = Vector2(104, 150)
-	var available = maxf(card_size.x, vp.x - UI_SIDEBAR_WIDTH - 38.0)
+	var hand_left = UI_MARGIN + 315.0
+	var hand_right = vp.x - UI_MARGIN - 74.0
+	var available = maxf(card_size.x, hand_right - hand_left)
 	var step = minf(68.0, maxf(4.0, (available - card_size.x) / maxf(float(count - 1), 1.0)))
 	var width = card_size.x + step * maxf(float(count - 1), 0.0)
-	var start_x = maxf(14.0, (available - width) * 0.5 + 14.0)
+	var start_x = hand_left + maxf(0.0, (available - width) * 0.5)
 	var t = (float(index) / maxf(float(count - 1), 1.0) - 0.5) * 2.0
-	var y = vp.y - card_size.y - 28.0 + absf(t) * 14.0
+	var y = vp.y - UI_MARGIN - card_size.y - 21.0 + absf(t) * 14.0
 	if index == hovered_card_index or index == selected_card: y -= 28.0
 	return Rect2(Vector2(start_x + index * step, y), card_size)
 
@@ -2068,8 +2071,8 @@ func _hand_card_has_point(pointer: Vector2, index: int, vp: Vector2) -> bool:
 	var local = (pointer - center).rotated(-_hand_card_angle(index)) / _hand_card_scale(index)
 	return Rect2(-rect.size * 0.5, rect.size).has_point(local)
 
-func _deck_rect(index: int) -> Rect2:
-	return Rect2(26.0 + index * 112.0, 28.0, 94.0, 132.0)
+func _deck_rect(index: int, vp: Vector2) -> Rect2:
+	return Rect2(UI_MARGIN + 14.0 + index * 84.0, vp.y - UI_MARGIN - 148.0, 70.0, 99.0)
 
 func _card_at_pointer(pointer: Vector2, vp: Vector2) -> int:
 	if selected_card >= 0 and selected_card < current_hand.size() and _hand_card_has_point(pointer, selected_card, vp): return selected_card
@@ -2082,6 +2085,7 @@ func _begin_card_drag(index: int):
 	if state != S.PLAY_CARDS or index < 0 or index >= current_hand.size(): return
 	_clear_tile_selection()
 	selected_card = index; dragging_card = true; drag_card_index = index
+	ui_preview_mode = "card"; ui_preview_index = index
 	road_drag_cells.clear(); develop_preview_cells.clear(); pending_develop.clear()
 	var card: Dictionary = current_hand[index]
 	if card["kind"] == "road": road_drag_level = int(card["level"])
@@ -2231,6 +2235,7 @@ func _consume_dragged_card(played_card: Dictionary) -> bool:
 	current_hand.remove_at(consume_index)
 	_sort_current_hand()
 	selected_card = clampi(consume_index, 0, maxi(current_hand.size() - 1, 0))
+	ui_preview_mode = "card"; ui_preview_index = selected_card
 	hands[current_player] = current_hand
 	return true
 
@@ -2354,6 +2359,7 @@ func _play_selected_card(pos: Vector2i) -> bool:
 	if ok:
 		current_hand.remove_at(selected_card)
 		selected_card = clampi(selected_card, 0, maxi(current_hand.size() - 1, 0))
+		ui_preview_mode = "card"; ui_preview_index = selected_card
 		flash_timer = 0.18; flash_color = PLAYER_COLORS[current_player]
 		_calc_all_scores(); ui_ctrl.queue_redraw()
 	return ok
@@ -3039,24 +3045,17 @@ func _process(delta):
 			ranking_values[pid] = lerpf(float(ranking_values.get(pid, 0.0)), float(scores[pid]), minf(delta * 7.0, 1.0))
 
 	var viewport_size = get_viewport().get_visible_rect().size
-	var interface_scale = _ui_scale(viewport_size)
-	var panel_width = UI_SIDEBAR_WIDTH * interface_scale
-	var play_width = maxf(viewport_size.x - panel_width, viewport_size.x * 0.45)
-	var play_aspect = maxf(play_width / maxf(viewport_size.y, 1.0), 0.35)
+	var play_aspect = maxf(viewport_size.x / maxf(viewport_size.y, 1.0), 0.35)
 	var camera_fit = maxf(1.0, 1.05 / play_aspect)
 
-	# Smooth zoom interpolation while keeping the board inside the free play area.
+	# The world fills the viewport; interface panels float above it.
 	cam_zoom = lerp(cam_zoom, cam_zoom_target, delta * 10.0)
 	camera.size = CAM_BASE_SIZE * camera_fit / cam_zoom
 
 	# Smooth pan interpolation
 	cam_offset = cam_offset.lerp(cam_offset_target, delta * 10.0)
 	var base_pos = Vector3(7.2, 14.2, 10.8)
-	# Convert 2D offset to 3D (isometric axes)
-	var ortho_width = camera.size * viewport_size.x / maxf(viewport_size.y, 1.0)
-	var panel_ratio = panel_width / maxf(viewport_size.x, 1.0)
-	var camera_shift = camera.transform.basis.x * ortho_width * panel_ratio * 0.42
-	camera.position = base_pos + Vector3(cam_offset.x, 0, cam_offset.y) + camera_shift
+	camera.position = base_pos + Vector3(cam_offset.x, 0, cam_offset.y)
 
 	ui_ctrl.queue_redraw()
 
@@ -3094,6 +3093,40 @@ func _ui_scale(viewport_size: Vector2) -> float:
 
 func _ui_point(screen_point: Vector2) -> Vector2:
 	return screen_point / _ui_scale(get_viewport().get_visible_rect().size)
+
+func _ui_left_width(vp: Vector2) -> float:
+	return clampf(vp.x * 0.18, 190.0, 226.0)
+
+func _ui_right_width(vp: Vector2) -> float:
+	return clampf(vp.x * 0.23, 240.0, 292.0)
+
+func _ui_top_rect(vp: Vector2) -> Rect2:
+	return Rect2(UI_MARGIN, UI_MARGIN, vp.x - UI_MARGIN * 2.0, UI_TOP_HEIGHT)
+
+func _ui_left_rect(vp: Vector2) -> Rect2:
+	return Rect2(UI_MARGIN, UI_SIDE_TOP, _ui_left_width(vp), maxf(120.0, vp.y - UI_SIDE_TOP - UI_SIDE_BOTTOM))
+
+func _ui_right_rect(vp: Vector2) -> Rect2:
+	var width = _ui_right_width(vp)
+	return Rect2(vp.x - UI_MARGIN - width, UI_SIDE_TOP, width, maxf(120.0, vp.y - UI_SIDE_TOP - UI_SIDE_BOTTOM))
+
+func _ui_rail_rect(vp: Vector2) -> Rect2:
+	return Rect2(UI_MARGIN, vp.y - UI_MARGIN - UI_RAIL_HEIGHT, vp.x - UI_MARGIN * 2.0, UI_RAIL_HEIGHT)
+
+func _end_turn_rect(vp: Vector2) -> Rect2:
+	return Rect2(vp.x - UI_MARGIN - 67.0, vp.y - UI_MARGIN - 67.0, 46.0, 46.0)
+
+func _pointer_over_ui(pointer: Vector2, vp: Vector2) -> bool:
+	return _ui_top_rect(vp).has_point(pointer) or _ui_left_rect(vp).has_point(pointer) or _ui_right_rect(vp).has_point(pointer) or _ui_rail_rect(vp).has_point(pointer)
+
+func _layout_glass_panels(vp: Vector2, interface_scale: float):
+	if ui_glass_panels.size() != 4: return
+	var rects = [_ui_top_rect(vp), _ui_left_rect(vp), _ui_right_rect(vp), _ui_rail_rect(vp)]
+	for index in 4:
+		var panel: ColorRect = ui_glass_panels[index]
+		panel.position = rects[index].position * interface_scale
+		panel.size = rects[index].size * interface_scale
+		panel.visible = state != S.TITLE and state != S.GAME_OVER
 
 func _input(event):
 	if state == S.TITLE:
@@ -3152,6 +3185,10 @@ func _input(event):
 		var pointer = _ui_point(event.position)
 		var ui_view = get_viewport().get_visible_rect().size / _ui_scale(get_viewport().get_visible_rect().size)
 		hovered_card_index = _card_at_pointer(pointer, ui_view) if state == S.PLAY_CARDS and not dragging_card and not card_armed else -1
+		hovered_deck_index = -1
+		if not dragging_card and not card_armed:
+			for deck_index in 3:
+				if _deck_rect(deck_index, ui_view).has_point(pointer): hovered_deck_index = deck_index; break
 		if dragging_card:
 			drag_pointer = event.position
 			_update_card_drag_preview(nc); ui_ctrl.queue_redraw(); return
@@ -3159,6 +3196,9 @@ func _input(event):
 			_extend_road_drag(nc); _update_card_drag_preview(nc); ui_ctrl.queue_redraw(); return
 		if card_armed:
 			drag_pointer = event.position; _update_card_drag_preview(nc); ui_ctrl.queue_redraw(); return
+		if _pointer_over_ui(pointer, ui_view):
+			hover_mesh.visible = false; piece_preview_root.visible = false
+			return
 		if nc != hovered_cell:
 			hovered_cell = nc
 			if state == S.PLACE_TILE:
@@ -3190,9 +3230,12 @@ func _input(event):
 	if event is InputEventMouseButton and event.pressed:
 		var ui_pointer = _ui_point(event.position)
 		var ui_view = get_viewport().get_visible_rect().size / _ui_scale(get_viewport().get_visible_rect().size)
-		if event.button_index == MOUSE_BUTTON_LEFT and state == S.DRAW_CARDS:
+		if event.button_index == MOUSE_BUTTON_LEFT:
 			for deck_index in 3:
-				if _deck_rect(deck_index).has_point(ui_pointer): _take_card_from_deck(deck_index); return
+				if _deck_rect(deck_index, ui_view).has_point(ui_pointer):
+					ui_preview_mode = "deck"; ui_preview_index = deck_index
+					if state == S.DRAW_CARDS: _take_card_from_deck(deck_index)
+					ui_ctrl.queue_redraw(); return
 		if event.button_index == MOUSE_BUTTON_LEFT and state == S.PLAY_CARDS:
 			if card_armed:
 				if not _drag_card_index_is_valid(): _cancel_armed_card(); return
@@ -3202,6 +3245,8 @@ func _input(event):
 				_finish_card_drag(_mouse_to_grid(event.position)); return
 			var card_index = _card_at_pointer(ui_pointer, ui_view)
 			if card_index >= 0: drag_pointer = event.position; _begin_card_drag(card_index); return
+			if _end_turn_rect(ui_view).has_point(ui_pointer): _end_turn(); return
+		if _pointer_over_ui(ui_pointer, ui_view): return
 		var cell = _mouse_to_grid(event.position)
 		if event.button_index == MOUSE_BUTTON_LEFT:
 			if state == S.PLAY_CARDS:
@@ -3218,7 +3263,8 @@ func _input(event):
 		if event.keycode == KEY_R: get_tree().reload_current_scene()
 		elif event.keycode == KEY_ESCAPE and (card_armed or road_drawing or dragging_card): _cancel_armed_card()
 		elif state == S.PLAY_CARDS and event.keycode >= KEY_1 and event.keycode <= KEY_9:
-			selected_card = clampi(event.keycode - KEY_1, 0, maxi(current_hand.size() - 1, 0)); ui_ctrl.queue_redraw()
+			selected_card = clampi(event.keycode - KEY_1, 0, maxi(current_hand.size() - 1, 0))
+			ui_preview_mode = "card"; ui_preview_index = selected_card; ui_ctrl.queue_redraw()
 		elif state == S.PLAY_CARDS and (event.keycode == KEY_ENTER or event.keycode == KEY_KP_ENTER or event.keycode == KEY_SPACE):
 			_end_turn()
 		elif state == S.PLAY_CARDS and event.keycode == KEY_Q:
@@ -3244,91 +3290,188 @@ func _draw_ui():
 	var font = ThemeDB.fallback_font
 	var screen_size = get_viewport().get_visible_rect().size
 	var interface_scale = _ui_scale(screen_size)
-	ui_ctrl.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE * interface_scale)
 	var vp = screen_size / interface_scale
-	var panel_width = clampf(vp.x - 40.0, 140.0, 270.0)
-	var ux = maxf(20.0, vp.x - panel_width - 20.0); var uy = 50.0
-	var content_width = maxf(1.0, panel_width - 24.0)
-	var glass = Color(0.96, 0.99, 0.96, 0.48)
-	var glass_strong = Color(1.00, 1.00, 0.98, 0.58)
-	var glass_soft = Color(0.86, 0.95, 0.92, 0.38)
-	var glass_line = Color(1.00, 1.00, 1.00, 0.52)
+	_layout_glass_panels(vp, interface_scale)
+	ui_ctrl.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE * interface_scale)
 	var ink = Color(0.08, 0.14, 0.13)
-	var muted = Color(0.36, 0.48, 0.45)
+	var muted = Color(0.34, 0.42, 0.39)
 
 	if state == S.TITLE: _draw_title(vp, font); return
 	if state == S.GAME_OVER: _draw_gameover(vp, font); return
 
+	for panel in [_ui_top_rect(vp), _ui_left_rect(vp), _ui_right_rect(vp), _ui_rail_rect(vp)]:
+		ui_ctrl.draw_rect(panel, Color(1.0, 1.0, 1.0, 0.40), false, 1.0)
 	_draw_top_info_bar(vp, font, ink, muted)
-	var pcol = PLAYER_COLORS[current_player]
-	_draw_glass_card(Rect2(ux, uy, panel_width, 54), glass_strong, pcol.lightened(0.10))
-	var st := "抽牌 %d / 3" % (3 - draws_remaining) if state == S.DRAW_CARDS else "出牌阶段"
-	ui_ctrl.draw_circle(Vector2(ux + 24, uy + 27), 8, pcol)
-	var header_text_width = maxf(1.0, content_width - 30.0)
-	var player_width = minf(78.0, header_text_width * 0.42)
-	_draw_fitted_text(PLAYER_NAMES[current_player], Rect2(ux + 42, uy + 13, player_width, 24), font, 15, pcol.darkened(0.16))
-	_draw_fitted_text(st, Rect2(ux + 48 + player_width, uy + 11, maxf(1.0, header_text_width - player_width - 6.0), 26), font, 18, ink)
-
-	var sy = uy + 70
-	_draw_glass_card(Rect2(ux, sy - 6, panel_width, 225), glass, glass_line)
-	_draw_fitted_text("守育进度", Rect2(ux + 12, sy - 8, content_width, 18), font, 13, muted)
-	_draw_fitted_text("%d / %d" % [turns_played + 1, total_turns], Rect2(ux + 12, sy + 10, content_width, 26), font, 22, ink)
-	var bp = float(turns_played) / total_turns
-	ui_ctrl.draw_rect(Rect2(ux + 12, sy + 40, content_width, 8), Color(1.0, 1.0, 1.0, 0.38), 0, true, 4.0)
-	ui_ctrl.draw_rect(Rect2(ux + 12, sy + 40, content_width * bp, 8), pcol, 0, true, 4.0)
-
-	var seed_column_width = minf(100.0, content_width * 0.42)
-	_draw_fitted_text("播种卡 %s" % str(seeds[current_player]), Rect2(ux + 12, sy + 57, seed_column_width, 22), font, 13, muted)
-	_draw_fitted_text("花朵总数", Rect2(ux + 18 + seed_column_width, sy + 57, maxf(1.0, content_width - seed_column_width - 6.0), 22), font, 13, muted)
-	var name_width = clampf(content_width * 0.24, 34.0, 60.0)
-	var score_width = clampf(content_width * 0.16, 24.0, 50.0)
-	var bar_width = maxf(8.0, content_width - name_width - score_width - 12.0)
-	for i in player_count:
-		var row_y: float = sy + 92 + float(ranking_y.get(i, i * 30.0))
-		var amount: float = float(ranking_values.get(i, scores[i]))
-		var maximum: float = maxf(float(scores.max()), 1.0)
-		_draw_fitted_text(PLAYER_NAMES[i], Rect2(ux + 12, row_y - 14, name_width, 18), font, 12, PLAYER_COLORS[i])
-		var bar_x = ux + 18 + name_width
-		ui_ctrl.draw_rect(Rect2(bar_x, row_y - 10, bar_width, 10), Color(0.2, 0.3, 0.25, 0.12))
-		ui_ctrl.draw_rect(Rect2(bar_x, row_y - 10, bar_width * clampf(amount / maximum, 0.0, 1.0), 10), PLAYER_COLORS[i])
-		_draw_fitted_text(str(roundi(amount)), Rect2(bar_x + bar_width + 6, row_y - 14, score_width, 18), font, 13, ink)
-
-	var wy = sy + 243
-	_draw_glass_card(Rect2(ux, wy - 8, panel_width, 62), glass_soft, glass_line)
-	var weather_text := "天气："
-	if active_weather.is_empty() and rainbow_turns <= 0:
-		weather_text += "平稳"
-	else:
-		for weather in active_weather.keys():
-			weather_text += "%s%d " % [weather, active_weather[weather]]
-		if rainbow_turns > 0: weather_text += "彩虹 "
-	_draw_fitted_text(weather_text, Rect2(ux + 12, wy - 10, content_width, 22), font, 13, ink)
-	_draw_fitted_text(last_settlement, Rect2(ux + 12, wy + 15, content_width, 22), font, 12, muted)
-	_draw_fitted_text("最近操作", Rect2(ux + 12, wy + 66, content_width, 20), font, 13, ink)
-	var history_top = wy + 92.0
-	var history_bottom = vp.y - 62.0
-	var visible_history_count = mini(action_history.size(), maxi(0, floori((history_bottom - history_top) / 24.0)))
-	for index in visible_history_count:
-		_draw_fitted_text(action_history[index], Rect2(ux + 12, history_top + index * 24, content_width, 22), font, 12, _player_text_color(action_history[index], muted))
-
-	ui_ctrl.draw_line(Vector2(ux + 4, vp.y - 55), Vector2(ux + panel_width - 4, vp.y - 55), Color(1.0, 1.0, 1.0, 0.28), 1.0)
-	_draw_fitted_text("滚轮缩放 · 中键平移 · R 重开", Rect2(ux + 12, vp.y - 48, content_width, 22), font, 12, muted)
-	_draw_public_decks(font, ink, muted)
-	_draw_develop_preview_panel(vp, font, ink, muted)
+	_draw_context_preview_panel(vp, font, ink, muted)
+	_draw_right_info_panel(vp, font, ink, muted)
+	_draw_card_rail_labels(vp, font, muted)
+	_draw_public_decks(vp, font, ink, muted)
 	_draw_bottom_hand(vp, font, ink, muted, interface_scale)
+	_draw_end_turn_button(vp, font)
 
-func _draw_develop_preview_panel(vp: Vector2, font: Font, ink: Color, muted: Color):
-	if not card_armed and not dragging_card: return
-	if drag_card_index < 0 or drag_card_index >= current_hand.size(): return
-	var card: Dictionary = current_hand[drag_card_index]
-	if card["kind"] != "develop" and card["kind"] != "building_develop": return
-	_rebuild_card_model_preview(card)
-	var panel_w = minf(380.0, vp.x - 48.0)
-	var panel_h = 280.0
-	var panel = Rect2(vp.x - panel_w - 16.0, vp.y - panel_h - 56.0, panel_w, panel_h)
-	# 只画标题，不画背景面板
-	_draw_fitted_text("地块预览（Q/E旋转）", Rect2(panel.position + Vector2(4, 2), Vector2(panel_w - 8, 18)), font, 13, Color("#d8dcd0"))
-	ui_ctrl.draw_texture_rect(card_preview_viewport.get_texture(), Rect2(panel.position + Vector2(0, 20), Vector2(panel_w, panel_h - 24)), false)
+func _draw_context_preview_panel(vp: Vector2, font: Font, ink: Color, muted: Color):
+	var panel = _ui_left_rect(vp); var inner = panel.grow(-18.0)
+	var title = "卡牌预览"; var name = "暂无可预览内容"; var status = "点击牌库、卡牌或棋盘地块查看详情"
+	var meta: Array = []
+	var stage_height = minf(190.0, maxf(120.0, inner.size.y - 208.0))
+	var stage = Rect2(inner.position + Vector2(0, 74), Vector2(inner.size.x, stage_height))
+	if ui_preview_mode == "deck":
+		title = "牌库概率"; name = ["开发卡堆", "道路卡堆", "天气卡堆"][clampi(ui_preview_index, 0, 2)]
+		_draw_deck_probability_preview(ui_preview_index, stage, font, ink, muted)
+		meta = [["抽牌状态", "%d / %d" % [CARDS_DRAWN_PER_TURN - draws_remaining, CARDS_DRAWN_PER_TURN]], ["剩余次数", str(draws_remaining)]]
+		status = "抽牌后按类别、等级自动整理"
+	elif ui_preview_mode == "tile" and _in_bounds(selected_tile) and grid[selected_tile.x][selected_tile.y] >= 0:
+		var terrain: int = grid[selected_tile.x][selected_tile.y]
+		title = "地块属性"; name = TERRAIN_NAMES[terrain]
+		_rebuild_selected_tile_preview(selected_tile)
+		ui_ctrl.draw_texture_rect(card_preview_viewport.get_texture(), stage, false)
+		meta = _tile_preview_meta(selected_tile)
+		status = _tile_preview_status(selected_tile)
+	elif not current_hand.is_empty():
+		ui_preview_index = clampi(ui_preview_index, 0, current_hand.size() - 1)
+		var card: Dictionary = current_hand[ui_preview_index]
+		title = _card_preview_title(card); name = str(card["name"])
+		_draw_card_context_stage(card, stage, font, ink, muted)
+		meta = _card_preview_meta(card)
+		status = _card_preview_status(card)
+	_draw_fitted_text(title, Rect2(inner.position, Vector2(inner.size.x, 18)), font, 11, muted)
+	_draw_fitted_text(name, Rect2(inner.position + Vector2(0, 27), Vector2(inner.size.x, 28)), font, 18, ink)
+	ui_ctrl.draw_line(Vector2(stage.position.x, stage.position.y - 8), Vector2(stage.end.x, stage.position.y - 8), Color(0.20, 0.30, 0.26, 0.18), 1.0)
+	ui_ctrl.draw_line(Vector2(stage.position.x, stage.end.y + 4), Vector2(stage.end.x, stage.end.y + 4), Color(0.20, 0.30, 0.26, 0.18), 1.0)
+	var meta_y = stage.end.y + 16.0
+	for row in mini(meta.size(), 4):
+		_draw_fitted_text(str(meta[row][0]), Rect2(inner.position.x, meta_y + row * 20.0, inner.size.x * 0.50, 18), font, 11, muted)
+		_draw_fitted_text(str(meta[row][1]), Rect2(inner.position.x + inner.size.x * 0.50, meta_y + row * 20.0, inner.size.x * 0.50, 18), font, 11, ink)
+	var status_y = minf(panel.end.y - 31.0, meta_y + mini(meta.size(), 4) * 20.0 + 8.0)
+	ui_ctrl.draw_line(Vector2(inner.position.x, status_y - 8), Vector2(inner.end.x, status_y - 8), Color(0.20, 0.30, 0.26, 0.18), 1.0)
+	_draw_fitted_text(status, Rect2(inner.position.x, status_y, inner.size.x, 20), font, 11, Color("#367052"))
+
+func _draw_deck_probability_preview(deck_index: int, rect: Rect2, font: Font, ink: Color, muted: Color):
+	var rows: Array
+	match clampi(deck_index, 0, 2):
+		0: rows = [["1级山体", 20.5, Color("#7f8783")], ["2级山体", 20.5, Color("#8f7b70")], ["3级山体", 20.5, Color("#a8795b")], ["4级山体", 20.5, Color("#bd7446")], ["建筑开发", 18.0, Color("#c7352e")]]
+		1: rows = [["1级道路", 33.3, Color("#d7b64f")], ["2级道路", 33.3, Color("#ba9343")], ["3级道路", 33.4, Color("#8c6d35")]]
+		_: rows = [["台风", 20.0, Color("#5b8eb2")], ["沙尘暴", 20.0, Color("#b8894c")], ["雨季", 20.0, Color("#65a9d8")], ["旱季", 20.0, Color("#d39a48")], ["彩虹", 20.0, Color("#7faa72")]]
+	var row_h = minf(29.0, rect.size.y / maxf(float(rows.size()), 1.0))
+	for index in rows.size():
+		var row: Array = rows[index]; var y = rect.position.y + index * row_h + 5.0
+		_draw_fitted_text(str(row[0]), Rect2(rect.position.x, y, 58, 18), font, 10, muted)
+		var bar = Rect2(rect.position.x + 63, y + 5, maxf(18.0, rect.size.x - 97.0), 7)
+		ui_ctrl.draw_rect(bar, Color(0.20, 0.30, 0.26, 0.12), true)
+		ui_ctrl.draw_rect(Rect2(bar.position, Vector2(bar.size.x * float(row[1]) / 100.0, bar.size.y)), row[2], true)
+		_draw_fitted_text("%.1f%%" % float(row[1]), Rect2(rect.end.x - 31, y, 31, 18), font, 9, ink)
+
+func _draw_card_context_stage(card: Dictionary, rect: Rect2, font: Font, ink: Color, muted: Color):
+	ui_ctrl.draw_rect(rect, Color(0.24, 0.34, 0.29, 0.07), true)
+	if card["kind"] == "develop" or card["kind"] == "building_develop":
+		_rebuild_card_model_preview(card)
+		ui_ctrl.draw_texture_rect(card_preview_viewport.get_texture(), rect, false)
+	else:
+		_draw_card_model_icon(card, rect.get_center() + Vector2(0, -12), _card_accent(card).lightened(0.08))
+		_draw_fitted_text(_card_effect_text(card), Rect2(rect.position + Vector2(8, rect.size.y - 39), Vector2(rect.size.x - 16, 30)), font, 11, ink)
+
+func _card_preview_title(card: Dictionary) -> String:
+	match card["kind"]:
+		"develop": return "开发卡预览"
+		"building_develop": return "建筑卡预览"
+		"weather": return "天气效果预览"
+		"road": return "道路卡预览"
+	return "播种卡预览"
+
+func _card_preview_meta(card: Dictionary) -> Array:
+	match card["kind"]:
+		"seed": return [["花朵数量", "%d朵" % (int(card["level"]) * 10)], ["目标", "植物地块"], ["容量检查", "需要"], ["玩家", PLAYER_NAMES[current_player]]]
+		"develop":
+			var roads_data: Array = card.get("rolled_roads", [])
+			var segment_count := 0
+			for mask in roads_data: segment_count += _count_mask_bits(int(mask))
+			return [["形状", "%d格组合" % int(card["level"])], ["旋转", "%d°" % (piece_rotation * 90)], ["生成道路", "%d段" % (segment_count / 2)], ["落点要求", "相邻开发区"]]
+		"building_develop": return [["占地", "1 × 2" if int(card["level"]) == 2 else "1 × 1"], ["建筑", "洪山科技大厦" if int(card["level"]) == 2 else "黄鹤楼"], ["旋转", "%d°" % (piece_rotation * 90)], ["目标", "完整缺口"]]
+		"road": return [["路径长度", "%d格" % (int(card["level"]) + 1)], ["允许转弯", "是"], ["目标", "植物/增益地块"], ["建筑地块", "不可通过"]]
+		"weather": return [["作用范围", "全棋盘"], ["持续时间", "%d回合" % (1 if card.get("weather", "") == "彩虹" else 3)], ["天气效果", _card_effect_text(card)], ["互斥天气", _weather_conflicts(str(card.get("weather", "")))]]
+	return []
+
+func _card_preview_status(card: Dictionary) -> String:
+	match card["kind"]:
+		"develop", "building_develop": return "拖出后显示真实地块并支持旋转放置"
+		"road": return "拖出后在棋盘连续绘制道路"
+		"weather": return "拖出界面即可使用，并立即改变环境"
+	return "拖出界面后选择可播种的植物地块"
+
+func _card_effect_text(card: Dictionary) -> String:
+	if card["kind"] != "weather": return _card_description(card)
+	match str(card.get("weather", "")):
+		"台风": return "生长与扩散减半"
+		"沙尘暴": return "生长与扩散减半"
+		"雨季": return "植物升级概率翻倍"
+		"旱季": return "植物降级，水域可能变草地"
+		"彩虹": return "清除极端天气，生长翻倍"
+	return "改变本轮环境"
+
+func _weather_conflicts(weather: String) -> String:
+	if weather == "旱季": return "雨季、台风"
+	if weather == "雨季" or weather == "台风": return "旱季"
+	if weather == "彩虹": return "清除全部"
+	return "无"
+
+func _count_mask_bits(mask: int) -> int:
+	var count := 0
+	for bit in 4:
+		if (mask & (1 << bit)) != 0: count += 1
+	return count
+
+func _tile_preview_meta(pos: Vector2i) -> Array:
+	var terrain: int = grid[pos.x][pos.y]; var road_text = _road_mask_text(roads[pos.x][pos.y])
+	if _is_plant_terrain(terrain):
+		var growth: float = TERRAIN_GROWTH[terrain]; var spread: float = TERRAIN_SPREAD[terrain]
+		if _has_extreme_weather(): growth *= 0.5; spread *= 0.5
+		if rainbow_turns > 0: growth *= 2.0; spread *= 2.0
+		var flower_parts := []
+		for player_id in player_count:
+			if flowers[pos.x][pos.y][player_id] > 0: flower_parts.append("P%d:%d" % [player_id + 1, flowers[pos.x][pos.y][player_id]])
+		return [["花朵/容量", "%d / %d" % [_flower_total(pos), _tile_capacity(pos)]], ["玩家花朵", "  ".join(flower_parts) if not flower_parts.is_empty() else "暂无"], ["生长/扩散", "%.2f / %.2f" % [growth, spread]], ["道路", road_text]]
+	if terrain == T_WATER: return [["类型", "增益地块"], ["相邻增益", "升级概率翻倍"], ["旱季影响", "30%变为草地"], ["道路", road_text]]
+	if terrain == T_BUILDING: return [["类型", "建筑地块"], ["相邻增益", "植物容积翻倍"], ["影响范围", "3 × 3"], ["道路", "不可修建"]]
+	if terrain == T_MOUNTAIN: return [["类型", "非开发地块"], ["开发条件", "邻接已开发区"], ["覆盖", "不可覆盖缺口"], ["道路", "无"]]
+	return [["类型", "封闭缺口"], ["形成条件", "被地块完全包围"], ["可用卡牌", "建筑开发卡"], ["道路", "无"]]
+
+func _tile_preview_status(pos: Vector2i) -> String:
+	var terrain: int = grid[pos.x][pos.y]
+	if _is_plant_terrain(terrain): return "可播种 · 可修建道路"
+	if terrain == T_WATER: return "增益地块 · 可修建道路"
+	if terrain == T_GAP: return "可放置黄鹤楼或洪山科技大厦"
+	if terrain == T_MOUNTAIN: return "可使用山体开发卡"
+	return "建筑会提升相邻植物地块容量"
+
+func _road_mask_text(mask: int) -> String:
+	if mask == 0: return "无"
+	var names := []
+	for bit in 4:
+		if (mask & (1 << bit)) != 0: names.append(["北", "东", "南", "西"][bit])
+	return "".join(names) + "连通"
+
+func _rebuild_selected_tile_preview(pos: Vector2i):
+	var signature = "tile|%s|%d|%d" % [str(_logical_cell(pos)), grid[pos.x][pos.y], roads[pos.x][pos.y]]
+	if signature == card_preview_signature: return
+	card_preview_signature = signature
+	for child in card_preview_root.get_children(): child.free()
+	var terrain: int = grid[pos.x][pos.y]; var root = Node3D.new(); card_preview_root.add_child(root)
+	if terrain != T_GAP: _spawn_island_base(root, terrain)
+	match terrain:
+		T_GRASS: _tile_grass_surface(root, roads[pos.x][pos.y])
+		T_WATER: _tile_water_surface(root, roads[pos.x][pos.y])
+		T_FOREST: _tile_forest_surface(root, roads[pos.x][pos.y])
+		T_DESERT: _tile_desert_surface(root, roads[pos.x][pos.y])
+		T_MOUNTAIN: _tile_mountain_surface(root)
+		T_GAP: _tile_gap_surface(root)
+		T_BUILDING:
+			var building: Dictionary = special_buildings.get(_logical_cell(pos), {})
+			if building.get("kind", "") == "hongshan_tech": _tile_hongshan_tech_surface(root, building)
+			else: _tile_pavilion_surface(root, 0)
+	_spawn_decor(terrain, root, roads[pos.x][pos.y])
+	if roads[pos.x][pos.y] != 0 and terrain != T_BUILDING: _spawn_road(root, roads[pos.x][pos.y])
+	card_preview_camera.size = 2.7
+	var target = Vector3(0, 0.25, 0); card_preview_camera.look_at_from_position(target + Vector3(3.2, 3.4, 4.2), target)
 
 func _rebuild_card_model_preview(card: Dictionary):
 	var terrains: Array = pending_develop.get("terrains", card.get("rolled_terrains", []))
@@ -3377,80 +3520,95 @@ func _spawn_exact_preview_tile(root: Node3D, terrain: int, card: Dictionary, ind
 	_spawn_decor(terrain, root, 0)
 
 func _draw_top_info_bar(vp: Vector2, font: Font, ink: Color, muted: Color):
-	var bar_y = 8.0; var bar_h = 36.0
-	# 背景
-	ui_ctrl.draw_rect(Rect2(8, bar_y, vp.x - 16, bar_h), Color(0.08, 0.10, 0.12, 0.82), 0, false)
-	var x = 20.0
+	var bar = _ui_top_rect(vp); var x = bar.position.x + 18.0; var center_y = bar.get_center().y
+	_draw_fitted_text("花之江城", Rect2(x, center_y - 12.0, 78.0, 24.0), font, 17, ink)
+	_draw_fitted_text("WUHAN IN BLOOM", Rect2(x + 82.0, center_y - 9.0, 112.0, 20.0), font, 11, muted)
+	x += 220.0
 	var terrain_colors = [Color("#5fae55"), Color("#3f94bd"), Color("#2f7048"), Color("#c8944e")]
-	var names_short = ["草", "水", "林", "漠"]
+	var names_short = ["草地", "水域", "森林", "荒漠"]
 	var base_rates = [0.3, 0.0, 0.5, 0.1]
-	var caps = [50, 0, 100, 10]
 	for i in 4:
-		var rate = base_rates[i]
+		var rate: float = base_rates[i]
 		if _has_extreme_weather(): rate *= 0.5
 		if rainbow_turns > 0: rate *= 2.0
-		ui_ctrl.draw_rect(Rect2(x, bar_y + 8, 14, 14), terrain_colors[i], 0, true, 3.0)
-		ui_ctrl.draw_string(font, Vector2(x + 18, bar_y + 20), "%s %.1f" % [names_short[i], rate], HORIZONTAL_ALIGNMENT_LEFT, 60, 12, Color("#d0d8d4"))
-		x += 82.0
-	# 分隔线
-	ui_ctrl.draw_line(Vector2(x, bar_y + 6), Vector2(x, bar_y + bar_h - 6), Color(1, 1, 1, 0.15), 1.0)
-	x += 12.0
-	# 升级/降级状态
-	var up_color = Color("#88aa88", 0.6); var down_color = Color("#aa8888", 0.6)
-	var up_text = "升级"; var down_text = "降级"
-	if active_weather.has("雨季"): up_text = "升级×2"; up_color = Color("#60dd80")
-	if active_weather.has("旱季"): down_text = "降级×2"; down_color = Color("#dd6060")
-	if rainbow_turns > 0: up_text = "升级×2"; up_color = Color("#60dd80")
-	ui_ctrl.draw_string(font, Vector2(x, bar_y + 15), up_text, HORIZONTAL_ALIGNMENT_LEFT, 60, 12, up_color)
-	ui_ctrl.draw_string(font, Vector2(x, bar_y + 30), down_text, HORIZONTAL_ALIGNMENT_LEFT, 60, 12, down_color)
-	x += 72.0
-	# 当前天气
+		ui_ctrl.draw_rect(Rect2(x, center_y - 5.0, 8.0, 8.0), terrain_colors[i], true)
+		_draw_fitted_text("%s %.1f" % [names_short[i], rate], Rect2(x + 13.0, center_y - 9.0, 65.0, 20.0), font, 11, muted)
+		x += 79.0
+	var weather_text = "平稳"
 	if not active_weather.is_empty() or rainbow_turns > 0:
-		ui_ctrl.draw_line(Vector2(x, bar_y + 6), Vector2(x, bar_y + bar_h - 6), Color(1, 1, 1, 0.15), 1.0)
-		x += 12.0
-		var wt = ""
-		for w in active_weather.keys(): wt += "%s%d " % [w, active_weather[w]]
-		if rainbow_turns > 0: wt += "彩虹 "
-		ui_ctrl.draw_string(font, Vector2(x, bar_y + 22), wt.strip_edges(), HORIZONTAL_ALIGNMENT_LEFT, 200, 12, Color("#d4c080"))
+		weather_text = ""
+		for weather in active_weather.keys(): weather_text += "%s · %d回合  " % [weather, active_weather[weather]]
+		if rainbow_turns > 0: weather_text += "彩虹 · %d回合" % rainbow_turns
+	var weather_width = minf(190.0, bar.end.x - x - 18.0)
+	ui_ctrl.draw_circle(Vector2(bar.end.x - weather_width + 3.0, center_y), 4.0, Color("#65a9d8"))
+	_draw_fitted_text(weather_text.strip_edges(), Rect2(bar.end.x - weather_width + 14.0, center_y - 9.0, weather_width - 14.0, 20.0), font, 11, Color("#37657a"))
 
-func _draw_public_decks(font: Font, ink: Color, muted: Color):
-	var names = ["开发卡", "道路卡", "天气卡"]
-	var accents = [Color("#c47a42"), Color("#ae8b55"), Color("#568eb0")]
-	var bases = [Color("#a9afb2"), Color("#e8c34f"), Color("#65a9d8")]
-	var fade_targets = [Color("#f0d0b0"), Color(1.0, 1.0, 0.97, 1.0), Color("#d0e4f4")]
+func _draw_right_info_panel(vp: Vector2, font: Font, ink: Color, muted: Color):
+	var panel = _ui_right_rect(vp); var inner = panel.grow(-20.0); var pcol = PLAYER_COLORS[current_player]
+	ui_ctrl.draw_rect(Rect2(inner.position, Vector2(8, 38)), pcol, true)
+	_draw_fitted_text(PLAYER_NAMES[current_player], Rect2(inner.position + Vector2(17, 1), Vector2(105, 24)), font, 18, pcol.darkened(0.18))
+	var phase = "抽牌 %d / %d" % [CARDS_DRAWN_PER_TURN - draws_remaining, CARDS_DRAWN_PER_TURN] if state == S.DRAW_CARDS else "出牌阶段"
+	_draw_fitted_text(phase, Rect2(inner.position + Vector2(17, 24), Vector2(120, 18)), font, 11, muted)
+	_draw_fitted_text("%02d" % (turns_played + 1), Rect2(inner.end.x - 42.0, inner.position.y + 3.0, 42.0, 28.0), font, 22, ink)
+	var y = inner.position.y + 48.0
+	ui_ctrl.draw_line(Vector2(inner.position.x, y), Vector2(inner.end.x, y), Color(0.20, 0.30, 0.26, 0.18), 1.0)
+	_draw_fitted_text("守育进度", Rect2(inner.position.x, y + 9, 100, 18), font, 11, muted)
+	_draw_fitted_text("%d / %d" % [turns_played + 1, total_turns], Rect2(inner.end.x - 64, y + 9, 64, 18), font, 11, muted)
+	var progress = clampf(float(turns_played) / maxf(float(total_turns), 1.0), 0.0, 1.0)
+	ui_ctrl.draw_rect(Rect2(inner.position.x, y + 30, inner.size.x, 7), Color(1.0, 1.0, 1.0, 0.44), true)
+	ui_ctrl.draw_rect(Rect2(inner.position.x, y + 30, inner.size.x * progress, 7), pcol.darkened(0.16), true)
+	y += 43.0
+	ui_ctrl.draw_line(Vector2(inner.position.x, y), Vector2(inner.end.x, y), Color(0.20, 0.30, 0.26, 0.18), 1.0)
+	_draw_fitted_text("花朵排名", Rect2(inner.position.x, y + 8, 100, 18), font, 11, muted)
+	_draw_fitted_text("播种卡 %d" % seeds[current_player], Rect2(inner.end.x - 84, y + 8, 84, 18), font, 11, muted)
+	var rank_top = y + 31.0; var maximum = maxf(float(scores.max()), 1.0)
+	for player_id in player_count:
+		var animated_rank_y: float = float(ranking_y.get(player_id, player_id * 30.0)) / 30.0 * 21.0
+		var row_y: float = rank_top + animated_rank_y
+		var amount: float = float(ranking_values.get(player_id, scores[player_id]))
+		ui_ctrl.draw_circle(Vector2(inner.position.x + 4.0, row_y + 3.0), 3.5, PLAYER_COLORS[player_id])
+		_draw_fitted_text(PLAYER_NAMES[player_id], Rect2(inner.position.x + 14, row_y - 5, 50, 18), font, 10, PLAYER_COLORS[player_id])
+		var bar_x = inner.position.x + 69.0; var bar_w = maxf(20.0, inner.size.x - 99.0)
+		ui_ctrl.draw_rect(Rect2(bar_x, row_y, bar_w, 5), Color(1.0, 1.0, 1.0, 0.42), true)
+		ui_ctrl.draw_rect(Rect2(bar_x, row_y, bar_w * clampf(amount / maximum, 0.0, 1.0), 5), PLAYER_COLORS[player_id], true)
+		_draw_fitted_text(str(roundi(amount)), Rect2(inner.end.x - 25, row_y - 6, 25, 18), font, 10, ink)
+	y = rank_top + player_count * 21.0 + 5.0
+	ui_ctrl.draw_line(Vector2(inner.position.x, y), Vector2(inner.end.x, y), Color(0.20, 0.30, 0.26, 0.18), 1.0)
+	_draw_fitted_text("操作历史", Rect2(inner.position.x, y + 8, 100, 18), font, 11, muted)
+	_draw_fitted_text("最近4条", Rect2(inner.end.x - 54, y + 8, 54, 18), font, 10, muted)
+	var history_top = y + 30.0
+	var visible_count = mini(action_history.size(), maxi(0, floori((inner.end.y - history_top - 2.0) / 25.0)))
+	for index in visible_count:
+		var color = _player_text_color(action_history[index], muted)
+		ui_ctrl.draw_rect(Rect2(inner.position.x, history_top + index * 25.0, 4, 19), color, true)
+		_draw_fitted_text(action_history[index], Rect2(inner.position.x + 12, history_top + index * 25.0, inner.size.x - 12, 20), font, 10, color)
+
+func _draw_card_rail_labels(vp: Vector2, font: Font, muted: Color):
+	var rail = _ui_rail_rect(vp)
+	_draw_fitted_text("公共卡堆 · 抽牌 %d / %d" % [CARDS_DRAWN_PER_TURN - draws_remaining, CARDS_DRAWN_PER_TURN], Rect2(rail.position + Vector2(20, 10), Vector2(260, 18)), font, 11, muted)
+	_draw_fitted_text("%s手牌 · %d张" % [PLAYER_NAMES[current_player], current_hand.size()], Rect2(rail.end.x - 170, rail.position.y + 10, 150, 18), font, 11, PLAYER_COLORS[current_player])
+	ui_ctrl.draw_line(Vector2(rail.position.x + 300, rail.position.y + 28), Vector2(rail.position.x + 300, rail.end.y - 14), Color(0.20, 0.30, 0.26, 0.20), 1.0)
+
+func _draw_end_turn_button(vp: Vector2, font: Font):
+	var rect = _end_turn_rect(vp)
+	ui_ctrl.draw_rect(Rect2(rect.position + Vector2(0, 5), rect.size), Color(0.03, 0.10, 0.08, 0.28), true)
+	ui_ctrl.draw_rect(rect, Color("#18382f"), true)
+	ui_ctrl.draw_string(font, rect.position + Vector2(0, 32), "✓", HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, 24, Color.WHITE)
+
+func _draw_public_decks(vp: Vector2, font: Font, ink: Color, muted: Color):
+	var cards = [
+		{"kind": "develop", "name": "开发卡", "level": 3, "deck": "开发", "shape": 0},
+		{"kind": "road", "name": "道路卡", "level": 2, "deck": "道路"},
+		{"kind": "weather", "name": "天气卡", "level": 1, "deck": "天气", "weather": "雨季"},
+	]
 	for i in 3:
-		var rect = _deck_rect(i)
-		var accent = accents[i]; var base = bases[i]; var fade = fade_targets[i]
-		# 投影
-		ui_ctrl.draw_rect(Rect2(rect.position + Vector2(4, 6), rect.size), Color(0, 0, 0, 0.20), true)
-		# 白色底
-		ui_ctrl.draw_rect(rect, Color(1.0, 1.0, 0.98, 0.96), true)
-		# 渐变（覆盖白底内部）
-		var border_w = 3.0
-		var inner = Rect2(rect.position + Vector2(border_w, border_w), rect.size - Vector2(border_w * 2, border_w * 2))
-		var rows = 16
-		for row in rows:
-			var t = float(row) / float(rows - 1)
-			var band_color: Color
-			if t < 0.45:
-				band_color = accent.lerp(fade, t / 0.45)
-			else:
-				band_color = fade.lerp(Color(1.0, 1.0, 0.97, 1.0), (t - 0.45) / 0.55)
-			var band_y = inner.position.y + inner.size.y * t
-			var next_y = inner.position.y + inner.size.y * float(row + 1) / float(rows)
-			ui_ctrl.draw_rect(Rect2(inner.position.x, band_y, inner.size.x, next_y - band_y + 1.0), band_color, true)
-		# 底纹
-		var deck_kind = ["develop", "road", "weather"][i]
-		_draw_repeating_card_pattern(inner, deck_kind, Color(1, 1, 1, 0.35))
-		# 方框边框
-		var border_color = accent.lerp(Color.WHITE, 0.20)
-		ui_ctrl.draw_rect(rect, border_color, false, 1.5)
-		# 卡堆名称（居中）
-		ui_ctrl.draw_string(font, rect.position + Vector2(0, rect.size.y * 0.42), names[i], HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, 15, Color(0.15, 0.15, 0.15, 0.85))
-		# 点击抽取（卡牌下方）
-		ui_ctrl.draw_string(font, rect.position + Vector2(0, rect.size.y + 6), "点击抽取", HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, 11, ink if state == S.DRAW_CARDS else muted)
-	if state == S.DRAW_CARDS:
-		ui_ctrl.draw_string(font, Vector2(26, 180), "本回合抽牌  %d / 3" % (3 - draws_remaining), HORIZONTAL_ALIGNMENT_LEFT, 320, 16, ink)
+		var rect = _deck_rect(i, vp)
+		if hovered_deck_index == i and state == S.DRAW_CARDS: rect.position.y -= 4.0
+		for layer in range(2, 0, -1):
+			ui_ctrl.draw_rect(Rect2(rect.position + Vector2(-layer * 3.0, -layer * 3.0), rect.size), Color(1.0, 1.0, 0.98, 0.90), true)
+		_draw_card_component(cards[i], rect, font, ink, muted, ui_preview_mode == "deck" and ui_preview_index == i, 0.0)
+		if state != S.DRAW_CARDS: ui_ctrl.draw_rect(rect.grow(-4.0), Color(0.20, 0.24, 0.22, 0.16), true)
+		ui_ctrl.draw_string(font, Vector2(rect.position.x, rect.end.y + 18), ["开发", "道路", "天气"][i], HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, 10, ink if state == S.DRAW_CARDS else muted)
 
 func _draw_bottom_hand(vp: Vector2, font: Font, ink: Color, muted: Color, interface_scale: float):
 	var draw_order := []
@@ -3475,9 +3633,13 @@ func _draw_bottom_hand(vp: Vector2, font: Font, ink: Color, muted: Color, interf
 	ui_ctrl.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE * interface_scale)
 
 func _draw_hand_card_face(card: Dictionary, rect: Rect2, font: Font, ink: Color, muted: Color, index: int):
+	var active = index == selected_card or index == hovered_card_index
+	var depth = float(index) / maxf(float(current_hand.size() - 1), 1.0)
+	_draw_card_component(card, rect, font, ink, muted, active, 0.0 if active else 0.04 + (1.0 - depth) * 0.08)
+
+func _draw_card_component(card: Dictionary, rect: Rect2, font: Font, ink: Color, muted: Color, active: bool, depth_mask: float):
 	var base = _card_base_color(card)
 	var accent = _card_accent(card)
-	var active = index == selected_card or index == hovered_card_index
 	# 1. 投影
 	var shadow_alpha = 0.28 if active else 0.18
 	ui_ctrl.draw_rect(Rect2(rect.position + Vector2(5, 8), rect.size), Color(0, 0, 0, shadow_alpha), true)
@@ -3518,9 +3680,8 @@ func _draw_hand_card_face(card: Dictionary, rect: Rect2, font: Font, ink: Color,
 	# 6. 选中/深度遮罩
 	if active:
 		ui_ctrl.draw_rect(inner, Color(accent.r, accent.g, accent.b, 0.08), true)
-	elif index != selected_card:
-		var depth = float(index) / maxf(float(current_hand.size() - 1), 1.0)
-		ui_ctrl.draw_rect(inner, Color(0.03, 0.06, 0.05, 0.04 + (1.0 - depth) * 0.08), true)
+	elif depth_mask > 0.0:
+		ui_ctrl.draw_rect(inner, Color(0.03, 0.06, 0.05, depth_mask), true)
 	# 7. 边框立体阴影：画在所有内容之上，边框向卡面内侧投射
 	var sh = 6.0
 	# 上边内阴影（向下投射）
@@ -3703,18 +3864,6 @@ func _draw_repeating_card_pattern(rect: Rect2, kind: String, color: Color):
 					ui_ctrl.draw_circle(p + Vector2(-2.5, 0.5), 2.5, pattern_color)
 					ui_ctrl.draw_circle(p + Vector2(1.5, -1.5), 3.5, pattern_color)
 					ui_ctrl.draw_circle(p + Vector2(4, 0.5), 2.5, pattern_color)
-
-func _draw_glass_card(rect: Rect2, fill: Color, line: Color = Color(1.0, 1.0, 1.0, 0.45), radius: float = 18.0):
-	fill.a = 0.94
-	_draw_flat_card(rect, fill, line)
-
-func _draw_flat_card(rect: Rect2, fill: Color, border: Color, shadow_offset: Vector2 = Vector2(3, 4)):
-	var shadow_color = Color(0, 0, 0, 0.24)
-	ui_ctrl.draw_rect(Rect2(rect.position + shadow_offset, rect.size), shadow_color, true)
-	ui_ctrl.draw_rect(Rect2(rect.position - Vector2(2, 2), rect.size + Vector2(4, 4)), border.darkened(0.18), true)
-	ui_ctrl.draw_rect(rect, fill, true)
-	ui_ctrl.draw_rect(rect, border, false, 1.5)
-	ui_ctrl.draw_rect(Rect2(rect.position + Vector2(3, 3), Vector2(rect.size.x - 6, 2)), Color(1, 1, 1, 0.18), true)
 
 func _draw_title(vp: Vector2, font: Font):
 	_draw_title_mountain_field(vp)
