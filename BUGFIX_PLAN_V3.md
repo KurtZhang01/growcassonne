@@ -415,6 +415,85 @@ func _draw_hand_cards(vp: Vector2, font: Font):
 
 ---
 
+## 10. 沙漠地块种花问题排查
+
+### 现象
+沙漠地块无法播种花朵。
+
+### 分析
+- `_can_seed()` 要求：`_is_plant_terrain(terrain)` ✓（沙漠是植物地块）+ 容量未满 + 有种子
+- `TERRAIN_CAPACITY` 沙漠 = **10**（非常小）
+- `_add_flowers()` 检查 `free = capacity - _flower_total(pos)`，若已满返回 false
+- 光幕/粒子是 MeshInstance3D，`_mouse_to_grid()` 用数学射线检测（非物理碰撞），**不会阻挡点击**
+
+### 结论
+**最可能原因**：沙漠容量仅10，扩散和播种很容易填满。建议：
+1. 在信息面板中明确显示"沙漠容量：10，已满"提示
+2. 考虑是否需要提高沙漠容量（如改为20）
+
+---
+
+## 11. 地块信息面板文字拥挤
+
+### 现象
+地块上显示的各玩家花朵数量和地块属性文字互相重叠，看不清。
+
+### 原因
+当前所有信息用 Label3D 堆叠在地块上方，行间距太小（line_height = 0.12），且字体大小13-16在3D空间中很密。
+
+### 方案
+1. **加大行间距**：line_height 从 0.12 → **0.16**
+2. **精简信息**：去掉冗余行（如"相邻增益"可以只显示数量，不显示详细描述）
+3. **分层显示**：
+   - 第一行：地块名称 + 容积（如"森林 42/100"）
+   - 第二行：各玩家花朵（用玩家颜色圆点+数字，一行显示所有玩家）
+   - 第三行：生长率 + 道路状态
+4. **字体统一加大**：font_size 统一为 18-20
+5. **位置抬高**：基准 y 从 0.55 → **0.70**，避免与地形装饰重叠
+
+```gdscript
+# 精简版信息面板
+func _spawn_tile_info_panel(pos: Vector2i):
+    var base_pos = _world(pos) + Vector3(0, 0.70, 0)
+    var line_height = 0.16
+    var lines := []
+
+    # 第1行：地块名 + 容积
+    var name = TERRAIN_NAMES[terr]
+    var cap = _tile_capacity(pos)
+    var total = _flower_total(pos)
+    lines.append({
+        "text": "%s  %d/%d" % [name, total, cap],
+        "color": TERRAIN_TOP[terr].lightened(0.3),
+        "size": 20
+    })
+
+    # 第2行：各玩家花朵（一行紧凑显示）
+    var flower_parts := []
+    for pid in player_count:
+        var amount = flowers[pos.x][pos.y][pid]
+        if amount > 0:
+            flower_parts.append({"pid": pid, "amount": amount})
+    if not flower_parts.is_empty():
+        var text = ""
+        for part in flower_parts:
+            text += "%s:%d " % [PLAYER_NAMES[part["pid"]].substr(0, 2), part["amount"]]
+        lines.append({"text": text.strip_edges(), "color": Color.WHITE, "size": 16})
+
+    # 第3行：生长率 + 状态
+    if _is_plant_terrain(terr):
+        var rate = TERRAIN_GROWTH[terr]
+        if _has_extreme_weather(): rate *= 0.5
+        if rainbow_turns > 0: rate *= 2.0
+        var road_status = "路" if roads[pos.x][pos.y] != 0 else ""
+        lines.append({
+            "text": "生长%.1f %s" % [rate, road_status],
+            "color": Color("#88ddaa"), "size": 16
+        })
+```
+
+---
+
 ## 实施优先级
 
 | 优先级 | 问题 | 复杂度 |
@@ -425,6 +504,8 @@ func _draw_hand_cards(vp: Vector2, font: Font):
 | P0 | #5 信息面板字体加大+扩散信息 | 中 |
 | P0 | #6 结算字幕字体+颜色+时长 | 低 |
 | P0 | #8 开发卡地块预览（右下角） | 中 |
+| P0 | #10 沙漠容量提示 | 低 |
+| P0 | #11 信息面板精简+行间距 | 中 |
 | P1 | #4 闭合道路奖励播种卡 | 中 |
 | P1 | #7 彩虹位置偏移到地块缝隙 | 低 |
 | P1 | #9 手牌卡牌视觉重设计 | 高 |
