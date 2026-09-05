@@ -3753,10 +3753,9 @@ func _draw_public_decks(vp: Vector2, font: Font, ink: Color, muted: Color):
 		var rect = _deck_rect(i, vp)
 		if hovered_deck_index == i and state == S.DRAW_CARDS: rect.position.y -= 4.0
 		for layer in range(2, 0, -1):
-			ui_ctrl.draw_rect(Rect2(rect.position + Vector2(-layer * 3.0, -layer * 3.0), rect.size), Color(1.0, 1.0, 0.98, 0.90), true)
-		# The top card uses the same white paper stock as the two visible cards below it.
-		ui_ctrl.draw_rect(rect, Color(1.0, 1.0, 0.98, 0.98), true)
-		_draw_card_component(cards[i], rect.grow(-3.0), font, ink, muted, ui_preview_mode == "deck" and ui_preview_index == i, 0.0, false)
+			var layer_rect = Rect2(rect.position + Vector2(layer * 4.0, layer * 4.0), rect.size)
+			_draw_card_component(cards[i], layer_rect, font, ink, muted, false, 0.08, false)
+		_draw_card_component(cards[i], rect, font, ink, muted, ui_preview_mode == "deck" and ui_preview_index == i, 0.0, false)
 		if state != S.DRAW_CARDS: ui_ctrl.draw_rect(rect.grow(-4.0), Color(0.20, 0.24, 0.22, 0.16), true)
 		ui_ctrl.draw_string(font, Vector2(rect.position.x, rect.end.y + 18), ["开发", "道路", "天气"][i], HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, 10, ink if state == S.DRAW_CARDS else muted)
 
