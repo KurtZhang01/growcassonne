@@ -932,6 +932,19 @@ func _spawn_merge_fills(root: Node3D, terr: int, pos: Vector2i):
 		sf.position = Vector3(dir.x * (surface_edge + surface_fill_w * 0.5), surface_y, dir.y * (surface_edge + surface_fill_w * 0.5))
 		sf.set_meta("merge_fill", true); root.add_child(sf)
 
+		# 边框区域填充（从地块边缘到缝隙中点，覆盖原边框位置）
+		var trim_mat = StandardMaterial3D.new()
+		trim_mat.albedo_color = TERRAIN_TOP[terr].lightened(0.08); trim_mat.roughness = 0.76
+		var trim_fill_w = 0.625 - 0.53  # 0.095
+		var trim_fill = MeshInstance3D.new(); var tfm2 = BoxMesh.new()
+		if is_h:
+			tfm2.size = Vector3(trim_fill_w, 0.14, 1.09)
+		else:
+			tfm2.size = Vector3(1.09, 0.14, trim_fill_w)
+		trim_fill.mesh = tfm2; trim_fill.material_override = trim_mat
+		trim_fill.position = Vector3(dir.x * (0.53 + trim_fill_w * 0.5), 0.10, dir.y * (0.53 + trim_fill_w * 0.5))
+		trim_fill.set_meta("merge_fill", true); root.add_child(trim_fill)
+
 		# Top层填充（非可开发地块）
 		if not _is_developable(terr):
 			var top_fill_w = 0.625 - 0.53  # 0.095
@@ -964,6 +977,14 @@ func _spawn_merge_fills(root: Node3D, terr: int, pos: Vector2i):
 			corner_sf.mesh = corner_sfm; corner_sf.material_override = surface_mat
 			corner_sf.position = Vector3(d1.x * (surface_edge + surface_fill_w * 0.5), surface_y, d2.y * (surface_edge + surface_fill_w * 0.5))
 			corner_sf.set_meta("merge_fill", true); root.add_child(corner_sf)
+			# 角部边框填充
+			var trim_mat_c = StandardMaterial3D.new()
+			trim_mat_c.albedo_color = TERRAIN_TOP[terr].lightened(0.08); trim_mat_c.roughness = 0.76
+			var corner_trim = MeshInstance3D.new(); var ctfm = BoxMesh.new()
+			ctfm.size = Vector3(0.095, 0.14, 0.095)
+			corner_trim.mesh = ctfm; corner_trim.material_override = trim_mat_c
+			corner_trim.position = Vector3(d1.x * (0.53 + 0.0475), 0.10, d2.y * (0.53 + 0.0475))
+			corner_trim.set_meta("merge_fill", true); root.add_child(corner_trim)
 			# 角部Top层填充
 			if not _is_developable(terr):
 				var top_fill_w = 0.625 - 0.53
