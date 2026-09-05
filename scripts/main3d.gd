@@ -2313,7 +2313,7 @@ func _apply_weather_visual(weather: String):
 	var center = _world(Vector2i(_grid_width() / 2, _grid_height() / 2))
 	weather_fx_root.set_meta("weather_center", center)
 	if weather == "台风" or weather == "雨季":
-		_spawn_weather_rain(center, 42 if weather == "台风" else 26, weather == "台风")
+		_spawn_weather_rain(center, 60 if weather == "台风" else 40, weather == "台风")
 	elif weather == "沙尘暴":
 		_spawn_weather_drift(center, Color(0.88, 0.70, 0.34, 0.78), 100)
 		_spawn_weather_bands(center, Color(0.76, 0.57, 0.25, 0.18))
@@ -2354,15 +2354,15 @@ func _spawn_weather_rain(center: Vector3, count: int, storm: bool):
 			cloud.position = center + Vector3(-3.0 + cloud_index * 2.0, 3.4 + cloud_index % 2 * 0.25, -1.5 + cloud_index % 3)
 			weather_fx_root.add_child(cloud)
 			create_tween().set_loops().tween_property(cloud, "position:x", cloud.position.x + 1.2, 3.4).set_trans(Tween.TRANS_SINE)
-	var rain_material = _soft_material(Color(0.55, 0.72, 0.88, 0.42))
+	var rain_material = _soft_material(Color(0.50, 0.65, 0.90, 0.55))
 	for drop_index in count:
 		var drop = MeshInstance3D.new(); var mesh = CylinderMesh.new()
-		mesh.top_radius = 0.004; mesh.bottom_radius = 0.004; mesh.height = 0.09; mesh.radial_segments = 4
+		mesh.top_radius = 0.008; mesh.bottom_radius = 0.008; mesh.height = 0.15; mesh.radial_segments = 4
 		drop.mesh = mesh; drop.material_override = rain_material
 		drop.position = center + Vector3(randf_range(-5.0, 5.0), randf_range(0.5, 3.4), randf_range(-5.0, 5.0))
 		weather_fx_root.add_child(drop)
 		var top_y = drop.position.y; var tween = create_tween().set_loops()
-		tween.tween_property(drop, "position:y", 0.0, randf_range(0.45, 0.75))
+		tween.tween_property(drop, "position:y", 0.0, randf_range(0.35, 0.65))
 		tween.tween_property(drop, "position:y", top_y, 0.01)
 
 func _spawn_weather_drift(center: Vector3, color: Color, count: int):
