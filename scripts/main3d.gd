@@ -76,7 +76,7 @@ var player_count := 2; var current_player := 0
 var seeds := []; var total_turns := 0; var turns_played := 0
 var scores := []; var group_counts := []; var largest_groups := []; var diversity_counts := []; var road_scores := []
 var last_growth_count := 0
-var closed_road_ids := {}; var closed_road_cells := {}; var last_road_event := ""
+var closed_road_ids := {}; var closed_road_cells := {}; var rewarded_closed_road_cells := {}; var last_road_event := ""
 var hands := []; var current_hand := []; var selected_card := 0
 var active_weather := {}; var rainbow_turns := 0; var last_settlement := ""
 var special_buildings := {}
@@ -433,7 +433,7 @@ func _expand_board_ring():
 	decor_nodes.push_front(_new_node_column(new_height)); decor_nodes.append(_new_node_column(new_height))
 	grid_origin += Vector2i.ONE
 	for child in edge_root.get_children(): child.free()
-	closed_road_ids.clear(); closed_road_cells.clear()
+	closed_road_cells.clear()
 	for x in _grid_width():
 		for y in _grid_height():
 			var pos = Vector2i(x, y)
@@ -811,10 +811,23 @@ func _refresh_road_effects():
 				var component_id = _road_component_key(component)
 				current_closed[component_id] = true
 				_spawn_closed_road_fx(component)
-				if not closed_road_ids.has(component_id):
-					_grant_closed_road_seed_rewards(component)
-					last_road_event = "道路闭合！沿线玩家获得1级播种卡"
+				if not closed_road_ids.has(component_id) and not _closed_road_was_rewarded(component):
+					_mark_closed_road_rewarded(component)
+					var reward_count = _grant_closed_road_seed_rewards(component)
+					if reward_count > 0:
+						last_road_event = "道路封闭，%d名沿线玩家获得1级播种卡" % reward_count
+					else:
+						last_road_event = "道路封闭，但沿线没有可获奖励的花朵"
+						_record_action(last_road_event)
 	closed_road_ids = current_closed
+
+func _closed_road_was_rewarded(component: Array) -> bool:
+	for cell in component:
+		if rewarded_closed_road_cells.has(str(_logical_cell(cell))): return true
+	return false
+
+func _mark_closed_road_rewarded(component: Array):
+	for cell in component: rewarded_closed_road_cells[str(_logical_cell(cell))] = true
 
 func _grant_seed_card(player_id: int, level: int = 1, reason: String = ""):
 	if player_id < 0 or player_id >= player_count: return
@@ -828,7 +841,7 @@ func _grant_seed_card(player_id: int, level: int = 1, reason: String = ""):
 		_record_action("奖励 · 因%s获得%d级播种卡" % [readable_reason, level], "reward", player_id)
 		_show_center_notice("%s因%s获得一张播种卡" % [PLAYER_NAMES[player_id], readable_reason], "reward")
 
-func _grant_closed_road_seed_rewards(component: Array):
+func _grant_closed_road_seed_rewards(component: Array) -> int:
 	var rewarded := {}
 	for cell in component:
 		if not _in_bounds(cell): continue
@@ -837,6 +850,7 @@ func _grant_closed_road_seed_rewards(component: Array):
 			if flowers[cell.x][cell.y][player_id] > 0:
 				rewarded[player_id] = true
 				_grant_seed_card(player_id, 1, "道路闭合")
+	return rewarded.size()
 
 func _road_component(start: Vector2i, visited: Dictionary) -> Array:
 	var component := []
@@ -854,16 +868,21 @@ func _road_component(start: Vector2i, visited: Dictionary) -> Array:
 func _road_component_is_closed(component: Array) -> bool:
 	for cell in component:
 		var mask: int = roads[cell.x][cell.y]
+		var connected_degree := 0
 		for dir_index in DIRS.size():
 			if (mask & (1 << dir_index)) == 0: continue
 			var neighbor: Vector2i = cell + DIRS[dir_index]
 			if not _in_bounds(neighbor): return false
 			if grid[neighbor.x][neighbor.y] < 0 or not _roads_connect(cell, neighbor): return false
+			connected_degree += 1
+		if connected_degree < 2: return false
 	return true
 
 func _road_component_key(component: Array) -> String:
 	var labels := []
-	for cell in component: labels.append("%02d,%02d" % [cell.x, cell.y])
+	for cell in component:
+		var logical = _logical_cell(cell)
+		labels.append("%d,%d" % [logical.x, logical.y])
 	labels.sort()
 	var key := ""
 	for label in labels: key += label + "|"
@@ -2005,7 +2024,7 @@ func _start_game():
 	seeds = []; scores = []; group_counts = []; largest_groups = []; diversity_counts = []; road_scores = []
 	hands = []; current_hand = []; selected_card = 0
 	piece_market = []; selected_market = 0; piece_rotation = 0; last_growth_count = 0
-	closed_road_ids = {}; closed_road_cells = {}; last_road_event = ""; last_settlement = ""
+	closed_road_ids = {}; closed_road_cells = {}; rewarded_closed_road_cells = {}; last_road_event = ""; last_settlement = ""
 	active_weather = {}; rainbow_turns = 0; special_buildings.clear()
 	for i in player_count:
 		seeds.append(STARTING_SEED_CARDS); scores.append(0); group_counts.append(0)
