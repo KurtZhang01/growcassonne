@@ -3232,15 +3232,15 @@ func _input(event):
 			var vp = get_viewport().get_visible_rect().size / _ui_scale(get_viewport().get_visible_rect().size)
 			var pointer = _ui_point(event.position)
 			title_hovered_player = -1
-			for index in 4:
+			for index in 3:
 				if _title_player_button_rect(index, vp).has_point(pointer): title_hovered_player = index; break
 			ui_ctrl.queue_redraw()
 		if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 			var vp = get_viewport().get_visible_rect().size / _ui_scale(get_viewport().get_visible_rect().size)
 			var ui_pointer = _ui_point(event.position)
-			for index in 4:
+			for index in 3:
 				if _title_player_button_rect(index, vp).has_point(ui_pointer):
-					player_count = index + 1; state = S.PLAY_CARDS; _start_game(); return
+					player_count = index + 2; state = S.PLAY_CARDS; _start_game(); return
 		return
 
 	# The history panel owns the wheel while hovered; elsewhere it controls zoom.
@@ -4254,15 +4254,20 @@ func _draw_repeating_card_pattern(rect: Rect2, kind: String, color: Color):
 					ui_ctrl.draw_circle(p + Vector2(4, 0.5), 2.5, pattern_color)
 
 func _draw_title(vp: Vector2, font: Font):
-	_draw_title_mountain_field(vp)
-	_draw_wuhan_river_lines(vp)
+	_draw_title_water_field(vp)
 	ui_ctrl.draw_rect(Rect2(0, 0, vp.x, vp.y), Color(0.05, 0.10, 0.09, 0.12), true)
 
-	_draw_centered_outlined_text("花之江城", Vector2(vp.x * 0.5, vp.y * 0.22), font, 72, Color("#fff8e8"), Color("#254940"), 8)
-	_draw_centered_outlined_text("W U H A N   I N   B L O O M", Vector2(vp.x * 0.5, vp.y * 0.22 + 57), font, 20, Color("#f3cf8d"), Color("#254940"), 4)
+	# 标题（上部）
+	_draw_centered_outlined_text("花 满 洪 山", Vector2(vp.x * 0.5, vp.y * 0.15), font, 72, Color("#fff8e8"), Color("#254940"), 8)
+	_draw_centered_outlined_text("H O N G S H A N   I N   B L O O M", Vector2(vp.x * 0.5, vp.y * 0.15 + 57), font, 18, Color("#f3cf8d"), Color("#254940"), 4)
 
-	for index in 4:
-		_draw_title_player_tile(index, _title_player_button_rect(index, vp), font)
+	# 玩家选择（中下部）
+	for index in 3:
+		_draw_title_player_button(index, _title_player_button_rect(index + 1, vp), font)
+
+	# 底部说明
+	_draw_centered_outlined_text("武汉洪山区主题", Vector2(vp.x * 0.5, vp.y * 0.88), font, 15, Color(1, 1, 1, 0.45), Color(0, 0, 0, 0.3), 3)
+	_draw_centered_outlined_text("GGJ 2026 · GROW Theme", Vector2(vp.x * 0.5, vp.y * 0.92), font, 13, Color(1, 1, 1, 0.3), Color(0, 0, 0, 0.2), 2)
 
 func _draw_centered_outlined_text(value: String, center: Vector2, font: Font, size: int, color: Color, outline: Color, outline_size: int):
 	var text_size = font.get_string_size(value, HORIZONTAL_ALIGNMENT_LEFT, -1, size)
@@ -4270,28 +4275,88 @@ func _draw_centered_outlined_text(value: String, center: Vector2, font: Font, si
 	ui_ctrl.draw_string_outline(font, baseline, value, HORIZONTAL_ALIGNMENT_LEFT, -1, size, outline_size, outline)
 	ui_ctrl.draw_string(font, baseline, value, HORIZONTAL_ALIGNMENT_LEFT, -1, size, color)
 
-func _draw_title_mountain_field(vp: Vector2):
-	ui_ctrl.draw_rect(Rect2(Vector2.ZERO, vp), Color("#9fc9bd"), true)
+func _draw_title_water_field(vp: Vector2):
+	# 背景色
+	ui_ctrl.draw_rect(Rect2(Vector2.ZERO, vp), Color("#1e524e"), true)
 	var tile_w = 112.0; var tile_h = 54.0
+	var text_cells = _ggj2026_cells()
+	var building_cells = _title_building_cells()
 	var rows = ceili(vp.y / (tile_h * 0.5)) + 3
 	var columns = ceili(vp.x / tile_w) + 3
+	# 网格偏移，让文字区域在屏幕中下部
+	var y_offset = vp.y * 0.35
 	for row in rows:
 		for column in columns:
-			var center = Vector2((column - 1) * tile_w + (row % 2) * tile_w * 0.5, row * tile_h * 0.5 - tile_h)
-			var shade = float(posmod(row * 7 + column * 11, 5)) * 0.025
-			var top_color = TERRAIN_TOP[T_MOUNTAIN].lightened(0.20 + shade)
-			_draw_iso_tile(center, top_color, TERRAIN_MID[T_MOUNTAIN].lightened(0.08 + shade), tile_w * 0.5)
-			var peak_height = 24.0 + float(posmod(row * 13 + column * 5, 4)) * 5.0
-			var peak_x = center.x + float(posmod(row + column, 3) - 1) * 11.0
-			ui_ctrl.draw_colored_polygon(PackedVector2Array([
-				Vector2(peak_x - 28, center.y + 5), Vector2(peak_x, center.y - peak_height), Vector2(peak_x + 9, center.y + 5)
-			]), top_color.lightened(0.08))
-			ui_ctrl.draw_colored_polygon(PackedVector2Array([
-				Vector2(peak_x, center.y - peak_height), Vector2(peak_x + 30, center.y + 5), Vector2(peak_x + 9, center.y + 5)
-			]), top_color.darkened(0.22))
-			ui_ctrl.draw_colored_polygon(PackedVector2Array([
-				Vector2(peak_x - 6, center.y - peak_height + 7), Vector2(peak_x, center.y - peak_height), Vector2(peak_x + 6, center.y - peak_height + 9)
-			]), Color("#dce5dd"))
+			var center = Vector2((column - 1) * tile_w + (row % 2) * tile_w * 0.5, row * tile_h * 0.5 - tile_h + y_offset)
+			var grid_x = column - 1; var grid_y = row - 1
+			var shade = float(posmod(row * 7 + column * 11, 5)) * 0.02
+			# 判断地块类型
+			if building_cells.has(Vector2i(grid_x, grid_y)):
+				# 建筑地块
+				var top_color = TERRAIN_TOP[T_BUILDING].lightened(shade)
+				_draw_iso_tile(center, top_color, TERRAIN_MID[T_BUILDING].lightened(shade), tile_w * 0.5)
+				_draw_title_building_sprite(center)
+			elif text_cells.has(Vector2i(grid_x, grid_y)):
+				# 水域（拼字）
+				var top_color = TERRAIN_TOP[T_WATER].lightened(shade)
+				_draw_iso_tile(center, top_color, TERRAIN_MID[T_WATER].lightened(shade), tile_w * 0.5)
+				# 水面涟漪装饰
+				ui_ctrl.draw_circle(center + Vector2(randf_range(-8, 8), randf_range(-4, 4)), randf_range(3, 6), Color(0.6, 0.85, 1.0, 0.25))
+			else:
+				# 山体/草地背景
+				var is_grass = posmod(grid_x * 7 + grid_y * 13, 11) < 2
+				var terr = T_GRASS if is_grass else T_MOUNTAIN
+				var top_color = TERRAIN_TOP[terr].lightened(0.15 + shade)
+				_draw_iso_tile(center, top_color, TERRAIN_MID[terr].lightened(0.05 + shade), tile_w * 0.5)
+				if terr == T_MOUNTAIN:
+					var peak_height = 20.0 + float(posmod(row * 13 + column * 5, 4)) * 4.0
+					var peak_x = center.x + float(posmod(row + column, 3) - 1) * 8.0
+					ui_ctrl.draw_colored_polygon(PackedVector2Array([
+						Vector2(peak_x - 22, center.y + 4), Vector2(peak_x, center.y - peak_height), Vector2(peak_x + 8, center.y + 4)
+					]), top_color.lightened(0.06))
+					ui_ctrl.draw_colored_polygon(PackedVector2Array([
+						Vector2(peak_x, center.y - peak_height), Vector2(peak_x + 24, center.y + 4), Vector2(peak_x + 8, center.y + 4)
+					]), top_color.darkened(0.18))
+
+func _ggj2026_cells() -> Dictionary:
+	# 5×7像素字体定义
+	var font_data = {
+		"G": [[0,1,1,1,0],[1,0,0,0,0],[1,0,1,1,0],[1,0,0,1,0],[1,0,0,1,0],[1,0,0,1,0],[0,1,1,1,0]],
+		"J": [[0,0,0,1,0],[0,0,0,1,0],[0,0,0,1,0],[0,0,0,1,0],[0,0,0,1,0],[1,0,0,1,0],[0,1,1,0,0]],
+		"2": [[0,1,1,0,0],[1,0,0,1,0],[0,0,0,1,0],[0,0,1,0,0],[0,1,0,0,0],[1,0,0,0,0],[1,1,1,1,0]],
+		"0": [[0,1,1,0,0],[1,0,0,1,0],[1,0,0,1,0],[1,0,0,1,0],[1,0,0,1,0],[1,0,0,1,0],[0,1,1,0,0]],
+		"6": [[0,1,1,0,0],[1,0,0,1,0],[1,0,0,0,0],[1,1,1,0,0],[1,0,0,1,0],[1,0,0,1,0],[0,1,1,0,0]]
+	}
+	var cells := {}
+	var text = "GGJ2026"
+	var ox = 12; var oy = 10  # 在网格中的起始位置（中下部）
+	for ch_idx in text.length():
+		var ch = text[ch_idx]
+		if not font_data.has(ch): ox += 6; continue
+		var glyph: Array = font_data[ch]
+		for r in glyph.size():
+			for c in glyph[r].size():
+				if glyph[r][c] == 1:
+					cells[Vector2i(ox + c, oy + r)] = true
+		ox += 6
+	return cells
+
+func _title_building_cells() -> Array:
+	# 建筑放在文字周围的空位
+	return [Vector2i(8, 6), Vector2i(42, 7), Vector2i(6, 18), Vector2i(44, 17), Vector2i(26, 8)]
+
+func _draw_title_building_sprite(center: Vector2):
+	# 简化建筑模型（用几个色块表示）
+	# 基座
+	ui_ctrl.draw_rect(Rect2(center.x - 12, center.y - 6, 24, 12), Color("#a06830"), true)
+	# 主体
+	ui_ctrl.draw_rect(Rect2(center.x - 8, center.y - 28, 16, 24), Color("#d4a050"), true)
+	# 屋顶
+	ui_ctrl.draw_colored_polygon(PackedVector2Array([
+		Vector2(center.x - 14, center.y - 26), Vector2(center.x, center.y - 38), Vector2(center.x + 14, center.y - 26)
+	]), Color("#e8a030"))
+	# 塔尖
+	ui_ctrl.draw_rect(Rect2(center.x - 2, center.y - 42, 4, 6), Color("#c08020"), true)
 
 func _draw_wuhan_river_lines(vp: Vector2):
 	var yangtze = PackedVector2Array([
@@ -4307,10 +4372,22 @@ func _draw_wuhan_river_lines(vp: Vector2):
 	ui_ctrl.draw_polyline(han, Color(0.56, 0.84, 0.91, 0.34), 8.0, true)
 
 func _title_player_button_rect(index: int, vp: Vector2) -> Rect2:
-	var gap = 16.0
-	var tile_width = minf(132.0, maxf(68.0, (vp.x - 64.0 - gap * 3.0) / 4.0))
-	var total_width = tile_width * 4.0 + gap * 3.0
-	return Rect2(vp.x * 0.5 - total_width * 0.5 + index * (tile_width + gap), vp.y * 0.59, tile_width, 118.0)
+	var gap = 18.0
+	var tile_width = minf(132.0, maxf(68.0, (vp.x - 64.0 - gap * 2.0) / 3.0))
+	var total_width = tile_width * 3.0 + gap * 2.0
+	return Rect2(vp.x * 0.5 - total_width * 0.5 + index * (tile_width + gap), vp.y * 0.56, tile_width, 118.0)
+
+func _draw_title_player_button(index: int, rect: Rect2, font: Font):
+	var player_count = index + 2  # 2, 3, 4
+	var color = PLAYER_COLORS[index]
+	var hovered = index == title_hovered_player
+	var y_off = -6.0 if hovered else 0.0
+	# 按钮背景
+	ui_ctrl.draw_rect(Rect2(rect.position + Vector2(0, y_off), rect.size), Color(0.04, 0.10, 0.08, 0.88), 0, true, 4.0)
+	# 底部彩色条
+	ui_ctrl.draw_rect(Rect2(rect.position.x, rect.position.y + rect.size.y - 5 + y_off, rect.size.x, 5), color, 0, false)
+	# 文字
+	_draw_centered_outlined_text("%d 人" % player_count, rect.position + Vector2(rect.size.x * 0.5, rect.size.y * 0.4 + y_off), font, 24, color.lightened(0.2), Color(0, 0, 0, 0.3), 3)
 
 func _draw_title_player_tile(index: int, rect: Rect2, font: Font):
 	var terrain = [T_GRASS, T_WATER, T_FOREST, T_BUILDING][index]
