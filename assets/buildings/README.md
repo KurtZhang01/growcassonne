@@ -40,3 +40,10 @@ SVG 为 760×640，180 像素对应 1 个世界单位，地面原点是 (380,486
 
 使用浏览器检查资产预览和图片文件，检查 SVG XML 与 GDScript 语法。
 遵照用户要求未运行 Godot；游戏内遮挡、Godot SVG 文本渲染和实际帧率尚未验证。
+
+## 本轮建筑修复
+一级建筑改为武汉理工大学南湖图书馆；二级建筑包括洪山科创大厦、武汉大学、华中科技大学，各为1×2。卡牌保存具体建筑类型。
+普通地形开发不直接奖励播种卡；随机开发实际产生建筑时，每栋奖励一张。道路闭合原有奖励保留。
+开发邻接只认可植物或增益地块，空白-1不再计入。建筑点击预览不显示花朵统计。
+图书馆照片：references/library.jpg。设计方提供的资料：https://www.gooood.cn/library-of-south-lake-campus-of-wuhan-university-of-technology-china-by-architectural-design-and-research-institute-of-scut.htm
+SVG使用不透明像素裁切并关闭深度测试，避免底座遮住建筑下部；仍需在游戏里复核与前景地块的遮挡取舍。

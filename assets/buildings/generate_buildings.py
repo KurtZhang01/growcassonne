@@ -7,9 +7,10 @@ OUT = Path(__file__).resolve().parent
 YAW, PITCH = math.radians(42), math.radians(42)
 SCALE = 180
 NAMES = {
-    'hongshan': '洪山科创大厦', 'gate': '校园牌坊',
-    'campus': '低层创新园区', 'redhall': '红砖山墙楼',
+    'hongshan': '洪山科创大厦', 'gate': '武汉大学',
+    'campus': '低层创新园区', 'redhall': '华中科技大学',
     'arena': '白色拱顶场馆', 'office': '白色框架办公楼',
+    'library': '武汉理工大学南湖图书馆',
 }
 
 
@@ -94,7 +95,22 @@ class Drawing:
 
     def render(self, kind):
         self.box(-1.12,-.64,2.24,1.28,-.07,.12,'#737c70','#a8b29a')
-        if kind=='hongshan':
+        if kind=='library':
+            for level in range(5):
+                inset=level*.055
+                self.box(-.94+inset,-.49+inset,1.88-2*inset,.98-2*inset,.06+level*.045,.045,roof='#8f9e78')
+            self.box(-.67,-.27,.38,.54,.285,1.02,cols=3,rows=8)
+            self.box(.29,-.27,.38,.54,.285,1.02,cols=3,rows=8)
+            self.box(-.29,-.25,.58,.50,.285,.88,wall='#99785f',cols=4,rows=6)
+            self.box(-.24,.27,.48,.04,.285,.29,wall='#42636c',cols=3,rows=2)
+            for x in [-.58,-.34,.30,.54]:
+                self.box(x,.29,.035,.12,.285,.84,wall='#99744f')
+            for y in [.92,1.04,1.16]:
+                self.box(-.73,.26,1.46,.18,y,.035,wall='#ae8a60')
+            self.box(-.70,-.30,.44,.60,1.305,.04)
+            self.box(.26,-.30,.44,.60,1.305,.04)
+            self.box(-.60,.45,1.20,.025,.10,.12,label=NAMES[kind])
+        elif kind=='hongshan':
             self.box(-.79,-.36,.69,.69,.06,1.74,cols=10,rows=23)
             self.box(-.81,-.38,.73,.73,1.80,.045)
             self.box(-.74,-.31,.59,.59,1.845,.075,cols=12,rows=1)
@@ -158,4 +174,4 @@ if __name__=='__main__':
     # Retain the earlier direct preview links as aliases to properly projected views.
     (OUT/'hongshan-tower-axis-x.svg').write_text(Drawing(0).render('hongshan'),encoding='utf-8')
     (OUT/'hongshan-tower-axis-z.svg').write_text(Drawing(1).render('hongshan'),encoding='utf-8')
-    print('Generated 24 vector elevations, fixed 42-degree camera projection, 760 x 640.')
+    print(f'Generated {len(NAMES) * 4} vector elevations, fixed 42-degree camera projection, 760 x 640.')

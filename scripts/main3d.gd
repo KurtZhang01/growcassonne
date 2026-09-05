@@ -115,7 +115,7 @@ const UI_TOP_HEIGHT := 54.0
 const UI_RAIL_HEIGHT := 188.0
 const UI_SIDE_TOP := 82.0
 const UI_SIDE_BOTTOM := 228.0
-const RULE_TICKER_TEXT := "每回合任意组合抽3张牌，随后可打出任意数量卡牌    |    道路封闭时，沿线有花朵的玩家各获得1张1级播种卡，每条闭合道路只奖励一次    |    水域使3x3范围内植物地块的正升级概率翻倍，多个水域不叠加    |    建筑使3x3范围内植物地块容积翻倍，多个建筑不叠加    |    植物地块没有基础升降级概率，只计算上下左右四邻影响，并且每回合最多变化一级    |    有道路的植物地块可以生长和接收花朵，但不会向外扩散    |    花朵扩散按相邻同色花朵占相邻总容量的比例计算    |    成功开发地块或建造建筑后获得1张1级播种卡    |    森林、草地、荒漠的基础容积分别为100、50、10    |    山体只能使用开发卡，缺口只能使用建筑开发卡    |    回合结算顺序为地块改变、花朵增值、花朵扩散    |    地块降级时花朵按新容量比例缩减并向下取整    |    总回合数为玩家数乘10；花朵最多者获胜，平局比较占据植物地块数    |    "
+const RULE_TICKER_TEXT := "每回合任意组合抽3张牌，随后可打出任意数量卡牌    |    道路封闭时，沿线有花朵的玩家各获得1张1级播种卡，每条闭合道路只奖励一次    |    水域使3x3范围内植物地块的正升级概率翻倍，多个水域不叠加    |    建筑使3x3范围内植物地块容积翻倍，多个建筑不叠加    |    植物地块没有基础升降级概率，只计算上下左右四邻影响，并且每回合最多变化一级    |    有道路的植物地块可以生长和接收花朵，但不会向外扩散    |    花朵扩散按相邻同色花朵占相邻总容量的比例计算    |    实际建成建筑才获得1张1级播种卡，普通地形开发不奖励    |    森林、草地、荒漠的基础容积分别为100、50、10    |    山体只能使用开发卡，缺口只能使用建筑开发卡    |    回合结算顺序为地块改变、花朵增值、花朵扩散    |    地块降级时花朵按新容量比例缩减并向下取整    |    总回合数为玩家数乘10；花朵最多者获胜，平局比较占据植物地块数    |    "
 
 # Nodes
 var camera: Camera3D; var grid_root: Node3D; var plant_root: Node3D
@@ -1427,96 +1427,17 @@ func _tile_info_text(pos: Vector2i) -> String:
 	if terr == T_MOUNTAIN: return "山体\n可使用开发卡"
 	return "缺口\n可使用建筑开发卡"
 
-# ---- Pavilion: low-poly Yellow Crane Tower-inspired landmark ----
-func _tile_pavilion_surface(root: Node3D, road_mask: int):
-	var court = MeshInstance3D.new()
-	var court_mesh = BoxMesh.new(); court_mesh.size = Vector3(0.94, 0.055, 0.94)
-	court.mesh = court_mesh
-	var court_material = StandardMaterial3D.new(); court_material.albedo_color = Color("#8f5f48"); court_material.roughness = 0.96
-	court.material_override = court_material; court.position.y = 0.13
-	root.add_child(court)
-
-	var gold = StandardMaterial3D.new(); gold.albedo_color = Color("#d99a26"); gold.roughness = 0.70
-	var gold_dark = StandardMaterial3D.new(); gold_dark.albedo_color = Color("#8d5a1f"); gold_dark.roughness = 0.86
-	var red = StandardMaterial3D.new(); red.albedo_color = TERRAIN_TOP[4]; red.roughness = 0.88
-	var dark_red = StandardMaterial3D.new(); dark_red.albedo_color = TERRAIN_MID[4]; dark_red.roughness = 0.92
-	var wall = StandardMaterial3D.new(); wall.albedo_color = Color("#e2c08a"); wall.roughness = 0.86
-	var shadow = StandardMaterial3D.new(); shadow.albedo_color = Color("#5b2b2b"); shadow.roughness = 0.94
-	var plaque = StandardMaterial3D.new(); plaque.albedo_color = Color("#252014"); plaque.roughness = 0.92
-
-	var tower = Node3D.new(); tower.position = Vector3.ZERO; root.add_child(tower)
-	var tier_widths = [0.60, 0.52, 0.44, 0.35, 0.26]
-	var tier_heights = [0.105, 0.095, 0.085, 0.078, 0.066]
-	var base_y = 0.19
-	for tier in tier_widths.size():
-		var floor = MeshInstance3D.new(); var floor_mesh = BoxMesh.new()
-		floor_mesh.size = Vector3(tier_widths[tier], tier_heights[tier], tier_widths[tier] * 0.72)
-		floor.mesh = floor_mesh; floor.material_override = red
-		floor.position.y = base_y + tier * 0.118
-		tower.add_child(floor)
-
-		var front_wall = MeshInstance3D.new(); var front_mesh = BoxMesh.new()
-		front_mesh.size = Vector3(tier_widths[tier] * 0.55, tier_heights[tier] * 0.58, 0.014)
-		front_wall.mesh = front_mesh; front_wall.material_override = wall
-		front_wall.position = Vector3(0, floor.position.y + 0.005, -floor_mesh.size.z * 0.51)
-		tower.add_child(front_wall)
-
-		var eave = MeshInstance3D.new(); var eave_mesh = BoxMesh.new()
-		eave_mesh.size = Vector3(tier_widths[tier] + 0.34, 0.030, tier_widths[tier] * 0.72 + 0.32)
-		eave.mesh = eave_mesh; eave.material_override = gold
-		eave.position.y = floor.position.y + tier_heights[tier] * 0.5 + 0.035
-		tower.add_child(eave)
-
-		var under_eave = MeshInstance3D.new(); var under_mesh = BoxMesh.new()
-		under_mesh.size = Vector3(eave_mesh.size.x * 0.88, 0.018, eave_mesh.size.z * 0.86)
-		under_eave.mesh = under_mesh; under_eave.material_override = gold_dark
-		under_eave.position.y = eave.position.y - 0.026
-		tower.add_child(under_eave)
-
-		for corner in [Vector2(-1, -1), Vector2(1, -1), Vector2(-1, 1), Vector2(1, 1)]:
-			var tip = MeshInstance3D.new(); var tip_mesh = BoxMesh.new()
-			tip_mesh.size = Vector3(0.13, 0.026, 0.13)
-			tip.mesh = tip_mesh; tip.material_override = gold
-			tip.position = Vector3(corner.x * eave_mesh.size.x * 0.53, eave.position.y + 0.040, corner.y * eave_mesh.size.z * 0.53)
-			tip.rotation_degrees = Vector3(11.0 * -corner.y, 45.0, 11.0 * corner.x)
-			tower.add_child(tip)
-
-		var rail = MeshInstance3D.new(); var rail_mesh = BoxMesh.new()
-		rail_mesh.size = Vector3(tier_widths[tier] + 0.10, 0.020, 0.026)
-		rail.mesh = rail_mesh; rail.material_override = dark_red
-		rail.position = Vector3(0, floor.position.y - tier_heights[tier] * 0.18, -floor_mesh.size.z * 0.57)
-		tower.add_child(rail)
-
-		if tier == 4:
-			var name_plaque = MeshInstance3D.new(); var plaque_mesh = BoxMesh.new()
-			plaque_mesh.size = Vector3(0.18, 0.058, 0.018)
-			name_plaque.mesh = plaque_mesh; name_plaque.material_override = plaque
-			name_plaque.position = Vector3(0, eave.position.y - 0.055, -floor_mesh.size.z * 0.60)
-			tower.add_child(name_plaque)
-
-	for px in [-0.25, -0.13, 0.0, 0.13, 0.25]:
-		for pz in [-0.17, 0.17]:
-			var pillar = MeshInstance3D.new(); var pillar_mesh = CylinderMesh.new()
-			pillar_mesh.top_radius = 0.012; pillar_mesh.bottom_radius = 0.016; pillar_mesh.height = 0.62; pillar_mesh.radial_segments = 7
-			pillar.mesh = pillar_mesh; pillar.material_override = red
-			pillar.position = Vector3(px, 0.50, pz); tower.add_child(pillar)
-
-	var roof = MeshInstance3D.new(); var roof_mesh = CylinderMesh.new()
-	roof_mesh.top_radius = 0.020; roof_mesh.bottom_radius = 0.17; roof_mesh.height = 0.12; roof_mesh.radial_segments = 4
-	roof.mesh = roof_mesh; roof.material_override = gold
-	roof.position.y = 0.83; roof.rotation_degrees.y = 45; tower.add_child(roof)
-
-	var finial = MeshInstance3D.new(); var finial_mesh = CylinderMesh.new()
-	finial_mesh.top_radius = 0.007; finial_mesh.bottom_radius = 0.017; finial_mesh.height = 0.13; finial_mesh.radial_segments = 6
-	finial.mesh = finial_mesh; finial.material_override = dark_red
-	finial.position.y = 0.96; tower.add_child(finial)
-
-	for lantern_index in 2:
-		var lantern = MeshInstance3D.new(); var lantern_mesh = SphereMesh.new()
-		lantern_mesh.radius = 0.035; lantern_mesh.height = 0.05; lantern_mesh.radial_segments = 8; lantern_mesh.rings = 4
-		lantern.mesh = lantern_mesh; lantern.material_override = red
-		lantern.position = Vector3(-0.28 + lantern_index * 0.56, 0.25, -0.30)
-		root.add_child(lantern)
+# ---- Level-1 landmark: Wuhan University of Technology Nanhu Library ----
+func _tile_pavilion_surface(root: Node3D, _road_mask: int):
+	var library := Sprite3D.new()
+	library.texture = _landmark_texture("library", 0)
+	library.pixel_size = 0.5 / 180.0
+	library.offset = Vector2(0, 166)
+	library.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	library.alpha_cut = SpriteBase3D.ALPHA_CUT_DISCARD
+	library.no_depth_test = true
+	library.position.y = 0.17
+	root.add_child(library)
 
 # ---- Level-2 landmark: Hongshan Technology Building across two tiles ----
 func _tile_hongshan_tech_surface(root: Node3D, data: Dictionary):
@@ -1538,9 +1459,12 @@ func _tile_hongshan_tech_surface(root: Node3D, data: Dictionary):
 	# One complete vector illustration spans both cells, eliminating split-model seams.
 	var building := Sprite3D.new()
 	# The source geometry extends along +X. DIRS starts at -Z.
-	building.texture = HONGSHAN_TOWER_VIEWS[posmod(direction_index - 1, 4)]
+	building.texture = _landmark_texture(str(data.get("landmark", "hongshan_tech")), posmod(direction_index - 1, 4))
 	building.pixel_size = 1.0 / 180.0
 	building.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	building.alpha_cut = SpriteBase3D.ALPHA_CUT_DISCARD
+	building.alpha_scissor_threshold = 0.1
+	building.no_depth_test = true
 	# SVG ground origin is (380, 486); the billboard anchor stays on the tile surface.
 	building.offset = Vector2(0, 166)
 	building.position = toward_joint * (TILE_SPACING * 0.5) + Vector3(0, 0.17, 0)
@@ -1992,7 +1916,8 @@ func _draw_card_from_deck(deck: int) -> Dictionary:
 	if deck == 0:
 		if randf() < 0.18:
 			var building_level = randi_range(1, 2)
-			return {"kind": "building_develop", "name": "%d级建筑开发" % building_level, "level": building_level, "deck": "开发"}
+			var landmark: String = ["hongshan_tech", "wuhan_university", "hust"][randi_range(0, 2)] if building_level == 2 else "library"
+			return {"kind": "building_develop", "name": _landmark_name(landmark), "level": building_level, "landmark": landmark, "deck": "开发"}
 		var level = randi_range(1, 4)
 		var shape = randi_range(0, 2) if level == 4 else 0
 		return {"kind": "develop", "name": "%d级山体开发" % level, "level": level, "deck": "开发", "shape": shape}
@@ -2088,7 +2013,7 @@ func _card_description(card: Dictionary) -> String:
 	match card["kind"]:
 		"seed": return "+%d 朵花" % (int(card["level"]) * 10)
 		"develop": return "开发 %d 格山体" % int(card["level"])
-		"building_develop": return "洪山科技大厦" if int(card["level"]) == 2 else "缺口建造黄鹤楼"
+		"building_develop": return _landmark_name(str(card.get("landmark", "hongshan_tech" if int(card["level"]) == 2 else "library")))
 		"road": return "连接 %d 段道路" % int(card["level"])
 		"weather": return "改变本轮环境"
 	return ""
@@ -2327,7 +2252,7 @@ func _finish_card_drag(cell: Vector2i):
 	elif card["kind"] == "weather": ok = _apply_weather_card(card)
 	elif _in_bounds(cell):
 		if card["kind"] == "develop": ok = _apply_pending_develop(cell, card)
-		elif card["kind"] == "building_develop": ok = _apply_building_develop_card(cell, int(card["level"]))
+		elif card["kind"] == "building_develop": ok = _apply_building_develop_card(cell, int(card["level"]), str(card.get("landmark", "hongshan_tech")))
 		elif card["kind"] == "seed":
 			ok = _add_flowers(cell, current_player, int(card["level"]) * 10)
 			if ok: seeds[current_player] = maxi(0, seeds[current_player] - 1)
@@ -2370,9 +2295,9 @@ func _apply_pending_develop(anchor: Vector2i, card: Dictionary) -> bool:
 	var generated: Array = pending_develop.get("terrains", [])
 	var generated_roads: Array = pending_develop.get("roads", [])
 	for i in cells.size(): _set_tile_type(cells[i], generated[i], true, _rotate_road_mask(generated_roads[i], piece_rotation))
+	_reward_developed_buildings(cells)
 	_update_gaps(); _ensure_growth_margin(cells); _update_gaps(); _refresh_road_effects()
-	_grant_seed_card(current_player, 1, "开发完成")
-	last_settlement = "开发了 %d 格新地块，获得1级播种卡" % cells.size()
+	last_settlement = "开发了 %d 格新地块" % cells.size()
 	return true
 
 func _make_local_road_masks(offsets: Array) -> Array:
@@ -2446,7 +2371,7 @@ func _play_selected_card(pos: Vector2i) -> bool:
 			# Development cards are committed through the drag preview flow.
 			ok = false
 		"building_develop":
-			ok = _apply_building_develop_card(pos, int(card["level"]))
+			ok = _apply_building_develop_card(pos, int(card["level"]), str(card.get("landmark", "hongshan_tech")))
 		"road":
 			# Road cards require a continuous dragged path.
 			ok = false
@@ -2465,14 +2390,14 @@ func _apply_develop_card(pos: Vector2i, level: int) -> bool:
 	if not _can_develop_cells(cells): return false
 	for cell in cells:
 		_set_tile_type(cell, _draw_terrain(), true, _random_road_mask())
+	_reward_developed_buildings(cells)
 	_generate_development_roads(cells)
 	_update_gaps()
 	_ensure_growth_margin(cells)
 	_update_gaps()
 	_refresh_road_effects()
 	_refresh_building_auras()
-	_grant_seed_card(current_player, 1, "开发完成")
-	last_settlement = "开发了 %d 格新地块，获得1级播种卡" % cells.size()
+	last_settlement = "开发了 %d 格新地块" % cells.size()
 	return true
 
 func _can_develop_cells(cells: Array) -> bool:
@@ -2483,11 +2408,11 @@ func _can_develop_cells(cells: Array) -> bool:
 		if not _in_bounds(cell) or grid[cell.x][cell.y] != T_MOUNTAIN: return false
 		for dir in DIRS:
 			var neighbor = cell + dir
-			if _in_bounds(neighbor) and not cells.has(neighbor) and not _is_developable(grid[neighbor.x][neighbor.y]):
+			if _in_bounds(neighbor) and not cells.has(neighbor) and (_is_plant_terrain(grid[neighbor.x][neighbor.y]) or _is_bonus_terrain(grid[neighbor.x][neighbor.y])):
 				touches_developed = true
 	return touches_developed
 
-func _apply_building_develop_card(pos: Vector2i, level: int) -> bool:
+func _apply_building_develop_card(pos: Vector2i, level: int, landmark: String = "hongshan_tech") -> bool:
 	var cells = [pos] if level == 1 else [pos, pos + DIRS[piece_rotation]]
 	for cell in cells:
 		if not _in_bounds(cell) or grid[cell.x][cell.y] != T_GAP: return false
@@ -2496,13 +2421,13 @@ func _apply_building_develop_card(pos: Vector2i, level: int) -> bool:
 		_set_tile_type(pos, T_BUILDING, true, 0)
 	else:
 		for i in cells.size():
-			special_buildings[_logical_cell(cells[i])] = {"kind": "hongshan_tech", "part": i, "direction": piece_rotation}
+			special_buildings[_logical_cell(cells[i])] = {"kind": "hongshan_tech", "landmark": landmark, "part": i, "direction": piece_rotation}
 			_set_tile_type(cells[i], T_BUILDING, true, 0)
 	_refill_mountain_border()
 	_refresh_building_auras()
 	_refresh_road_effects()
 	_grant_seed_card(current_player, 1, "建筑开发")
-	last_settlement = ("建成洪山科技大厦" if level == 2 else "缺口变为黄鹤楼") + "，获得1级播种卡"
+	last_settlement = ("建成" + _landmark_name(landmark) if level == 2 else "建成武汉理工大学图书馆") + "，获得1级播种卡"
 	return true
 
 func _develop_card_cells(pos: Vector2i, level: int, rotation: int = 0) -> Array:
@@ -3093,7 +3018,7 @@ func _spawn_preview_tile_model(root: Node3D, terrain: int, card: Dictionary, ind
 		T_MOUNTAIN: _tile_mountain_surface(root)
 		T_BUILDING:
 			if card.get("kind", "") == "building_develop" and int(card.get("level", 1)) == 2:
-				_tile_hongshan_tech_surface(root, {"part": index, "direction": piece_rotation})
+				_tile_hongshan_tech_surface(root, {"part": index, "direction": piece_rotation, "landmark": card.get("landmark", "hongshan_tech")})
 			else: _tile_pavilion_surface(root, 0)
 		_: pass
 	_make_preview_translucent(root)
@@ -3229,7 +3154,7 @@ func _flower_chart_rect(vp: Vector2) -> Rect2:
 	return Rect2(left_panel.end.x + 10.0, left_panel.position.y, 206.0, minf(258.0, left_panel.size.y))
 
 func _flower_chart_visible() -> bool:
-	return ui_preview_mode == "tile" and _in_bounds(selected_tile) and grid[selected_tile.x][selected_tile.y] >= 0
+	return ui_preview_mode == "tile" and _in_bounds(selected_tile) and _is_plant_terrain(grid[selected_tile.x][selected_tile.y])
 
 func _ui_rail_rect(vp: Vector2) -> Rect2:
 	return Rect2(UI_MARGIN, vp.y - UI_MARGIN - UI_RAIL_HEIGHT, vp.x - UI_MARGIN * 2.0, UI_RAIL_HEIGHT)
@@ -3715,8 +3640,8 @@ func _card_preview_meta(card: Dictionary) -> Array:
 			var roads_data: Array = card.get("rolled_roads", [])
 			var segment_count := 0
 			for mask in roads_data: segment_count += _count_mask_bits(int(mask))
-			return [["等级与形状", _develop_shape_label(card)], ["使用目标", "形状内全部为山体"], ["邻接条件", "至少一格邻接已开发区"], ["旋转/取消", "Q/E旋转 右键或Esc取消"], ["随机内容", "按地块概率生成 路%d段" % (segment_count / 2)], ["完成后", "补山/检测缺口/奖励播种卡"]]
-		"building_develop": return [["占地", "1x2相邻缺口" if int(card["level"]) == 2 else "1x1单个缺口"], ["建筑", "洪山科技大厦" if int(card["level"]) == 2 else "黄鹤楼"], ["相邻条件", "不检查"], ["旋转/取消", "Q/E旋转 右键或Esc取消"], ["建筑增益", "3x3植物容积x2"], ["完成奖励", "获得1张1级播种卡"]]
+			return [["等级与形状", _develop_shape_label(card)], ["使用目标", "形状内全部为山体"], ["邻接条件", "至少一格邻接已开发区"], ["旋转/取消", "Q/E旋转 右键或Esc取消"], ["随机内容", "按地块概率生成 路%d段" % (segment_count / 2)], ["完成后", "补山/检测缺口；仅建成建筑奖励"]]
+		"building_develop": return [["占地", "1x2相邻缺口" if int(card["level"]) == 2 else "1x1单个缺口"], ["建筑", _landmark_name(str(card.get("landmark", "hongshan_tech" if int(card["level"]) == 2 else "library")))], ["相邻条件", "不检查"], ["旋转/取消", "Q/E旋转 右键或Esc取消"], ["建筑增益", "3x3植物容积x2"], ["完成奖励", "获得1张1级播种卡"]]
 		"road": return [["等级", "%d级 / 长度%d" % [int(card["level"]), int(card["level"])]], ["连接地块", "%d个" % (int(card["level"]) + 1)], ["绘制", "连续拖动 可转弯"], ["接入规则", "可接旧路并叠加"], ["地块限制", "山体/缺口/建筑不可通过"], ["闭合奖励", "沿线玩家各获1级播种卡"]]
 		"weather": return [["作用范围", "全棋盘 无位置限制"], ["持续时间", "立即/本回合" if card.get("weather", "") == "彩虹" else "3回合"], ["具体效果", "见上方完整说明"], ["保护地块", "建筑/山体/缺口不改变"], ["同类叠加", "不可叠加"], ["互斥天气", _weather_conflicts(str(card.get("weather", "")))]]
 	return []
@@ -3769,8 +3694,8 @@ func _tile_preview_meta(pos: Vector2i) -> Array:
 	if terrain == T_WATER: return [["类型/容积", "增益地块 / 0"], ["四邻影响", "每格升级概率+20%"], ["3x3增益", "植物正升级概率x2"], ["增益叠加", "多个水域不叠加"], ["旱季影响", "每回合30%变草地"], ["道路", road_text]]
 	if terrain == T_BUILDING:
 		var building: Dictionary = special_buildings.get(_logical_cell(pos), {})
-		var building_name = "洪山科技大厦" if building.get("kind", "") == "hongshan_tech" else "黄鹤楼"
-		return [["建筑/容积", building_name + " / 0"], ["3x3增益", "植物花朵容积x2"], ["增益叠加", "多个建筑不叠加"], ["地块改变", "永久不改变"], ["道路", "不可修建"], ["花朵", "不可播种"]]
+		var building_name = _landmark_name(str(building.get("landmark", "hongshan_tech"))) if building.get("kind", "") == "hongshan_tech" else "武汉理工大学图书馆"
+		return [["建筑名称", building_name], ["3x3增益", "植物花朵容积x2"], ["增益叠加", "多个建筑不叠加"], ["地块改变", "永久不改变"], ["道路", "不可修建"], ["建筑规则", "不可播种"]]
 	if terrain == T_MOUNTAIN: return [["类型/容积", "可开发地块 / 0"], ["可用卡牌", "山体开发卡"], ["放置要求", "整组山体且邻接开发区"], ["极端天气", "不会改变"], ["缺口检测", "开发完成后执行"], ["道路/播种", "均不可"]]
 	return [["类型/容积", "封闭缺口 / 0"], ["形成条件", "内部山体被完全包围"], ["检测时机", "仅开发卡完成后"], ["可用卡牌", "建筑开发卡"], ["极端天气", "不会改变"], ["道路/播种", "均不可"]]
 
@@ -3794,7 +3719,7 @@ func _tile_preview_status(pos: Vector2i) -> String:
 	if terrain == T_GRASS: return "可升森林或降荒漠；降荒漠时花朵变为1/5"
 	if terrain == T_DESERT: return "最低级不能再降；可升级为草地"
 	if terrain == T_WATER: return "不能播种；可修路；正概率只翻倍一次"
-	if terrain == T_GAP: return "可放置黄鹤楼或洪山科技大厦"
+	if terrain == T_GAP: return "可用1级图书馆或2级科创/武大/华科建筑卡"
 	if terrain == T_MOUNTAIN: return "可使用山体开发卡"
 	return "建筑永久不变，并提升周围植物地块容量"
 
@@ -3844,12 +3769,12 @@ func _rebuild_selected_tile_preview(pos: Vector2i):
 				var axis: Vector2i = DIRS[direction_index]
 				var half_span := Vector3(axis.x, 0, axis.y) * TILE_SPACING * 0.5
 				root.position = -half_span
-				_tile_hongshan_tech_surface(root, {"part": 0, "direction": direction_index})
+				_tile_hongshan_tech_surface(root, {"part": 0, "direction": direction_index, "landmark": building.get("landmark", "hongshan_tech")})
 				var other_half := Node3D.new()
 				other_half.position = half_span
 				card_preview_root.add_child(other_half)
 				_spawn_island_base(other_half, T_BUILDING)
-				_tile_hongshan_tech_surface(other_half, {"part": 1, "direction": direction_index})
+				_tile_hongshan_tech_surface(other_half, {"part": 1, "direction": direction_index, "landmark": building.get("landmark", "hongshan_tech")})
 			else: _tile_pavilion_surface(root, 0)
 	_spawn_decor(terrain, root, roads[pos.x][pos.y])
 	if roads[pos.x][pos.y] != 0 and terrain != T_BUILDING: _spawn_road(root, roads[pos.x][pos.y])
@@ -3926,7 +3851,7 @@ func _spawn_exact_preview_tile(root: Node3D, terrain: int, card: Dictionary, ind
 		T_MOUNTAIN: _tile_mountain_surface(root)
 		T_GAP: _tile_gap_surface(root)
 		T_BUILDING:
-			if card.get("kind", "") == "building_develop" and int(card.get("level", 1)) == 2: _tile_hongshan_tech_surface(root, {"part": index, "direction": piece_rotation})
+			if card.get("kind", "") == "building_develop" and int(card.get("level", 1)) == 2: _tile_hongshan_tech_surface(root, {"part": index, "direction": piece_rotation, "landmark": card.get("landmark", "hongshan_tech")})
 			else: _tile_pavilion_surface(root, 0)
 	_spawn_decor(terrain, root, 0)
 
@@ -4155,7 +4080,7 @@ func _draw_card_model_icon(card: Dictionary, center: Vector2, color: Color, prev
 	match card["kind"]:
 		"seed": _draw_seed_card_flowers(center, int(card["level"]), preview_scale)
 		"develop": _draw_develop_card_mountains(center, card)
-		"building_develop": _draw_building_card_model(center, int(card["level"]))
+		"building_develop": _draw_building_card_model(center, card)
 		"weather": _draw_weather_card_forecast(center, str(card.get("weather", "")))
 		_: _draw_card_symbol(card, center, color)
 
@@ -4212,22 +4137,9 @@ func _draw_develop_card_mountains(center: Vector2, card: Dictionary):
 		ui_ctrl.draw_colored_polygon(PackedVector2Array([tile_center + Vector2(-9, 1), tile_center + Vector2(-1, -17), tile_center + Vector2(6, 1)]), TERRAIN_TOP[T_MOUNTAIN].lightened(0.10))
 		ui_ctrl.draw_colored_polygon(PackedVector2Array([tile_center + Vector2(-1, -17), tile_center + Vector2(12, 2), tile_center + Vector2(6, 1)]), TERRAIN_TOP[T_MOUNTAIN].darkened(0.22))
 
-func _draw_building_card_model(center: Vector2, level: int):
-	if level <= 1:
-		_draw_iso_tile(center + Vector2(0, 16), Color("#9d654d"), Color("#684638"), 25.0)
-		for tier in 5:
-			var width = 34.0 - tier * 4.8; var y = center.y + 9.0 - tier * 11.0
-			ui_ctrl.draw_rect(Rect2(center.x - width * 0.33, y - 7, width * 0.66, 8), Color("#b43b32"), true)
-			ui_ctrl.draw_colored_polygon(PackedVector2Array([Vector2(center.x - width * 0.58, y - 2), Vector2(center.x + width * 0.58, y - 2), Vector2(center.x + width * 0.40, y + 3), Vector2(center.x - width * 0.40, y + 3)]), Color("#d99a26"))
-		ui_ctrl.draw_colored_polygon(PackedVector2Array([center + Vector2(-7, -43), center + Vector2(0, -54), center + Vector2(7, -43)]), Color("#d99a26"))
-	else:
-		_draw_iso_tile(center + Vector2(0, 17), Color("#f4f5f2"), Color("#b8c0c0"), 31.0)
-		for side in [-1, 1]:
-			var tower = Rect2(center + Vector2(side * 18 - 12, -37), Vector2(24, 49))
-			ui_ctrl.draw_rect(tower, Color("#f5f6f3"), true)
-			for floor_index in 6:
-				ui_ctrl.draw_rect(Rect2(tower.position + Vector2(3, 4 + floor_index * 7), Vector2(18, 4)), Color("#5aa5bc").darkened(float(floor_index % 2) * 0.12), true)
-		ui_ctrl.draw_rect(Rect2(center + Vector2(-18, -9), Vector2(36, 9)), Color("#76b8c8"), true)
+func _draw_building_card_model(center: Vector2, card: Dictionary):
+	var landmark: String = str(card.get("landmark", "library" if int(card.get("level", 1)) == 1 else "hongshan_tech"))
+	ui_ctrl.draw_texture_rect(_landmark_texture(landmark, 0), Rect2(center + Vector2(-52, -60), Vector2(104, 88)), false)
 
 func _draw_weather_card_forecast(center: Vector2, weather: String):
 	match weather:
@@ -4436,3 +4348,16 @@ func _draw_gameover(vp: Vector2, font: Font):
 
 	var blink = sin(pulse * 2.5) * 0.3 + 0.7
 	ui_ctrl.draw_string(font, Vector2(cx - 75, vp.y * 0.88), "按 R 重新开始", HORIZONTAL_ALIGNMENT_LEFT, -1, 24, Color(1, 1, 1, blink))
+
+
+func _landmark_name(kind: String) -> String:
+	return str({"library": "武汉理工大学图书馆", "hongshan_tech": "洪山科创大厦", "wuhan_university": "武汉大学", "hust": "华中科技大学"}.get(kind, "洪山科创大厦"))
+
+func _landmark_texture(kind: String, turn: int) -> Texture2D:
+	var stem: String = str({"library": "library", "wuhan_university": "gate", "hust": "redhall"}.get(kind, "hongshan"))
+	return load("res://assets/buildings/isometric/%s-%d.svg" % [stem, posmod(turn, 4)]) as Texture2D
+
+func _reward_developed_buildings(cells: Array):
+	for cell in cells:
+		if grid[cell.x][cell.y] == T_BUILDING:
+			_grant_seed_card(current_player, 1, "建造武汉理工大学图书馆")
