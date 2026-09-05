@@ -1,6 +1,6 @@
 extends Node3D
 
-const TITLE_BACKGROUND: Texture2D = preload("res://assets/title-background.png")
+const TITLE_BACKGROUND: Texture2D = preload("res://assets/Title.jpg")
 const WATER_TILE_SHADER: Shader = preload("res://shaders/water_tile.gdshader")
 const UI_FROSTED_GLASS_SHADER: Shader = preload("res://shaders/ui_frosted_glass.gdshader")
 const HONGSHAN_TOWER_VIEWS = [
@@ -316,8 +316,7 @@ func _setup_card_preview_viewport():
 	card_preview_viewport.add_child(world_env)
 
 func _setup_title_world():
-	# 标题场景：只放少量装饰性高级地块 + 云
-	# 不需要大网格，用8×8足够放几个角落地块
+	# 标题场景：角落放几个高级地块做装饰
 	var tw = 8; var th = 8
 	grid = []; roads = []; plants = []; plant_age = []; flowers = []
 	tile_nodes = []; plant_nodes = []; decor_nodes = []
@@ -329,20 +328,18 @@ func _setup_title_world():
 			flowers[x].append([0, 0, 0, 0])
 			tile_nodes[x].append(null); plant_nodes[x].append(null); decor_nodes[x].append(null)
 	grid_origin = Vector2i.ZERO
-	# 左下角放森林
+	# 左下角森林
 	_force_tile(Vector2i(0, 7), T_FOREST, false, 0)
 	_force_tile(Vector2i(1, 7), T_FOREST, false, 0)
 	_force_tile(Vector2i(0, 6), T_FOREST, false, 0)
 	_force_tile(Vector2i(1, 6), T_GRASS, false, 0)
-	# 右上角放建筑
+	# 右上角建筑
 	_force_tile(Vector2i(7, 0), T_BUILDING, false, 0)
 	_force_tile(Vector2i(6, 0), T_BUILDING, false, 0)
 	_force_tile(Vector2i(7, 1), T_GRASS, false, 0)
-	# 渲染建筑模型
 	for pos in [Vector2i(7, 0), Vector2i(6, 0)]:
 		var root = tile_nodes[pos.x][pos.y]
 		if root: _tile_pavilion_surface(root, 0)
-	# 相机看向角落地块区域
 	camera.size = 8.0
 	camera.position = Vector3(5, 10, 5)
 	camera.rotation_degrees = Vector3(-42, 42, 0)
@@ -4325,118 +4322,27 @@ func _draw_repeating_card_pattern(rect: Rect2, kind: String, color: Color):
 					ui_ctrl.draw_circle(p + Vector2(4, 0.5), 2.5, pattern_color)
 
 func _draw_title(vp: Vector2, font: Font):
-	# 背景图片铺满
+	# Title.jpg 背景铺满
 	ui_ctrl.draw_texture_rect(TITLE_BACKGROUND, Rect2(Vector2.ZERO, vp), false)
-	# 半透明遮罩让文字更清晰
-	ui_ctrl.draw_rect(Rect2(0, 0, vp.x, vp.y), Color(0.02, 0.06, 0.05, 0.35), true)
+	# 半透明遮罩
+	ui_ctrl.draw_rect(Rect2(0, 0, vp.x, vp.y), Color(0.02, 0.06, 0.05, 0.30), true)
 
 	# 标题文字
 	_draw_centered_outlined_text("花 满 洪 山", Vector2(vp.x * 0.5, vp.y * 0.18), font, 68, Color("#fff8e8"), Color("#1a3a2a"), 6)
 	_draw_centered_outlined_text("HONGSHAN IN BLOOM", Vector2(vp.x * 0.5, vp.y * 0.18 + 52), font, 18, Color("#d4c890"), Color("#1a3a2a"), 3)
 
-	# 卡牌风格玩家选择按钮
+	# 卡牌风格玩家选择按钮（正中间）
 	for index in 3:
 		_draw_title_card_button(index, _title_player_button_rect(index, vp), font)
 
 	# 底部
 	_draw_centered_outlined_text("武汉洪山区主题 · GGJ 2026 · GROW Theme", Vector2(vp.x * 0.5, vp.y * 0.93), font, 13, Color(1, 1, 1, 0.35), Color(0, 0, 0, 0.2), 2)
 
-	# 右上角相机调试信息
-	var debug_x = vp.x - 220.0; var debug_y = 12.0
-	ui_ctrl.draw_rect(Rect2(debug_x - 6, debug_y - 4, 214, 76), Color(0, 0, 0, 0.55), 0, true, 4.0)
-	ui_ctrl.draw_string(font, Vector2(debug_x, debug_y + 14), "size: %.1f" % title_cam_size, HORIZONTAL_ALIGNMENT_LEFT, 200, 13, Color("#80ff80"))
-	ui_ctrl.draw_string(font, Vector2(debug_x, debug_y + 30), "offset: %.2f, %.2f" % [title_cam_offset.x, title_cam_offset.y], HORIZONTAL_ALIGNMENT_LEFT, 200, 13, Color("#80ff80"))
-	ui_ctrl.draw_string(font, Vector2(debug_x, debug_y + 46), "scroll=zoom  mid-drag=pan", HORIZONTAL_ALIGNMENT_LEFT, 200, 11, Color("#808080"))
-	ui_ctrl.draw_string(font, Vector2(debug_x, debug_y + 60), "C=reset  2/3/4=start", HORIZONTAL_ALIGNMENT_LEFT, 200, 11, Color("#808080"))
-
 func _draw_centered_outlined_text(value: String, center: Vector2, font: Font, size: int, color: Color, outline: Color, outline_size: int):
 	var text_size = font.get_string_size(value, HORIZONTAL_ALIGNMENT_LEFT, -1, size)
 	var baseline = center + Vector2(-text_size.x * 0.5, font.get_ascent(size) * 0.5)
 	ui_ctrl.draw_string_outline(font, baseline, value, HORIZONTAL_ALIGNMENT_LEFT, -1, size, outline_size, outline)
 	ui_ctrl.draw_string(font, baseline, value, HORIZONTAL_ALIGNMENT_LEFT, -1, size, color)
-
-func _draw_title_water_field(vp: Vector2):
-	# 背景色
-	ui_ctrl.draw_rect(Rect2(Vector2.ZERO, vp), Color("#1e524e"), true)
-	var tile_w = 112.0; var tile_h = 54.0
-	var text_cells = _ggj2026_cells()
-	var building_cells = _title_building_cells()
-	var rows = ceili(vp.y / (tile_h * 0.5)) + 3
-	var columns = ceili(vp.x / tile_w) + 3
-	# 网格偏移，让文字区域在屏幕中下部
-	var y_offset = vp.y * 0.35
-	for row in rows:
-		for column in columns:
-			var center = Vector2((column - 1) * tile_w + (row % 2) * tile_w * 0.5, row * tile_h * 0.5 - tile_h + y_offset)
-			var grid_x = column - 1; var grid_y = row - 1
-			var shade = float(posmod(row * 7 + column * 11, 5)) * 0.02
-			# 判断地块类型
-			if building_cells.has(Vector2i(grid_x, grid_y)):
-				# 建筑地块
-				var top_color = TERRAIN_TOP[T_BUILDING].lightened(shade)
-				_draw_iso_tile(center, top_color, TERRAIN_MID[T_BUILDING].lightened(shade), tile_w * 0.5)
-				_draw_title_building_sprite(center)
-			elif text_cells.has(Vector2i(grid_x, grid_y)):
-				# 水域（拼字）
-				var top_color = TERRAIN_TOP[T_WATER].lightened(shade)
-				_draw_iso_tile(center, top_color, TERRAIN_MID[T_WATER].lightened(shade), tile_w * 0.5)
-				# 水面涟漪装饰
-				ui_ctrl.draw_circle(center + Vector2(randf_range(-8, 8), randf_range(-4, 4)), randf_range(3, 6), Color(0.6, 0.85, 1.0, 0.25))
-			else:
-				# 山体/草地背景
-				var is_grass = posmod(grid_x * 7 + grid_y * 13, 11) < 2
-				var terr = T_GRASS if is_grass else T_MOUNTAIN
-				var top_color = TERRAIN_TOP[terr].lightened(0.15 + shade)
-				_draw_iso_tile(center, top_color, TERRAIN_MID[terr].lightened(0.05 + shade), tile_w * 0.5)
-				if terr == T_MOUNTAIN:
-					var peak_height = 20.0 + float(posmod(row * 13 + column * 5, 4)) * 4.0
-					var peak_x = center.x + float(posmod(row + column, 3) - 1) * 8.0
-					ui_ctrl.draw_colored_polygon(PackedVector2Array([
-						Vector2(peak_x - 22, center.y + 4), Vector2(peak_x, center.y - peak_height), Vector2(peak_x + 8, center.y + 4)
-					]), top_color.lightened(0.06))
-					ui_ctrl.draw_colored_polygon(PackedVector2Array([
-						Vector2(peak_x, center.y - peak_height), Vector2(peak_x + 24, center.y + 4), Vector2(peak_x + 8, center.y + 4)
-					]), top_color.darkened(0.18))
-
-func _ggj2026_cells() -> Dictionary:
-	# 5×7像素字体定义
-	var font_data = {
-		"G": [[0,1,1,1,0],[1,0,0,0,0],[1,0,1,1,0],[1,0,0,1,0],[1,0,0,1,0],[1,0,0,1,0],[0,1,1,1,0]],
-		"J": [[0,0,0,1,0],[0,0,0,1,0],[0,0,0,1,0],[0,0,0,1,0],[0,0,0,1,0],[1,0,0,1,0],[0,1,1,0,0]],
-		"2": [[0,1,1,0,0],[1,0,0,1,0],[0,0,0,1,0],[0,0,1,0,0],[0,1,0,0,0],[1,0,0,0,0],[1,1,1,1,0]],
-		"0": [[0,1,1,0,0],[1,0,0,1,0],[1,0,0,1,0],[1,0,0,1,0],[1,0,0,1,0],[1,0,0,1,0],[0,1,1,0,0]],
-		"6": [[0,1,1,0,0],[1,0,0,1,0],[1,0,0,0,0],[1,1,1,0,0],[1,0,0,1,0],[1,0,0,1,0],[0,1,1,0,0]]
-	}
-	var cells := {}
-	var text = "GGJ2026"
-	var ox = 4; var oy = 11  # 50×30网格中垂直居中
-	for ch_idx in text.length():
-		var ch = text[ch_idx]
-		if not font_data.has(ch): ox += 6; continue
-		var glyph: Array = font_data[ch]
-		for r in glyph.size():
-			for c in glyph[r].size():
-				if glyph[r][c] == 1:
-					cells[Vector2i(ox + c, oy + r)] = true
-		ox += 6
-	return cells
-
-func _title_building_cells() -> Array:
-	# 建筑放在文字周围的空位
-	return [Vector2i(8, 6), Vector2i(42, 7), Vector2i(6, 18), Vector2i(44, 17), Vector2i(26, 8)]
-
-func _draw_title_building_sprite(center: Vector2):
-	# 简化建筑模型（用几个色块表示）
-	# 基座
-	ui_ctrl.draw_rect(Rect2(center.x - 12, center.y - 6, 24, 12), Color("#a06830"), true)
-	# 主体
-	ui_ctrl.draw_rect(Rect2(center.x - 8, center.y - 28, 16, 24), Color("#d4a050"), true)
-	# 屋顶
-	ui_ctrl.draw_colored_polygon(PackedVector2Array([
-		Vector2(center.x - 14, center.y - 26), Vector2(center.x, center.y - 38), Vector2(center.x + 14, center.y - 26)
-	]), Color("#e8a030"))
-	# 塔尖
-	ui_ctrl.draw_rect(Rect2(center.x - 2, center.y - 42, 4, 6), Color("#c08020"), true)
 
 func _draw_wuhan_river_lines(vp: Vector2):
 	var yangtze = PackedVector2Array([
