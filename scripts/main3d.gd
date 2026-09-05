@@ -736,8 +736,30 @@ func _refresh_road_effects():
 				var component_id = _road_component_key(component)
 				current_closed[component_id] = true
 				_spawn_closed_road_fx(component)
-				if not closed_road_ids.has(component_id): last_road_event = "道路闭合！沿线生态获得奖励"
+				if not closed_road_ids.has(component_id):
+					_grant_closed_road_seed_rewards(component)
+					last_road_event = "道路闭合！沿线玩家获得1级播种卡"
 	closed_road_ids = current_closed
+
+func _grant_seed_card(player_id: int, level: int = 1, reason: String = ""):
+	if player_id < 0 or player_id >= player_count: return
+	var card := _make_seed_card(level)
+	hands[player_id].append(card)
+	seeds[player_id] += 1
+	if player_id == current_player:
+		current_hand = hands[current_player]
+	if reason != "":
+		_record_action("%s获得%d级播种卡：%s" % [PLAYER_NAMES[player_id], level, reason])
+
+func _grant_closed_road_seed_rewards(component: Array):
+	var rewarded := {}
+	for cell in component:
+		if not _in_bounds(cell): continue
+		for player_id in player_count:
+			if rewarded.has(player_id): continue
+			if flowers[cell.x][cell.y][player_id] > 0:
+				rewarded[player_id] = true
+				_grant_seed_card(player_id, 1, "道路闭合")
 
 func _road_component(start: Vector2i, visited: Dictionary) -> Array:
 	var component := []
@@ -1298,7 +1320,16 @@ func _try_select_tile(pos: Vector2i):
 func _tile_info_text(pos: Vector2i) -> String:
 	var terr: int = grid[pos.x][pos.y]
 	if _is_plant_terrain(terr):
-		var lines = [TERRAIN_NAMES[terr], "生长率 %.1f   容积 %d/%d" % [TERRAIN_GROWTH[terr], _flower_total(pos), _tile_capacity(pos)]]
+		var growth_rate: float = TERRAIN_GROWTH[terr]
+		if _has_extreme_weather(): growth_rate *= 0.5
+		if rainbow_turns > 0: growth_rate *= 2.0
+		var spread_rate := 1.0
+		if rainbow_turns > 0: spread_rate = 2.0
+		var lines = [
+			TERRAIN_NAMES[terr],
+			"生长率 %.2f   容积 %d/%d" % [growth_rate, _flower_total(pos), _tile_capacity(pos)],
+			"扩散概率 x%.1f" % spread_rate
+		]
 		var water_count := 0; var building_count := 0
 		for dx in range(-1, 2):
 			for dy in range(-1, 2):
@@ -1309,6 +1340,7 @@ func _tile_info_text(pos: Vector2i) -> String:
 				elif grid[neighbor.x][neighbor.y] == T_BUILDING: building_count += 1
 		if water_count > 0: lines.append("水域增益 x%d" % water_count)
 		if building_count > 0: lines.append("建筑增益 x%d" % building_count)
+		if terr == T_DESERT: lines.append("荒漠容量低：最多10朵")
 		lines.append("道路：%s" % ("已连通" if roads[pos.x][pos.y] != 0 else "无"))
 		return "\n".join(lines)
 	if terr == T_WATER: return "水域\n相邻植物升级概率翻倍\n影响范围 3x3"
@@ -2258,7 +2290,8 @@ func _apply_develop_card(pos: Vector2i, level: int) -> bool:
 	_update_gaps()
 	_refresh_road_effects()
 	_refresh_building_auras()
-	last_settlement = "开发了 %d 格新地块" % cells.size()
+	_grant_seed_card(current_player, 1, "开发完成")
+	last_settlement = "开发了 %d 格新地块，获得1级播种卡" % cells.size()
 	return true
 
 func _can_develop_cells(cells: Array) -> bool:
@@ -2287,7 +2320,8 @@ func _apply_building_develop_card(pos: Vector2i, level: int) -> bool:
 	_refill_mountain_border()
 	_refresh_building_auras()
 	_refresh_road_effects()
-	last_settlement = "建成洪山科技大厦" if level == 2 else "缺口变为黄鹤楼"
+	_grant_seed_card(current_player, 1, "建筑开发")
+	last_settlement = ("建成洪山科技大厦" if level == 2 else "缺口变为黄鹤楼") + "，获得1级播种卡"
 	return true
 
 func _develop_card_cells(pos: Vector2i, level: int, rotation: int = 0) -> Array:
@@ -2344,6 +2378,11 @@ func _apply_weather_card(card: Dictionary) -> bool:
 		rainbow_turns = 1
 		last_settlement = "彩虹清除了极端天气"
 	else:
+		if weather == "旱季":
+			active_weather.erase("雨季")
+			active_weather.erase("台风")
+		elif weather == "雨季" or weather == "台风":
+			active_weather.erase("旱季")
 		active_weather[weather] = 3
 		last_settlement = "%s将持续3回合" % weather
 	return true
@@ -2368,25 +2407,44 @@ func _apply_weather_visual(weather: String):
 		tween.tween_property(sun, "scale", Vector3.ONE * 1.14, 1.8).set_trans(Tween.TRANS_SINE)
 		tween.tween_property(sun, "scale", Vector3.ONE, 1.8).set_trans(Tween.TRANS_SINE)
 	else:
-		# 彩虹：3D环形，放在地块缝隙中心，抬高避免下半被遮挡
+		# 彩虹：只生成上半弧，放在地块缝隙中心。
 		var rainbow_colors = [Color("#e85b56"), Color("#e99b45"), Color("#ead45d"), Color("#68b978"), Color("#5fb8c7"), Color("#5b78c9"), Color("#a46ab9")]
-		# 缝隙中心 = 棋盘中心地块偏移半格
 		var gap_center = _world(Vector2i(_grid_width() / 2, _grid_height() / 2)) + Vector3(TILE_SPACING * 0.5, 0, TILE_SPACING * 0.5)
 		for index in rainbow_colors.size():
-			var ring = MeshInstance3D.new()
-			var tm = TorusMesh.new()
-			tm.inner_radius = 1.5 + index * 0.08
-			tm.outer_radius = tm.inner_radius + 0.06
-			tm.rings = 32; tm.ring_segments = 10
-			ring.mesh = tm
+			var ring := MeshInstance3D.new()
+			ring.mesh = _make_rainbow_arc_mesh(1.15 + index * 0.09, 0.055, 40)
 			var material = _soft_material(Color(rainbow_colors[index], 0.45), 0.35)
 			material.cull_mode = BaseMaterial3D.CULL_DISABLED
 			ring.material_override = material
-			ring.position = gap_center + Vector3(0, 2.5, 0)
-			ring.rotation_degrees.x = 90
+			ring.position = gap_center + Vector3(0, 0.55, 0)
 			ring.set_meta("rainbow", true)
 			ring.set_meta("rainbow_base_pos", ring.position)
 			weather_fx_root.add_child(ring)
+
+func _make_rainbow_arc_mesh(radius: float, thickness: float, segments: int) -> ArrayMesh:
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	var vertices := PackedVector3Array()
+	var normals := PackedVector3Array()
+	var indices := PackedInt32Array()
+	for i in range(segments + 1):
+		var t := PI * float(i) / float(segments)
+		var outer := radius + thickness
+		var inner := radius
+		vertices.append(Vector3(cos(t) * outer, sin(t) * outer, 0.0))
+		vertices.append(Vector3(cos(t) * inner, sin(t) * inner, 0.0))
+		normals.append(Vector3(0, 0, 1))
+		normals.append(Vector3(0, 0, 1))
+	for i in segments:
+		var a := i * 2
+		indices.append(a); indices.append(a + 2); indices.append(a + 1)
+		indices.append(a + 1); indices.append(a + 2); indices.append(a + 3)
+	arrays[Mesh.ARRAY_VERTEX] = vertices
+	arrays[Mesh.ARRAY_NORMAL] = normals
+	arrays[Mesh.ARRAY_INDEX] = indices
+	var mesh := ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	return mesh
 
 func _spawn_weather_rain(center: Vector3, count: int, storm: bool):
 	if storm:
@@ -2508,6 +2566,20 @@ func _apply_weather_tile_changes():
 				if grid[x][y] == T_DESERT: deserts.append(Vector2i(x, y))
 		for pos in deserts:
 			_weather_convert_neighbor(pos, T_DESERT)
+	if active_weather.has("旱季"):
+		var dried_waters := []
+		for x in _grid_width():
+			for y in _grid_height():
+				if grid[x][y] == T_WATER and randf() < 0.30:
+					dried_waters.append(Vector2i(x, y))
+		for pos in dried_waters:
+			_set_tile_type(pos, T_GRASS, true)
+			for dir in DIRS:
+				var neighbor = pos + dir
+				if _in_bounds(neighbor):
+					_update_edge_bridges(neighbor)
+					_update_road_bridges(neighbor)
+					_refresh_neighbor_trims(neighbor)
 
 func _weather_convert_neighbor(pos: Vector2i, terr: int):
 	var options := []
