@@ -363,8 +363,8 @@ func _setup_title_world():
 	add_child(sub_label)
 	# 相机：拉高拉远，看到整个50×20网格
 	var center_world = _world(Vector2i(tw / 2, th / 2))
-	camera.size = 55.0
-	camera.position = center_world + Vector3(0, 55, 0)
+	camera.size = 20.0
+	camera.position = center_world + Vector3(0, 25, 0)
 	camera.rotation_degrees = Vector3(-42, 42, 0)
 
 func _setup_sky_world():
