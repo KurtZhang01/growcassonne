@@ -1618,14 +1618,15 @@ func _create_flower_instance(pos: Vector2i, owner: int, flower_root: Node3D) -> 
 	return flower
 
 func _displace_flowers_for_road(pos: Vector2i):
-	var flower_root = plant_nodes[pos.x][pos.y]
+	var flower_root: Node3D = plant_nodes[pos.x][pos.y]
 	if not is_instance_valid(flower_root): return
 	var road_mask: int = roads[pos.x][pos.y]
-	for flower in flower_root.get_children():
-		if not flower.has_meta("flower_owner"): continue
-		var current = Vector2(flower.position.x, flower.position.z)
+	for child in flower_root.get_children():
+		if not child.has_meta("flower_owner"): continue
+		var flower: Node3D = child
+		var current: Vector2 = Vector2(flower.position.x, flower.position.z)
 		if _position_clear_of_road(current, road_mask): continue
-		var candidate := current
+		var candidate: Vector2 = current
 		for attempt in 24:
 			candidate = Vector2(randf_range(-0.39, 0.39), randf_range(-0.39, 0.39))
 			if _position_clear_of_road(candidate, road_mask): break
