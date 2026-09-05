@@ -1,0 +1,44 @@
+[
+  {
+    "file": "hongshan.jpg",
+    "label": "洪山科创大厦",
+    "status": "名称明确；实景参考",
+    "page": "https://www.wh.ztx0755.com/xiezilou/1-1472.html",
+    "image": "https://www.wh.ztx0755.com/uploads/202411/6729dcbfbd730.jpg"
+  },
+  {
+    "file": "gate.jpg",
+    "label": "武汉大学牌坊",
+    "status": "依据牌坊轮廓判断，待用户确认",
+    "page": "https://k.sina.com.cn/article_5901594916_15fc33124001002nj1.html",
+    "image": "https://k.sinaimg.cn/n/sinacn/w640h441/20171231/ec60-fyqefvw5947553.jpg/w700d1q75cms.jpg?by=cms_fixed_width"
+  },
+  {
+    "file": "redhall.jpg",
+    "label": "华中科技大学校园建筑",
+    "status": "候选实景，并未确认是插画中红砖楼",
+    "page": "https://www.sicas.cn/School/183/Contents/110815105210771.shtml",
+    "image": "https://www.sicas.cn/images/schoollogo/201501151628565.jpg"
+  },
+  {
+    "file": "arena.jpg",
+    "label": "武汉体育学院体育馆",
+    "status": "拱顶场馆候选参考，未确认同一建筑",
+    "page": "https://www.tal-china.com/wap/content/?434.html",
+    "image": "https://www.tal-china.com/upLoad/product/2008051644125511366.jpg"
+  },
+  {
+    "file": "campus.jpg",
+    "label": "武汉创意天地园区",
+    "status": "低层园区候选参考，未确认同一建筑",
+    "page": "https://design.citic/portal/article/index/id/2588.html",
+    "image": "https://design.citic/upload/portal/20191122/97521342b88eab6ff831244cf37b1662.jpg"
+  },
+  {
+    "file": "office.jpg",
+    "label": "创意天地创意工坊",
+    "status": "白色办公楼类型参考，未确认同一建筑",
+    "page": "https://k.sina.cn/article_6135747824_p16db814f000100yte8.html?from=photo",
+    "image": "https://n.sinaimg.cn/sinakd10114/300/w1620h1080/20210618/6da6-krpikqf8225121.jpg"
+  }
+]

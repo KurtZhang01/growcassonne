@@ -2,8 +2,12 @@ extends Node3D
 
 const WATER_TILE_SHADER: Shader = preload("res://shaders/water_tile.gdshader")
 const UI_FROSTED_GLASS_SHADER: Shader = preload("res://shaders/ui_frosted_glass.gdshader")
-const HONGSHAN_TOWER_AXIS_X: Texture2D = preload("res://assets/buildings/hongshan-tower-axis-x.svg")
-const HONGSHAN_TOWER_AXIS_Z: Texture2D = preload("res://assets/buildings/hongshan-tower-axis-z.svg")
+const HONGSHAN_TOWER_VIEWS = [
+	preload("res://assets/buildings/isometric/hongshan-0.svg"),
+	preload("res://assets/buildings/isometric/hongshan-1.svg"),
+	preload("res://assets/buildings/isometric/hongshan-2.svg"),
+	preload("res://assets/buildings/isometric/hongshan-3.svg"),
+]
 
 # ---- Config ----
 const GRID_SIZE := 8
@@ -1529,11 +1533,13 @@ func _tile_hongshan_tech_surface(root: Node3D, data: Dictionary):
 
 	# One complete vector illustration spans both cells, eliminating split-model seams.
 	var building := Sprite3D.new()
-	building.texture = HONGSHAN_TOWER_AXIS_X if along_x else HONGSHAN_TOWER_AXIS_Z
-	building.pixel_size = 0.0028
+	# The source geometry extends along +X. DIRS starts at -Z.
+	building.texture = HONGSHAN_TOWER_VIEWS[posmod(direction_index - 1, 4)]
+	building.pixel_size = 1.0 / 180.0
 	building.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	building.flip_h = direction.x < 0 if along_x else direction.y < 0
-	building.position = toward_joint * (TILE_SPACING * 0.5) + Vector3(0, 0.955, 0)
+	# SVG ground origin is (380, 486); the billboard anchor stays on the tile surface.
+	building.offset = Vector2(0, 166)
+	building.position = toward_joint * (TILE_SPACING * 0.5) + Vector3(0, 0.17, 0)
 	root.add_child(building)
 
 func _building_box(root: Node3D, size: Vector3, position: Vector3, material: Material):
@@ -3793,12 +3799,24 @@ func _rebuild_selected_tile_preview(pos: Vector2i):
 		T_GAP: _tile_gap_surface(root)
 		T_BUILDING:
 			var building: Dictionary = special_buildings.get(_logical_cell(pos), {})
-			if building.get("kind", "") == "hongshan_tech": _tile_hongshan_tech_surface(root, building)
+			if building.get("kind", "") == "hongshan_tech":
+				var direction_index: int = int(building.get("direction", 1))
+				var axis: Vector2i = DIRS[direction_index]
+				var half_span := Vector3(axis.x, 0, axis.y) * TILE_SPACING * 0.5
+				root.position = -half_span
+				_tile_hongshan_tech_surface(root, {"part": 0, "direction": direction_index})
+				var other_half := Node3D.new()
+				other_half.position = half_span
+				card_preview_root.add_child(other_half)
+				_spawn_island_base(other_half, T_BUILDING)
+				_tile_hongshan_tech_surface(other_half, {"part": 1, "direction": direction_index})
 			else: _tile_pavilion_surface(root, 0)
 	_spawn_decor(terrain, root, roads[pos.x][pos.y])
 	if roads[pos.x][pos.y] != 0 and terrain != T_BUILDING: _spawn_road(root, roads[pos.x][pos.y])
 	card_preview_camera.size = 2.28 if terrain == T_BUILDING else 2.08
 	var target = Vector3(0, 0.25, 0); card_preview_camera.look_at_from_position(target + Vector3(3.2, 3.4, 4.2), target)
+	if special_buildings.get(_logical_cell(pos), {}).get("kind", "") == "hongshan_tech":
+		_align_hongshan_preview()
 
 func _rebuild_terrain_type_preview(terrain: int):
 	var signature = "terrain_type|%d" % terrain
@@ -3848,6 +3866,14 @@ func _rebuild_card_model_preview(card: Dictionary):
 	card_preview_camera.size = 1.92 + maxf(0.0, float(span - 1)) * 0.82
 	var target = Vector3(0, 0.25, 0)
 	card_preview_camera.look_at_from_position(target + Vector3(3.2, 3.4, 4.2), target)
+	if card.get("kind", "") == "building_develop" and int(card.get("level", 1)) == 2:
+		_align_hongshan_preview()
+
+func _align_hongshan_preview():
+	var target := Vector3(0, 0.55, 0)
+	var view_basis := Basis.from_euler(Vector3(deg_to_rad(-42.0), deg_to_rad(42.0), 0))
+	card_preview_camera.size = 3.6
+	card_preview_camera.look_at_from_position(target + view_basis.z * 6.0, target)
 
 func _spawn_exact_preview_tile(root: Node3D, terrain: int, card: Dictionary, index: int):
 	_spawn_island_base(root, terrain)
