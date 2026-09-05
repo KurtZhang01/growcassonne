@@ -299,6 +299,122 @@ func _draw_develop_preview_panel(vp: Vector2, font: Font):
 
 ---
 
+## 9. 手牌卡牌视觉重设计
+
+### 当前问题
+- 卡牌使用 `_draw_glass_card`（方框+边框），视觉僵硬
+- 选中/悬停用高光边框区分，不自然
+- 卡牌平铺排列，没有扇形展开
+- 后排卡牌没有遮挡阴影
+
+### 设计方向（参考杀戮尖塔/炉石传说）
+- 卡牌底部渐变背景（无边框）
+- 选中卡牌上浮+放大
+- 扇形排列，间距自适应
+- 后排卡牌有半透明遮罩阴影
+
+### 实现方案
+
+```gdscript
+func _draw_hand_cards(vp: Vector2, font: Font):
+    var count = current_hand.size()
+    if count == 0: return
+
+    # 扇形参数
+    var card_w = 100.0; var card_h = 145.0
+    var fan_center_x = vp.x * 0.5
+    var fan_y = vp.y - 90.0  # 扇形底部
+    var max_fan_angle = 15.0  # 最大扇形角度（度）
+    var fan_radius = 600.0  # 扇形半径（越大弧度越平）
+
+    # 计算每张卡的角度和位置
+    for draw_index in range(count - 1, -1, -1):
+        var i = draw_index
+        var card = current_hand[i]
+        var is_selected = (i == selected_card)
+        var is_hovered = (i == hovered_card_index)
+
+        # 扇形角度
+        var t = (float(i) / maxf(float(count - 1), 1.0) - 0.5)  # -0.5 ~ 0.5
+        var angle = t * max_fan_angle
+        var rad = deg_to_rad(angle)
+
+        # 卡牌中心位置
+        var cx = fan_center_x + sin(rad) * fan_radius * 0.15
+        var cy = fan_y - cos(rad) * fan_radius * 0.02
+
+        # 选中/悬停上浮
+        if is_selected or is_hovered:
+            cy -= 30.0
+
+        var rect = Rect2(
+            Vector2(cx - card_w * 0.5, cy - card_h),
+            Vector2(card_w, card_h)
+        )
+
+        # ---- 绘制卡牌 ----
+        var accent = _card_accent(card)
+        var base = _card_base_color(card)
+
+        # 1. 阴影（后排卡牌更深）
+        var shadow_alpha = 0.15 + (1.0 - float(i) / maxf(float(count), 1.0)) * 0.1
+        var shadow_rect = Rect2(rect.position + Vector2(3, 5), rect.size)
+        ui_ctrl.draw_rect(shadow_rect, Color(0, 0, 0, shadow_alpha), 0, true, 10.0)
+
+        # 2. 卡牌背景渐变（无边框）
+        # 上半部分：accent色渐变到base色
+        # 下半部分：base色
+        var gradient_top = accent.lerp(base, 0.3)
+        var gradient_mid = base
+        var gradient_bot = base.darkened(0.15)
+
+        # 上部渐变条（卡牌顶部彩色区域）
+        var top_strip = Rect2(rect.position, Vector2(rect.size.x, rect.size.y * 0.35))
+        ui_ctrl.draw_rect(top_strip, gradient_top, 0, true, 10.0)
+        # 中部
+        var mid_strip = Rect2(rect.position + Vector2(0, rect.size.y * 0.35),
+            Vector2(rect.size.x, rect.size.y * 0.45))
+        ui_ctrl.draw_rect(mid_strip, gradient_mid, 0, false)
+        # 底部
+        var bot_strip = Rect2(rect.position + Vector2(0, rect.size.y * 0.80),
+            Vector2(rect.size.x, rect.size.y * 0.20))
+        ui_ctrl.draw_rect(bot_strip, gradient_bot, 0, true, 10.0)
+
+        # 3. 微弱内发光（选中时）
+        if is_selected:
+            var glow = Color(accent.r, accent.g, accent.b, 0.20)
+            ui_ctrl.draw_rect(rect, glow, 0, true, 10.0)
+
+        # 4. 卡牌内容
+        _draw_repeating_card_pattern(rect, card["kind"], base.darkened(0.10))
+        _draw_fitted_text(card["name"],
+            Rect2(rect.position + Vector2(8, 12), Vector2(rect.size.x - 16, 20)),
+            font, 13, Color("#f0ece4"))
+        _draw_card_symbol(card, rect.get_center() + Vector2(0, -8), accent.lightened(0.2))
+        _draw_fitted_text(_card_description(card),
+            Rect2(rect.position + Vector2(6, rect.size.y - 40), Vector2(rect.size.x - 12, 16)),
+            font, 10, Color("#d8d0c0"))
+        _draw_fitted_text(card["deck"],
+            Rect2(rect.position + Vector2(6, rect.size.y - 20), Vector2(rect.size.x - 12, 14)),
+            font, 9, Color("#a09888"))
+
+        # 5. 旋转弧度（整张卡旋转）
+        ui_ctrl.draw_set_transform(rect.get_center(), rad * 0.3, Vector2.ONE)
+        # ... 绘制内容后重置 transform
+        ui_ctrl.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+```
+
+### 关键变化
+| 项目 | 原来 | 改为 |
+|------|------|------|
+| 背景 | `_draw_glass_card` 方框 | 三段渐变（accent→base→dark） |
+| 边框 | 有明确边框线 | **无边框**，靠渐变和阴影区分 |
+| 选中 | 高亮边框 | 上浮30px + 微弱内发光 |
+| 排列 | 水平平铺 | 扇形展开，卡牌微旋转 |
+| 阴影 | 无 | 每张卡底部有半透明阴影，后排更深 |
+
+---
+
 ## 实施优先级
 
 | 优先级 | 问题 | 复杂度 |
@@ -311,3 +427,4 @@ func _draw_develop_preview_panel(vp: Vector2, font: Font):
 | P0 | #8 开发卡地块预览（右下角） | 中 |
 | P1 | #4 闭合道路奖励播种卡 | 中 |
 | P1 | #7 彩虹位置偏移到地块缝隙 | 低 |
+| P1 | #9 手牌卡牌视觉重设计 | 高 |
