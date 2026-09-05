@@ -3426,8 +3426,11 @@ func _draw_public_decks(font: Font, ink: Color, muted: Color):
 		var accent = accents[i]; var base = bases[i]; var fade = fade_targets[i]
 		# 投影
 		ui_ctrl.draw_rect(Rect2(rect.position + Vector2(4, 6), rect.size), Color(0, 0, 0, 0.20), true)
-		# 渐变底色（与手牌风格一致，从上到下变淡）
-		var inner = rect
+		# 白色底
+		ui_ctrl.draw_rect(rect, Color(1.0, 1.0, 0.98, 0.96), true)
+		# 渐变（覆盖白底内部）
+		var border_w = 3.0
+		var inner = Rect2(rect.position + Vector2(border_w, border_w), rect.size - Vector2(border_w * 2, border_w * 2))
 		var rows = 16
 		for row in rows:
 			var t = float(row) / float(rows - 1)
@@ -3442,6 +3445,9 @@ func _draw_public_decks(font: Font, ink: Color, muted: Color):
 		# 底纹
 		var deck_kind = ["develop", "road", "weather"][i]
 		_draw_repeating_card_pattern(inner, deck_kind, Color(1, 1, 1, 0.35))
+		# 方框边框
+		var border_color = accent.lerp(Color.WHITE, 0.20)
+		ui_ctrl.draw_rect(rect, border_color, false, 1.5)
 		# 卡堆名称（居中）
 		ui_ctrl.draw_string(font, rect.position + Vector2(0, rect.size.y * 0.42), names[i], HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, 15, Color(0.15, 0.15, 0.15, 0.85))
 		# 点击抽取（卡牌下方）
