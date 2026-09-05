@@ -494,6 +494,122 @@ func _spawn_tile_info_panel(pos: Vector2i):
 
 ---
 
+## 12. 所有UI和卡牌改为方角 + 深色边框 + 立体投影
+
+### 当前问题
+- `_draw_glass_card` 使用圆角矩形（`corner_radius = 10-18`），风格偏软
+- 没有明确边框，没有投影，缺乏立体感
+
+### 方案
+统一改为**直角方块**，边框颜色略深于内部，加上底部/右侧投影：
+
+```gdscript
+func _draw_flat_card(rect: Rect2, fill: Color, border: Color, shadow_offset: Vector2 = Vector2(3, 4)):
+    # 1. 投影（底部偏右偏下）
+    ui_ctrl.draw_rect(
+        Rect2(rect.position + shadow_offset, rect.size),
+        Color(0, 0, 0, 0.25), 0, false
+    )
+    # 2. 边框（比fill略大的深色矩形）
+    var border_width = 2.0
+    ui_ctrl.draw_rect(
+        Rect2(rect.position - Vector2(border_width, border_width),
+              rect.size + Vector2(border_width * 2, border_width * 2)),
+        border, 0, false
+    )
+    # 3. 内部填充
+    ui_ctrl.draw_rect(rect, fill, 0, false)
+```
+
+**使用场景**：
+- 手牌卡牌：`_draw_flat_card(rect, base, base.darkened(0.3))`
+- 右侧UI面板：`_draw_flat_card(panel_rect, glass, glass.darkened(0.15))`
+- 市场卡堆：同上
+- 所有现有 `_draw_glass_card` 调用替换为 `_draw_flat_card`
+
+---
+
+## 13. 右侧UI文字溢出窗口
+
+### 当前问题
+右侧UI面板的x坐标使用固定值（如 `vp.x - 320`），当窗口变窄时文字跑到窗口外面。
+
+### 原因
+面板宽度固定，但没有检查是否超出左边界。
+
+### 方案
+限制面板x坐标，确保不超出左边界：
+
+```gdscript
+# 在 _draw_ui() 中：
+var ux = vp.x - 320.0
+# 关键：确保面板不超出左边界，留至少20px边距
+ux = maxf(ux, 20.0)
+# 如果面板空间不足，缩小面板宽度
+var panel_width = minf(280.0, vp.x - 40.0)
+
+# 所有右侧UI元素的x坐标基于ux，而非vp.x
+# 文字宽度限制：draw_string 的 width 参数设为 panel_width - 20
+ui_ctrl.draw_string(font, Vector2(ux + 12, uy), "文字内容",
+    HORIZONTAL_ALIGNMENT_LEFT, panel_width - 24, 14, ink)
+```
+
+**关键修改**：
+1. `ux` 加 `maxf(ux, 20.0)` 下限
+2. 所有 `draw_string` 的 width 参数改为 `panel_width - 24`（而非 -1 或固定值）
+3. 天气信息、操作提示等底部文字也要限制宽度
+
+---
+
+## 14. 结算字幕未分散（重叠聚集）
+
+### 当前问题
+结算时多个地块的字幕Label3D同时出现，位置太近导致重叠看不清。
+
+### 原因
+`_float_label` 使用 `randf_range(-0.15, 0.15)` 的随机x偏移，但地块间距1.25，0.15的随机范围太小，相邻地块的字幕容易重叠。
+
+### 方案
+加大随机偏移 + 错开出现时间 + 相邻地块字幕分散到不同高度：
+
+```gdscript
+func _float_label(pos: Vector2i, text: String, color: Color, delay: float = 0.0):
+    var label = Label3D.new()
+    label.text = text; label.font_size = 22
+    label.modulate = color
+    label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+    label.no_depth_test = true; label.pixel_size = 0.005
+    label.render_priority = 90
+    label.outline_modulate = Color(0, 0, 0, 0.8); label.outline_size = 8
+    # 加大随机偏移范围，避免重叠
+    label.position = _world(pos) + Vector3(
+        randf_range(-0.35, 0.35),  # 从±0.15扩大到±0.35
+        0.5 + randf_range(0, 0.15),  # y也加随机
+        randf_range(-0.35, 0.35)
+    )
+    settle_fx_root.add_child(label)
+    
+    # 延迟出现，错开相邻地块的字幕
+    var tw = create_tween()
+    tw.tween_interval(delay)
+    tw.tween_property(label, "modulate:a", 1.0, 0.01)  # 延迟后才显示
+    tw.set_parallel(true)
+    tw.tween_property(label, "position:y", label.position.y + 0.8, 3.0)
+    tw.tween_property(label, "modulate:a", 0.0, 3.0).set_delay(1.5)
+    tw.chain().tween_callback(label.queue_free)
+
+# 在 _emit_settlement_labels 中，为每个地块加递增延迟：
+var delay := 0.0
+for x in _grid_width():
+    for y in _grid_height():
+        # ... 检测变化 ...
+        if changed:
+            _float_label(pos, text, color, delay)
+            delay += 0.08  # 每个地块间隔0.08秒
+```
+
+---
+
 ## 实施优先级
 
 | 优先级 | 问题 | 复杂度 |
@@ -506,6 +622,9 @@ func _spawn_tile_info_panel(pos: Vector2i):
 | P0 | #8 开发卡地块预览（右下角） | 中 |
 | P0 | #10 沙漠容量提示 | 低 |
 | P0 | #11 信息面板精简+行间距 | 中 |
+| P0 | #12 UI方角+深色边框+立体投影 | 中 |
+| P0 | #13 右侧UI文字溢出修复 | 低 |
+| P0 | #14 结算字幕分散+延迟 | 低 |
 | P1 | #4 闭合道路奖励播种卡 | 中 |
 | P1 | #7 彩虹位置偏移到地块缝隙 | 低 |
 | P1 | #9 手牌卡牌视觉重设计 | 高 |
