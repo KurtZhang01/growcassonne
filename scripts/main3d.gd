@@ -1,5 +1,6 @@
 extends Node3D
 
+const TITLE_BACKGROUND: Texture2D = preload("res://assets/title-background.png")
 const WATER_TILE_SHADER: Shader = preload("res://shaders/water_tile.gdshader")
 const UI_FROSTED_GLASS_SHADER: Shader = preload("res://shaders/ui_frosted_glass.gdshader")
 const HONGSHAN_TOWER_VIEWS = [
@@ -315,7 +316,7 @@ func _setup_card_preview_viewport():
 	card_preview_viewport.add_child(world_env)
 
 func _setup_title_world():
-	# 标题场景：50×30地块铺满屏幕，GGJ2026在中左下
+	# 标题场景：50×30地块，GGJ2026在中左下
 	var tw = 50; var th = 30
 	# 扩展网格
 	grid = []; roads = []; plants = []; plant_age = []; flowers = []
@@ -328,47 +329,41 @@ func _setup_title_world():
 			flowers[x].append([0, 0, 0, 0])
 			tile_nodes[x].append(null); plant_nodes[x].append(null); decor_nodes[x].append(null)
 	grid_origin = Vector2i.ZERO
-	# GGJ2026 文字坐标（ox=4, oy=7，中左下区域）
+	# GGJ2026 文字坐标
 	var text_cells = _ggj2026_cells()
-	# 遍历50×20生成地块
+	# 角落区域（3-4级地块）
+	var corner_forest := {}  # 左下角森林区
+	for x in 4:
+		for y in 4:
+			corner_forest[Vector2i(x, th - 1 - y)] = true
+	var corner_building := {}  # 右上角建筑区
+	for x in 3:
+		for y in 3:
+			corner_building[Vector2i(tw - 1 - x, y)] = true
+	# 遍历生成地块
 	for x in tw:
 		for y in th:
 			var pos = Vector2i(x, y)
 			if text_cells.has(pos):
 				_force_tile(pos, T_WATER, false, 0)
+			elif corner_forest.has(pos):
+				_force_tile(pos, T_FOREST, false, 0)
+			elif corner_building.has(pos):
+				_force_tile(pos, T_BUILDING, false, 0)
 			elif randf() < 0.12:
 				_force_tile(pos, T_GRASS, false, 0)
 			else:
 				_force_tile(pos, T_MOUNTAIN, false, 0)
-	# Label3D 标题（平躺在等距平面上）
-	var title_label = Label3D.new()
-	title_label.text = "花满洪山"
-	title_label.font_size = 60
-	title_label.modulate = Color("#fff8e8")
-	title_label.outline_size = 8
-	title_label.outline_modulate = Color("#254940")
-	title_label.billboard = BaseMaterial3D.BILLBOARD_DISABLED
-	title_label.no_depth_test = true
-	title_label.position = _world(Vector2i(36, 6)) + Vector3(0, 0.3, 0)
-	title_label.rotation_degrees = Vector3(-90, 0, -45)
-	title_label.pixel_size = 0.01
-	add_child(title_label)
-	var sub_label = Label3D.new()
-	sub_label.text = "HONGSHAN IN BLOOM"
-	sub_label.font_size = 24
-	sub_label.modulate = Color("#f3cf8d")
-	sub_label.outline_size = 4
-	sub_label.outline_modulate = Color("#254940")
-	sub_label.billboard = BaseMaterial3D.BILLBOARD_DISABLED
-	sub_label.no_depth_test = true
-	sub_label.position = title_label.position + Vector3(0.3, 0, 0.3)
-	sub_label.rotation_degrees = Vector3(-90, 0, -45)
-	sub_label.pixel_size = 0.008
-	add_child(sub_label)
-	# 相机：拉高拉远，看到整个50×20网格
+	# 建筑地块渲染建筑模型
+	for x in tw:
+		for y in th:
+			var pos = Vector2i(x, y)
+			if corner_building.has(pos) and grid[pos.x][pos.y] == T_BUILDING:
+				var root = tile_nodes[pos.x][pos.y]
+				if root: _tile_pavilion_surface(root, 0)
+	# 相机
 	var center_world = _world(Vector2i(tw / 2, th / 2))
-	title_cam_size = 20.0
-	title_cam_offset = Vector2.ZERO
+	title_cam_size = 20.0; title_cam_offset = Vector2.ZERO
 	camera.size = title_cam_size
 	camera.position = center_world + Vector3(0, 25, 0)
 	camera.rotation_degrees = Vector3(-42, 42, 0)
@@ -4351,15 +4346,21 @@ func _draw_repeating_card_pattern(rect: Rect2, kind: String, color: Color):
 					ui_ctrl.draw_circle(p + Vector2(4, 0.5), 2.5, pattern_color)
 
 func _draw_title(vp: Vector2, font: Font):
-	# 3D地块世界+Label3D标题已由 _setup_title_world() 创建
-	ui_ctrl.draw_rect(Rect2(0, 0, vp.x, vp.y), Color(0.02, 0.06, 0.05, 0.12), true)
+	# 背景图片铺满
+	ui_ctrl.draw_texture_rect(TITLE_BACKGROUND, Rect2(Vector2.ZERO, vp), false)
+	# 半透明遮罩让文字更清晰
+	ui_ctrl.draw_rect(Rect2(0, 0, vp.x, vp.y), Color(0.02, 0.06, 0.05, 0.35), true)
 
-	# 玩家选择（中下部）
+	# 标题文字
+	_draw_centered_outlined_text("花 满 洪 山", Vector2(vp.x * 0.5, vp.y * 0.18), font, 68, Color("#fff8e8"), Color("#1a3a2a"), 6)
+	_draw_centered_outlined_text("HONGSHAN IN BLOOM", Vector2(vp.x * 0.5, vp.y * 0.18 + 52), font, 18, Color("#d4c890"), Color("#1a3a2a"), 3)
+
+	# 卡牌风格玩家选择按钮
 	for index in 3:
-		_draw_title_player_button(index, _title_player_button_rect(index, vp), font)
+		_draw_title_card_button(index, _title_player_button_rect(index, vp), font)
 
-	# 底部说明
-	_draw_centered_outlined_text("武汉洪山区主题 · GROW Theme", Vector2(vp.x * 0.5, vp.y * 0.92), font, 14, Color(1, 1, 1, 0.40), Color(0, 0, 0, 0.25), 3)
+	# 底部
+	_draw_centered_outlined_text("武汉洪山区主题 · GGJ 2026 · GROW Theme", Vector2(vp.x * 0.5, vp.y * 0.93), font, 13, Color(1, 1, 1, 0.35), Color(0, 0, 0, 0.2), 2)
 
 	# 右上角相机调试信息
 	var debug_x = vp.x - 220.0; var debug_y = 12.0
@@ -4488,6 +4489,27 @@ func _draw_title_player_button(index: int, rect: Rect2, font: Font):
 	ui_ctrl.draw_rect(Rect2(rect.position.x, rect.position.y + rect.size.y - 5 + y_off, rect.size.x, 5), color, 0, false)
 	# 文字
 	_draw_centered_outlined_text("%d 人" % player_count, rect.position + Vector2(rect.size.x * 0.5, rect.size.y * 0.4 + y_off), font, 24, color.lightened(0.2), Color(0, 0, 0, 0.3), 3)
+
+func _draw_title_card_button(index: int, rect: Rect2, font: Font):
+	var player_count = index + 2
+	var color = PLAYER_COLORS[index]
+	var hovered = index == title_hovered_player
+	var y_off = -8.0 if hovered else 0.0
+	var r = Rect2(rect.position + Vector2(0, y_off), rect.size)
+	# 投影
+	ui_ctrl.draw_rect(Rect2(r.position + Vector2(4, 6), r.size), Color(0, 0, 0, 0.35), 0, true, 6.0)
+	# 卡牌背景渐变
+	ui_ctrl.draw_rect(r, Color(1, 1, 1, 0.92), 0, true, 6.0)
+	# 顶部彩色条
+	ui_ctrl.draw_rect(Rect2(r.position, Vector2(r.size.x, 6)), color, 0, true, 6.0)
+	# 底部彩色条
+	ui_ctrl.draw_rect(Rect2(r.position.x, r.position.y + r.size.y - 5, r.size.x, 5), color, 0, false)
+	# 中间玩家颜色区域
+	ui_ctrl.draw_rect(Rect2(r.position.x + 8, r.position.y + 20, r.size.x - 16, r.size.y - 45), color.darkened(0.7), 0, true, 4.0)
+	# 人数数字
+	_draw_centered_outlined_text(str(player_count), r.position + Vector2(r.size.x * 0.5, r.size.y * 0.35), font, 36, color.lightened(0.3), Color(0, 0, 0, 0.4), 4)
+	# "人" 字
+	_draw_centered_outlined_text("人", r.position + Vector2(r.size.x * 0.5, r.size.y * 0.62), font, 16, Color(1, 1, 1, 0.8), Color(0, 0, 0, 0.3), 2)
 
 func _draw_title_player_tile(index: int, rect: Rect2, font: Font):
 	var terrain = [T_GRASS, T_WATER, T_FOREST, T_BUILDING][index]
