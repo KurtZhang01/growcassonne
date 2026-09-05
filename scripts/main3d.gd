@@ -362,8 +362,9 @@ func _setup_title_world():
 	sub_label.pixel_size = 0.008
 	add_child(sub_label)
 	# 相机：拉高拉远，看到整个50×20网格
+	var center_world = _world(Vector2i(tw / 2, th / 2))
 	camera.size = 28.0
-	camera.position = Vector3(tw * TILE_SPACING * 0.5, 28, th * TILE_SPACING * 0.4)
+	camera.position = center_world + Vector3(0, 28, 0)
 	camera.rotation_degrees = Vector3(-42, 42, 0)
 
 func _setup_sky_world():
@@ -462,9 +463,11 @@ func _init_grid():
 			tile_nodes[x].append(null); plant_nodes[x].append(null); decor_nodes[x].append(null)
 
 func _world(pos: Vector2i) -> Vector3:
-	var off = (GRID_SIZE - 1) * TILE_SPACING * 0.5
+	var gw = _grid_width(); var gh = _grid_height()
+	var off_x = (gw - 1) * TILE_SPACING * 0.5
+	var off_z = (gh - 1) * TILE_SPACING * 0.5
 	var logical = pos - grid_origin
-	return Vector3(logical.x * TILE_SPACING - off, 0, logical.y * TILE_SPACING - off)
+	return Vector3(logical.x * TILE_SPACING - off_x, 0, logical.y * TILE_SPACING - off_z)
 
 func _logical_cell(pos: Vector2i) -> Vector2i:
 	return pos - grid_origin
