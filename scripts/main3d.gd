@@ -311,8 +311,8 @@ func _setup_card_preview_viewport():
 	card_preview_viewport.add_child(world_env)
 
 func _setup_title_world():
-	# 标题场景：50×20地块铺满屏幕，GGJ2026在中左下
-	var tw = 50; var th = 20
+	# 标题场景：50×30地块铺满屏幕，GGJ2026在中左下
+	var tw = 50; var th = 30
 	# 扩展网格
 	grid = []; roads = []; plants = []; plant_age = []; flowers = []
 	tile_nodes = []; plant_nodes = []; decor_nodes = []
@@ -4389,7 +4389,7 @@ func _ggj2026_cells() -> Dictionary:
 	}
 	var cells := {}
 	var text = "GGJ2026"
-	var ox = 4; var oy = 7  # 中左下区域（50×20网格内）
+	var ox = 4; var oy = 11  # 50×30网格中垂直居中
 	for ch_idx in text.length():
 		var ch = text[ch_idx]
 		if not font_data.has(ch): ox += 6; continue
