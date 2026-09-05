@@ -77,7 +77,7 @@ var seeds := []; var total_turns := 0; var turns_played := 0
 var scores := []; var group_counts := []; var largest_groups := []; var diversity_counts := []; var road_scores := []
 var last_growth_count := 0
 var closed_road_ids := {}; var closed_road_cells := {}; var last_road_event := ""
-var hands := []; var current_hand := []; var selected_card := 0; var hand_page := 0
+var hands := []; var current_hand := []; var selected_card := 0
 var active_weather := {}; var rainbow_turns := 0; var last_settlement := ""
 var special_buildings := {}
 var draws_remaining := 0
@@ -1939,7 +1939,6 @@ func _take_card_from_deck(deck_index: int) -> bool:
 func _start_player_turn():
 	current_hand = hands[current_player]
 	selected_card = 0
-	hand_page = 0
 	draws_remaining = CARDS_DRAWN_PER_TURN
 	state = S.DRAW_CARDS
 	hover_mesh.visible = false
@@ -1953,7 +1952,7 @@ func _start_game():
 	current_player = randi() % player_count; turns_played = 0
 	total_turns = TOTAL_ROUNDS_PER_PLAYER * player_count
 	seeds = []; scores = []; group_counts = []; largest_groups = []; diversity_counts = []; road_scores = []
-	hands = []; current_hand = []; selected_card = 0; hand_page = 0
+	hands = []; current_hand = []; selected_card = 0
 	piece_market = []; selected_market = 0; piece_rotation = 0; last_growth_count = 0
 	closed_road_ids = {}; closed_road_cells = {}; last_road_event = ""; last_settlement = ""
 	active_weather = {}; rainbow_turns = 0; special_buildings.clear()
@@ -2013,22 +2012,41 @@ func _card_base_color(card: Dictionary) -> Color:
 	return Color.WHITE
 
 func _bottom_card_rect(index: int, count: int, vp: Vector2) -> Rect2:
-	var card_size = Vector2(100, 145)
-	var available = maxf(250.0, vp.x - UI_SIDEBAR_WIDTH - 50.0)
-	var step = maxf(32.0, minf(65.0, (available - card_size.x) / maxf(float(count - 1), 1.0)))
+	var card_size = Vector2(104, 150)
+	var available = maxf(card_size.x, vp.x - UI_SIDEBAR_WIDTH - 38.0)
+	var step = minf(68.0, maxf(4.0, (available - card_size.x) / maxf(float(count - 1), 1.0)))
 	var width = card_size.x + step * maxf(float(count - 1), 0.0)
-	var y = vp.y - 105.0
-	if index == hovered_card_index or index == selected_card: y -= 25.0
-	var start_x = maxf(20.0, (available - width) * 0.5 + 20.0)
+	var start_x = maxf(14.0, (available - width) * 0.5 + 14.0)
+	var t = (float(index) / maxf(float(count - 1), 1.0) - 0.5) * 2.0
+	var y = vp.y - card_size.y - 28.0 + absf(t) * 14.0
+	if index == hovered_card_index or index == selected_card: y -= 28.0
 	return Rect2(Vector2(start_x + index * step, y), card_size)
+
+func _hand_card_angle(index: int) -> float:
+	var count = current_hand.size()
+	if count <= 1 or (dragging_card and index == drag_card_index): return 0.0
+	var t = (float(index) / float(count - 1) - 0.5) * 2.0
+	return deg_to_rad(t * 10.0)
+
+func _hand_card_scale(index: int) -> float:
+	if index == selected_card: return 1.12
+	if index == hovered_card_index: return 1.06
+	return 1.0
+
+func _hand_card_has_point(pointer: Vector2, index: int, vp: Vector2) -> bool:
+	var rect = _bottom_card_rect(index, current_hand.size(), vp)
+	var center = rect.get_center()
+	var local = (pointer - center).rotated(-_hand_card_angle(index)) / _hand_card_scale(index)
+	return Rect2(-rect.size * 0.5, rect.size).has_point(local)
 
 func _deck_rect(index: int) -> Rect2:
 	return Rect2(26.0 + index * 112.0, 28.0, 94.0, 132.0)
 
 func _card_at_pointer(pointer: Vector2, vp: Vector2) -> int:
-	if selected_card >= 0 and selected_card < current_hand.size() and _bottom_card_rect(selected_card, current_hand.size(), vp).has_point(pointer): return selected_card
+	if selected_card >= 0 and selected_card < current_hand.size() and _hand_card_has_point(pointer, selected_card, vp): return selected_card
+	if hovered_card_index >= 0 and hovered_card_index < current_hand.size() and _hand_card_has_point(pointer, hovered_card_index, vp): return hovered_card_index
 	for index in range(current_hand.size() - 1, -1, -1):
-		if _bottom_card_rect(index, current_hand.size(), vp).has_point(pointer): return index
+		if _hand_card_has_point(pointer, index, vp): return index
 	return -1
 
 func _begin_card_drag(index: int):
@@ -2159,13 +2177,30 @@ func _apply_road_path(cells: Array) -> bool:
 	_refresh_road_effects(); last_settlement = "修建了长度%d道路" % road_drag_level
 	return true
 
-func _consume_dragged_card():
-	current_hand.remove_at(drag_card_index)
-	selected_card = clampi(drag_card_index, 0, maxi(current_hand.size() - 1, 0))
+func _drag_card_index_is_valid() -> bool:
+	return drag_card_index >= 0 and drag_card_index < current_hand.size()
+
+func _consume_dragged_card(played_card: Dictionary) -> bool:
+	var consume_index = -1
+	if _drag_card_index_is_valid() and current_hand[drag_card_index] == played_card:
+		consume_index = drag_card_index
+	else:
+		consume_index = current_hand.find(played_card)
+	if consume_index < 0 or consume_index >= current_hand.size():
+		_record_action("卡牌状态已变化，本次操作已安全取消")
+		return false
+	current_hand.remove_at(consume_index)
+	_sort_current_hand()
+	selected_card = clampi(consume_index, 0, maxi(current_hand.size() - 1, 0))
 	hands[current_player] = current_hand
+	return true
 
 func _finish_card_drag(cell: Vector2i):
 	if not card_armed and not road_drawing: return
+	if not _drag_card_index_is_valid():
+		_cancel_armed_card()
+		_record_action("卡牌索引已失效，本次操作已取消")
+		return
 	var card: Dictionary = current_hand[drag_card_index]
 	var before_flowers: int = _flower_total(cell) if _in_bounds(cell) else 0
 	var ok := false
@@ -2180,7 +2215,7 @@ func _finish_card_drag(cell: Vector2i):
 	if ok:
 		if card["kind"] == "seed": last_settlement = "播种增加%d朵" % (_flower_total(cell) - before_flowers)
 		_record_action(last_settlement)
-		_consume_dragged_card(); _calc_all_scores(); _cancel_armed_card()
+		_consume_dragged_card(card); _calc_all_scores(); _cancel_armed_card()
 	else:
 		dragging_card = false; road_drawing = false; road_drag_cells.clear()
 		_update_card_drag_preview(cell); ui_ctrl.queue_redraw()
@@ -2196,7 +2231,8 @@ func _apply_pending_develop(anchor: Vector2i, card: Dictionary) -> bool:
 	var generated_roads: Array = pending_develop.get("roads", [])
 	for i in cells.size(): _set_tile_type(cells[i], generated[i], true, _rotate_road_mask(generated_roads[i], piece_rotation))
 	_update_gaps(); _ensure_growth_margin(cells); _update_gaps(); _refresh_road_effects()
-	last_settlement = "开发了 %d 格新地块" % cells.size()
+	_grant_seed_card(current_player, 1, "开发完成")
+	last_settlement = "开发了 %d 格新地块，获得1级播种卡" % cells.size()
 	return true
 
 func _make_local_road_masks(offsets: Array) -> Array:
@@ -2279,7 +2315,6 @@ func _play_selected_card(pos: Vector2i) -> bool:
 	if ok:
 		current_hand.remove_at(selected_card)
 		selected_card = clampi(selected_card, 0, maxi(current_hand.size() - 1, 0))
-		hand_page = mini(hand_page, maxi(0, floori(float(current_hand.size() - 1) / 8.0)))
 		flash_timer = 0.18; flash_color = PLAYER_COLORS[current_player]
 		_calc_all_scores(); ui_ctrl.queue_redraw()
 	return ok
@@ -2863,7 +2898,7 @@ func _rotate_selected_piece(delta: int):
 func _update_card_drag_preview(cell: Vector2i):
 	for child in piece_preview_root.get_children(): child.free()
 	piece_preview_root.visible = false
-	if (not dragging_card and not card_armed and not road_drawing) or drag_card_index < 0: return
+	if (not dragging_card and not card_armed and not road_drawing) or not _drag_card_index_is_valid(): return
 	var card: Dictionary = current_hand[drag_card_index]
 	var preview_cells := []
 	var preview_terrains := []
@@ -3123,6 +3158,7 @@ func _input(event):
 				if _deck_rect(deck_index).has_point(ui_pointer): _take_card_from_deck(deck_index); return
 		if event.button_index == MOUSE_BUTTON_LEFT and state == S.PLAY_CARDS:
 			if card_armed:
+				if not _drag_card_index_is_valid(): _cancel_armed_card(); return
 				var armed_card: Dictionary = current_hand[drag_card_index]
 				if armed_card["kind"] == "road":
 					road_drawing = true; road_drag_cells.clear(); _extend_road_drag(_mouse_to_grid(event.position)); return
@@ -3145,11 +3181,7 @@ func _input(event):
 		if event.keycode == KEY_R: get_tree().reload_current_scene()
 		elif event.keycode == KEY_ESCAPE and (card_armed or road_drawing or dragging_card): _cancel_armed_card()
 		elif state == S.PLAY_CARDS and event.keycode >= KEY_1 and event.keycode <= KEY_9:
-			selected_card = clampi(hand_page * 8 + event.keycode - KEY_1, 0, maxi(current_hand.size() - 1, 0)); ui_ctrl.queue_redraw()
-		elif state == S.PLAY_CARDS and event.keycode == KEY_Z:
-			hand_page = maxi(0, hand_page - 1); ui_ctrl.queue_redraw()
-		elif state == S.PLAY_CARDS and event.keycode == KEY_X:
-			hand_page = mini(maxi(0, floori(float(current_hand.size() - 1) / 8.0)), hand_page + 1); ui_ctrl.queue_redraw()
+			selected_card = clampi(event.keycode - KEY_1, 0, maxi(current_hand.size() - 1, 0)); ui_ctrl.queue_redraw()
 		elif state == S.PLAY_CARDS and (event.keycode == KEY_ENTER or event.keycode == KEY_KP_ENTER or event.keycode == KEY_SPACE):
 			_end_turn()
 		elif state == S.PLAY_CARDS and event.keycode == KEY_Q:
@@ -3246,7 +3278,7 @@ func _draw_ui():
 	_draw_fitted_text("滚轮缩放 · 中键平移 · R 重开", Rect2(ux + 12, vp.y - 48, content_width, 22), font, 12, muted)
 	_draw_public_decks(font, ink, muted)
 	_draw_develop_preview_panel(vp, font, ink, muted)
-	_draw_bottom_hand(vp, font, ink, muted)
+	_draw_bottom_hand(vp, font, ink, muted, interface_scale)
 
 func _draw_develop_preview_panel(vp: Vector2, font: Font, ink: Color, muted: Color):
 	if not card_armed and not dragging_card: return
@@ -3334,27 +3366,53 @@ func _draw_public_decks(font: Font, ink: Color, muted: Color):
 	if state == S.DRAW_CARDS:
 		ui_ctrl.draw_string(font, Vector2(26, 180), "本回合抽牌  %d / 3" % (3 - draws_remaining), HORIZONTAL_ALIGNMENT_LEFT, 320, 16, ink)
 
-func _draw_bottom_hand(vp: Vector2, font: Font, ink: Color, muted: Color):
+func _draw_bottom_hand(vp: Vector2, font: Font, ink: Color, muted: Color, interface_scale: float):
 	var draw_order := []
 	for i in current_hand.size():
 		if card_armed and i == drag_card_index: continue
 		if i != selected_card and i != hovered_card_index: draw_order.append(i)
-	if hovered_card_index >= 0 and hovered_card_index != selected_card: draw_order.append(hovered_card_index)
-	if selected_card >= 0 and selected_card < current_hand.size() and not (card_armed and selected_card == drag_card_index): draw_order.append(selected_card)
+	if hovered_card_index >= 0 and hovered_card_index < current_hand.size() and hovered_card_index != selected_card:
+		draw_order.append(hovered_card_index)
+	if selected_card >= 0 and selected_card < current_hand.size() and not (card_armed and selected_card == drag_card_index):
+		draw_order.append(selected_card)
 	for i in draw_order:
 		var card: Dictionary = current_hand[i]
 		var rect = _bottom_card_rect(i, current_hand.size(), vp)
 		if dragging_card and i == drag_card_index:
 			var pointer = _ui_point(drag_pointer)
 			rect.position = pointer - rect.size * 0.5
-		var base = _card_base_color(card); var accent = _card_accent(card)
-		_draw_glass_card(rect, base, PLAYER_COLORS[current_player] if i == selected_card else accent.darkened(0.18), 10.0)
-		_draw_repeating_card_pattern(rect, card["kind"], base.darkened(0.17))
-		ui_ctrl.draw_rect(Rect2(rect.position, Vector2(rect.size.x, 9)), accent, 0, true, 10.0)
-		_draw_fitted_text(card["name"], Rect2(rect.position + Vector2(10, 12), Vector2(rect.size.x - 20, 22)), font, 13, ink)
-		_draw_card_symbol(card, rect.get_center() + Vector2(0, -2), accent)
-		_draw_fitted_text(_card_description(card), Rect2(rect.position + Vector2(8, 121), Vector2(rect.size.x - 16, 18)), font, 10, ink)
-		ui_ctrl.draw_string(font, rect.position + Vector2(8, 151), card["deck"], HORIZONTAL_ALIGNMENT_CENTER, rect.size.x - 16, 9, muted)
+		var scale = _hand_card_scale(i)
+		var angle = _hand_card_angle(i)
+		var center = rect.get_center()
+		ui_ctrl.draw_set_transform(center * interface_scale, angle, Vector2.ONE * interface_scale * scale)
+		_draw_hand_card_face(card, Rect2(-rect.size * 0.5, rect.size), font, ink, muted, i)
+	ui_ctrl.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE * interface_scale)
+
+func _draw_hand_card_face(card: Dictionary, rect: Rect2, font: Font, ink: Color, muted: Color, index: int):
+	var base = _card_base_color(card)
+	var accent = _card_accent(card)
+	var active = index == selected_card or index == hovered_card_index
+	# The hand has its own borderless treatment: layered shadow, then a smooth color ramp.
+	var shadow_alpha = 0.28 if active else 0.18
+	ui_ctrl.draw_rect(Rect2(rect.position + Vector2(5, 8), rect.size), Color(0, 0, 0, shadow_alpha), true)
+	var bands = 12
+	for band in bands:
+		var t = float(band) / float(bands - 1)
+		var band_color = accent.lerp(base, clampf(t * 1.7, 0.0, 1.0))
+		if t > 0.62: band_color = base.lerp(base.darkened(0.17), (t - 0.62) / 0.38)
+		var band_y = rect.position.y + rect.size.y * t
+		var next_y = rect.position.y + rect.size.y * float(band + 1) / float(bands)
+		ui_ctrl.draw_rect(Rect2(rect.position.x, band_y, rect.size.x, next_y - band_y + 1.0), band_color, true)
+	_draw_repeating_card_pattern(rect, card["kind"], base.darkened(0.16))
+	_draw_fitted_text(card["name"], Rect2(rect.position + Vector2(9, 11), Vector2(rect.size.x - 18, 22)), font, 13, ink)
+	_draw_card_symbol(card, rect.get_center() + Vector2(0, -3), accent.lightened(0.08))
+	_draw_fitted_text(_card_description(card), Rect2(rect.position + Vector2(8, 116), Vector2(rect.size.x - 16, 18)), font, 10, ink)
+	_draw_fitted_text(card["deck"], Rect2(rect.position + Vector2(8, 134), Vector2(rect.size.x - 16, 14)), font, 10, muted)
+	if active:
+		ui_ctrl.draw_rect(rect, Color(accent.r, accent.g, accent.b, 0.10), true)
+	elif index != selected_card:
+		var depth = float(index) / maxf(float(current_hand.size() - 1), 1.0)
+		ui_ctrl.draw_rect(rect, Color(0.03, 0.06, 0.05, 0.05 + (1.0 - depth) * 0.09), true)
 
 func _draw_fitted_text(value: String, rect: Rect2, font: Font, size: int, color: Color):
 	var fitted: String = value
