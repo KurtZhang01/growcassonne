@@ -81,6 +81,7 @@ var active_weather := {}; var rainbow_turns := 0; var last_settlement := ""
 var special_buildings := {}
 var draws_remaining := 0
 var dragging_card := false; var drag_card_index := -1; var drag_pointer := Vector2.ZERO
+var card_drag_origin := Vector2.ZERO
 var card_armed := false; var road_drawing := false
 var hovered_card_index := -1
 var hovered_deck_index := -1
@@ -115,7 +116,11 @@ var falling_leaves := []; var animated_grass_patches := []
 var tile_select_root: Node3D; var selected_tile := Vector2i(-1, -1)
 var aura_root: Node3D; var settle_fx_root: Node3D; var weather_fx_root: Node3D
 var action_history: Array[String] = []
+var action_history_tones: Array[String] = []
 var history_scroll := 0
+var center_notices := []
+var top_terrain_counts := [0, 0, 0, 0, 0]
+var top_terrain_count_tick := -1
 var placement_highlights := []
 var placement_highlight_root: Node3D
 var ranking_order: Array[int] = []
@@ -164,11 +169,11 @@ func _setup_scene():
 	var e = Environment.new()
 	var sky_material = ProceduralSkyMaterial.new()
 	sky_material.sky_top_color = Color("#89cbed")
-	sky_material.sky_horizon_color = Color("#dff4ff")
-	sky_material.sky_curve = 0.28
-	sky_material.ground_horizon_color = Color("#e8f7ff")
-	sky_material.ground_bottom_color = Color("#ffffff")
-	sky_material.ground_curve = 0.55
+	sky_material.sky_horizon_color = Color("#ccecff")
+	sky_material.sky_curve = 0.38
+	sky_material.ground_horizon_color = Color("#b9e4f8")
+	sky_material.ground_bottom_color = Color("#f6fbff")
+	sky_material.ground_curve = 1.65
 	var sky = Sky.new(); sky.sky_material = sky_material
 	sky.process_mode = Sky.PROCESS_MODE_QUALITY; sky.radiance_size = Sky.RADIANCE_SIZE_128
 	e.background_mode = Environment.BG_SKY; e.sky = sky
@@ -798,7 +803,9 @@ func _grant_seed_card(player_id: int, level: int = 1, reason: String = ""):
 	if player_id == current_player:
 		current_hand = hands[current_player]
 	if reason != "":
-		_record_action("%s获得%d级播种卡：%s" % [PLAYER_NAMES[player_id], level, reason])
+		var readable_reason: String = {"道路闭合": "道路封闭", "建筑开发": "建造建筑", "开发完成": "开发地块"}.get(reason, reason)
+		_record_action("奖励 · 因%s获得%d级播种卡" % [readable_reason, level], "reward", player_id)
+		_show_center_notice("%s因%s获得一张播种卡" % [PLAYER_NAMES[player_id], readable_reason], "reward")
 
 func _grant_closed_road_seed_rewards(component: Array):
 	var rewarded := {}
@@ -1978,7 +1985,9 @@ func _start_player_turn():
 	ui_ctrl.queue_redraw()
 
 func _start_game():
-	action_history.clear(); history_scroll = 0; ranking_order.clear(); ranking_y.clear(); ranking_values.clear()
+	action_history.clear(); action_history_tones.clear(); center_notices.clear(); history_scroll = 0
+	top_terrain_count_tick = -1
+	ranking_order.clear(); ranking_y.clear(); ranking_values.clear()
 	_init_grid()
 	current_player = randi() % player_count; turns_played = 0
 	total_turns = TOTAL_ROUNDS_PER_PLAYER * player_count
@@ -2086,6 +2095,7 @@ func _begin_card_drag(index: int):
 	if state != S.PLAY_CARDS or index < 0 or index >= current_hand.size(): return
 	_clear_tile_selection()
 	selected_card = index; dragging_card = true; drag_card_index = index
+	card_drag_origin = drag_pointer
 	ui_preview_mode = "card"; ui_preview_index = index
 	road_drag_cells.clear(); develop_preview_cells.clear(); pending_develop.clear()
 	var card: Dictionary = current_hand[index]
@@ -2103,12 +2113,16 @@ func _begin_card_drag(index: int):
 func _release_hand_drag(pointer: Vector2, cell: Vector2i):
 	dragging_card = false
 	var vp = get_viewport().get_visible_rect().size / _ui_scale(get_viewport().get_visible_rect().size)
-	if _ui_point(pointer).y > vp.y - 125.0:
+	var release_point = _ui_point(pointer)
+	var drag_distance = pointer.distance_to(card_drag_origin)
+	# A click only selects the card. Activation requires a deliberate drag beyond the rail.
+	if drag_distance < 32.0 or release_point.y >= _ui_rail_rect(vp).position.y:
 		_cancel_armed_card(); return
 	card_armed = true
+	ui_preview_mode = "card"; ui_preview_index = drag_card_index
 	var card: Dictionary = current_hand[drag_card_index]
 	if not _card_has_valid_target(card):
-		last_settlement = "当前卡牌没有可用位置"
+		_warn_player(_invalid_card_action_message(card))
 		_cancel_armed_card(); return
 	if card["kind"] == "weather": _finish_card_drag(cell)
 	else: _update_card_drag_preview(cell)
@@ -2231,7 +2245,7 @@ func _consume_dragged_card(played_card: Dictionary) -> bool:
 	else:
 		consume_index = current_hand.find(played_card)
 	if consume_index < 0 or consume_index >= current_hand.size():
-		_record_action("卡牌状态已变化，本次操作已安全取消")
+		_warn_player("卡牌状态已经变化，本次操作已取消")
 		return false
 	current_hand.remove_at(consume_index)
 	_sort_current_hand()
@@ -2244,7 +2258,7 @@ func _finish_card_drag(cell: Vector2i):
 	if not card_armed and not road_drawing: return
 	if not _drag_card_index_is_valid():
 		_cancel_armed_card()
-		_record_action("卡牌索引已失效，本次操作已取消")
+		_warn_player("卡牌状态已经变化，本次操作已取消")
 		return
 	var card: Dictionary = current_hand[drag_card_index]
 	var before_flowers: int = _flower_total(cell) if _in_bounds(cell) else 0
@@ -2263,11 +2277,32 @@ func _finish_card_drag(cell: Vector2i):
 		_consume_dragged_card(card); _calc_all_scores(); _cancel_armed_card()
 	else:
 		dragging_card = false; road_drawing = false; road_drag_cells.clear()
+		_warn_player(_invalid_card_action_message(card))
 		_update_card_drag_preview(cell); ui_ctrl.queue_redraw()
 
-func _record_action(message: String):
-	action_history.push_front("%s · %s" % [PLAYER_NAMES[current_player], message])
+func _invalid_card_action_message(card: Dictionary) -> String:
+	match str(card.get("kind", "")):
+		"seed": return "请选择花朵未满的植物地块"
+		"develop": return "开发区块必须完整覆盖山体并邻接已开发地块"
+		"building_develop": return "没有符合建筑占地形状的完整缺口"
+		"road": return "道路必须在允许地块上连续绘制到规定长度"
+		"weather": return "当前天气状态不允许使用这张天气卡"
+	return "当前位置无法使用这张卡"
+
+func _record_action(message: String, tone: String = "info", actor_id: int = -1):
+	var resolved_actor = current_player if actor_id < 0 else clampi(actor_id, 0, maxi(player_count - 1, 0))
+	action_history.push_front("%s · %s" % [PLAYER_NAMES[resolved_actor], message])
+	action_history_tones.push_front(tone)
 	history_scroll = 0
+
+func _show_center_notice(message: String, tone: String):
+	center_notices.append({"text": message, "tone": tone, "age": 0.0})
+	if center_notices.size() > 4: center_notices.pop_front()
+	ui_ctrl.queue_redraw()
+
+func _warn_player(message: String):
+	_record_action("WARNING · %s" % message, "warning")
+	_show_center_notice(message, "warning")
 
 func _apply_pending_develop(anchor: Vector2i, card: Dictionary) -> bool:
 	var cells = _develop_card_cells(anchor, int(card["level"]), piece_rotation)
@@ -3019,6 +3054,11 @@ func _make_preview_translucent(node: Node):
 func _process(delta):
 	pulse += delta
 	if flash_timer > 0: flash_timer = max(0, flash_timer - delta * 2.5)
+	for notice_index in range(center_notices.size() - 1, -1, -1):
+		var notice: Dictionary = center_notices[notice_index]
+		notice["age"] = float(notice.get("age", 0.0)) + delta
+		if float(notice["age"]) >= 2.4: center_notices.remove_at(notice_index)
+		else: center_notices[notice_index] = notice
 	_animate_sky_world(delta)
 	_animate_tile_ambience(delta)
 	# 天气动效跟随摄像机（彩虹除外）
@@ -3103,6 +3143,10 @@ func _ui_right_width(vp: Vector2) -> float:
 
 func _ui_top_rect(vp: Vector2) -> Rect2:
 	return Rect2(UI_MARGIN, UI_MARGIN, vp.x - UI_MARGIN * 2.0, UI_TOP_HEIGHT)
+
+func _top_weather_rect(vp: Vector2) -> Rect2:
+	var bar = _ui_top_rect(vp)
+	return Rect2(bar.end.x - 205.0, bar.position.y + 7.0, 187.0, bar.size.y - 14.0)
 
 func _ui_left_rect(vp: Vector2) -> Rect2:
 	return Rect2(UI_MARGIN, UI_SIDE_TOP, _ui_left_width(vp), maxf(120.0, vp.y - UI_SIDE_TOP - UI_SIDE_BOTTOM))
@@ -3247,14 +3291,21 @@ func _input(event):
 	if event is InputEventMouseButton and event.pressed:
 		var ui_pointer = _ui_point(event.position)
 		var ui_view = get_viewport().get_visible_rect().size / _ui_scale(get_viewport().get_visible_rect().size)
+		if event.button_index == MOUSE_BUTTON_RIGHT and (card_armed or road_drawing or dragging_card):
+			_cancel_armed_card(); return
 		if event.button_index == MOUSE_BUTTON_LEFT:
+			if _top_weather_rect(ui_view).has_point(ui_pointer):
+				ui_preview_mode = "deck"; ui_preview_index = 2; ui_ctrl.queue_redraw(); return
 			for deck_index in 3:
 				if _deck_rect(deck_index, ui_view).has_point(ui_pointer):
 					ui_preview_mode = "deck"; ui_preview_index = deck_index
 					if state == S.DRAW_CARDS: _take_card_from_deck(deck_index)
 					ui_ctrl.queue_redraw(); return
+			if state == S.DRAW_CARDS:
+				_warn_player("抽牌阶段请点击公共卡堆"); return
 		if event.button_index == MOUSE_BUTTON_LEFT and state == S.PLAY_CARDS:
 			if card_armed:
+				if _pointer_over_ui(ui_pointer, ui_view): return
 				if not _drag_card_index_is_valid(): _cancel_armed_card(); return
 				var armed_card: Dictionary = current_hand[drag_card_index]
 				if armed_card["kind"] == "road":
@@ -3324,7 +3375,28 @@ func _draw_ui():
 	_draw_card_rail_labels(vp, font, muted)
 	_draw_public_decks(vp, font, ink, muted)
 	_draw_bottom_hand(vp, font, ink, muted, interface_scale)
+	_draw_active_card_hint(vp, font)
 	_draw_end_turn_button(vp, font)
+	_draw_center_notices(vp, font)
+
+func _draw_active_card_hint(vp: Vector2, font: Font):
+	if not (dragging_card or card_armed or road_drawing) or not _drag_card_index_is_valid(): return
+	var rail = _ui_rail_rect(vp); var card: Dictionary = current_hand[drag_card_index]
+	var width = 410.0; var rect = Rect2(vp.x * 0.5 - width * 0.5, rail.position.y + 7.0, width, 24.0)
+	var alpha = 0.42 + sin(pulse * 3.2) * 0.16
+	ui_ctrl.draw_rect(rect, Color(0.16, 0.43, 0.34, alpha), true)
+	ui_ctrl.draw_string(font, rect.position + Vector2(0, 17), "正在使用 %s   Esc或右键取消" % str(card["name"]), HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, 11, Color.WHITE)
+
+func _draw_center_notices(vp: Vector2, font: Font):
+	for notice_index in center_notices.size():
+		var notice: Dictionary = center_notices[center_notices.size() - 1 - notice_index]
+		var age = float(notice.get("age", 0.0))
+		var fade = 1.0 - smoothstep(1.35, 2.4, age)
+		var color = Color("#f1bd45") if str(notice.get("tone", "")) == "reward" else Color("#ef5148")
+		color.a = fade
+		var outline = Color(0.20, 0.10, 0.05, 0.72 * fade)
+		var y = vp.y * 0.46 - age * 24.0 - notice_index * 34.0
+		_draw_centered_outlined_text(str(notice.get("text", "")), Vector2(vp.x * 0.5, y), font, 21, color, outline, 5)
 
 func _draw_context_preview_panel(vp: Vector2, font: Font, ink: Color, muted: Color):
 	var panel = _ui_left_rect(vp); var inner = panel.grow(-18.0)
@@ -3332,7 +3404,16 @@ func _draw_context_preview_panel(vp: Vector2, font: Font, ink: Color, muted: Col
 	var meta: Array = []
 	var stage_height = minf(190.0, maxf(120.0, inner.size.y - 208.0))
 	var stage = Rect2(inner.position + Vector2(0, 74), Vector2(inner.size.x, stage_height))
-	if ui_preview_mode == "deck":
+	var active_card_index = drag_card_index if (dragging_card or card_armed or road_drawing) and _drag_card_index_is_valid() else -1
+	if active_card_index >= 0:
+		var active_card: Dictionary = current_hand[active_card_index]
+		title = "正在使用"; name = str(active_card["name"])
+		_draw_card_context_stage(active_card, stage, font, ink, muted)
+		meta = _card_preview_meta(active_card)
+		status = "移动鼠标预览落点 · Esc或右键取消"
+		var breath_alpha = 0.30 + sin(pulse * 3.2) * 0.16
+		ui_ctrl.draw_rect(stage.grow(4.0), Color(0.28, 0.72, 0.55, breath_alpha), false, 2.5)
+	elif ui_preview_mode == "deck":
 		title = "牌库概率"; name = ["开发卡堆", "道路卡堆", "天气卡堆"][clampi(ui_preview_index, 0, 2)]
 		_draw_deck_probability_preview(ui_preview_index, stage, font, ink, muted)
 		meta = [["抽牌状态", "%d / %d" % [CARDS_DRAWN_PER_TURN - draws_remaining, CARDS_DRAWN_PER_TURN]], ["剩余次数", str(draws_remaining)]]
@@ -3341,7 +3422,7 @@ func _draw_context_preview_panel(vp: Vector2, font: Font, ink: Color, muted: Col
 		var terrain: int = grid[selected_tile.x][selected_tile.y]
 		title = "地块属性"; name = TERRAIN_NAMES[terrain]
 		_rebuild_selected_tile_preview(selected_tile)
-		ui_ctrl.draw_texture_rect(card_preview_viewport.get_texture(), stage, false)
+		_draw_preview_texture(card_preview_viewport.get_texture(), stage)
 		meta = _tile_preview_meta(selected_tile)
 		status = _tile_preview_status(selected_tile)
 	elif not current_hand.is_empty():
@@ -3382,10 +3463,24 @@ func _draw_card_context_stage(card: Dictionary, rect: Rect2, font: Font, ink: Co
 	ui_ctrl.draw_rect(rect, Color(0.24, 0.34, 0.29, 0.07), true)
 	if card["kind"] == "develop" or card["kind"] == "building_develop":
 		_rebuild_card_model_preview(card)
-		ui_ctrl.draw_texture_rect(card_preview_viewport.get_texture(), rect, false)
+		_draw_preview_texture(card_preview_viewport.get_texture(), rect)
 	else:
 		_draw_card_model_icon(card, rect.get_center() + Vector2(0, -12), _card_accent(card).lightened(0.08), 1.28)
 		_draw_fitted_text(_card_effect_text(card), Rect2(rect.position + Vector2(8, rect.size.y - 39), Vector2(rect.size.x - 16, 30)), font, 11, ink)
+
+func _draw_preview_texture(texture: Texture2D, rect: Rect2):
+	var texture_size = Vector2(texture.get_size())
+	if texture_size.x <= 0.0 or texture_size.y <= 0.0: return
+	var destination_aspect = rect.size.x / maxf(rect.size.y, 1.0)
+	var texture_aspect = texture_size.x / texture_size.y
+	var source = Rect2(Vector2.ZERO, texture_size)
+	if texture_aspect > destination_aspect:
+		source.size.x = texture_size.y * destination_aspect
+		source.position.x = (texture_size.x - source.size.x) * 0.5
+	else:
+		source.size.y = texture_size.x / destination_aspect
+		source.position.y = (texture_size.y - source.size.y) * 0.5
+	ui_ctrl.draw_texture_rect_region(rect, texture, source)
 
 func _card_preview_title(card: Dictionary) -> String:
 	match card["kind"]:
@@ -3540,25 +3635,54 @@ func _draw_top_info_bar(vp: Vector2, font: Font, ink: Color, muted: Color):
 	var bar = _ui_top_rect(vp); var x = bar.position.x + 18.0; var center_y = bar.get_center().y
 	_draw_fitted_text("花之江城", Rect2(x, center_y - 12.0, 78.0, 24.0), font, 17, ink)
 	_draw_fitted_text("WUHAN IN BLOOM", Rect2(x + 82.0, center_y - 9.0, 112.0, 20.0), font, 11, muted)
-	x += 220.0
-	var terrain_colors = [Color("#5fae55"), Color("#3f94bd"), Color("#2f7048"), Color("#c8944e")]
-	var names_short = ["草地", "水域", "森林", "荒漠"]
-	var base_rates = [0.3, 0.0, 0.5, 0.1]
-	for i in 4:
-		var rate: float = base_rates[i]
-		if _has_extreme_weather(): rate *= 0.5
-		if rainbow_turns > 0: rate *= 2.0
-		ui_ctrl.draw_rect(Rect2(x, center_y - 5.0, 8.0, 8.0), terrain_colors[i], true)
-		_draw_fitted_text("%s %.1f" % [names_short[i], rate], Rect2(x + 13.0, center_y - 9.0, 65.0, 20.0), font, 11, muted)
+	x += 225.0
+	var terrain_types = [T_GRASS, T_WATER, T_FOREST, T_DESERT, T_BUILDING]
+	var terrain_counts = _non_developable_terrain_counts()
+	for i in terrain_types.size():
+		_draw_top_terrain_model(Vector2(x + 13.0, center_y - 1.0), terrain_types[i])
+		_draw_fitted_text("%s %d" % [TERRAIN_NAMES[terrain_types[i]], terrain_counts[i]], Rect2(x + 28.0, center_y - 9.0, 54.0, 20.0), font, 10, muted)
 		x += 79.0
-	var weather_text = "天气 平稳"
+	var weather_text = "天气 晴朗"
 	if not active_weather.is_empty() or rainbow_turns > 0:
 		weather_text = "天气 "
 		for weather in active_weather.keys(): weather_text += "%s %d回合  " % [weather, active_weather[weather]]
 		if rainbow_turns > 0: weather_text += "彩虹 %d回合" % rainbow_turns
-	var weather_width = minf(190.0, bar.end.x - x - 18.0)
-	ui_ctrl.draw_circle(Vector2(bar.end.x - weather_width + 3.0, center_y), 4.0, Color("#65a9d8"))
-	_draw_fitted_text(weather_text.strip_edges(), Rect2(bar.end.x - weather_width + 14.0, center_y - 9.0, weather_width - 14.0, 20.0), font, 11, Color("#37657a"))
+	var weather_rect = _top_weather_rect(vp)
+	ui_ctrl.draw_rect(weather_rect, Color(0.36, 0.68, 0.84, 0.10), true)
+	var weather_icon = Vector2(weather_rect.position.x + 20.0, center_y - 1.0)
+	ui_ctrl.draw_circle(weather_icon + Vector2(-7, 2), 5.0, Color("#b9ddea"))
+	ui_ctrl.draw_circle(weather_icon + Vector2(0, -2), 7.5, Color("#b9ddea"))
+	ui_ctrl.draw_circle(weather_icon + Vector2(8, 2), 5.0, Color("#b9ddea"))
+	ui_ctrl.draw_rect(Rect2(weather_icon + Vector2(-7, 1), Vector2(15, 6)), Color("#b9ddea"), true)
+	_draw_fitted_text(weather_text.strip_edges(), Rect2(weather_rect.position.x + 42.0, center_y - 9.0, weather_rect.size.x - 48.0, 20.0), font, 11, Color("#37657a"))
+
+func _non_developable_terrain_counts() -> Array:
+	var count_tick = floori(pulse * 4.0)
+	if count_tick == top_terrain_count_tick: return top_terrain_counts
+	top_terrain_count_tick = count_tick
+	top_terrain_counts = [0, 0, 0, 0, 0]
+	for grid_x in _grid_width():
+		for grid_y in _grid_height():
+			var terrain: int = grid[grid_x][grid_y]
+			if terrain >= T_GRASS and terrain <= T_BUILDING: top_terrain_counts[terrain] += 1
+	return top_terrain_counts
+
+func _draw_top_terrain_model(center: Vector2, terrain: int):
+	_draw_iso_tile(center, TERRAIN_TOP[terrain].lightened(0.06), TERRAIN_MID[terrain], 11.0)
+	match terrain:
+		T_GRASS:
+			ui_ctrl.draw_circle(center + Vector2(-3, -4), 2.8, Color("#397a3d")); ui_ctrl.draw_circle(center + Vector2(3, -3), 2.5, Color("#4f8f48"))
+		T_WATER:
+			ui_ctrl.draw_arc(center + Vector2(0, -1), 6.0, 0.15, PI - 0.15, 10, Color("#c5edf5"), 1.4)
+		T_FOREST:
+			ui_ctrl.draw_colored_polygon(PackedVector2Array([center + Vector2(-5, 1), center + Vector2(0, -11), center + Vector2(5, 1)]), Color("#286a43"))
+		T_DESERT:
+			ui_ctrl.draw_arc(center + Vector2(0, 1), 6.0, PI, TAU, 10, Color("#e5bb69"), 1.6)
+		T_BUILDING:
+			for tier in 3:
+				var width = 12.0 - tier * 2.5; var y = center.y - tier * 4.0
+				ui_ctrl.draw_rect(Rect2(center.x - width * 0.3, y - 2, width * 0.6, 3), Color("#b43b32"), true)
+				ui_ctrl.draw_line(Vector2(center.x - width * 0.5, y), Vector2(center.x + width * 0.5, y), Color("#d99a26"), 1.5)
 
 func _draw_right_info_panel(vp: Vector2, font: Font, ink: Color, muted: Color):
 	var panel = _ui_right_rect(vp); var inner = panel.grow(-20.0); var pcol = PLAYER_COLORS[current_player]
@@ -3599,9 +3723,11 @@ func _draw_right_info_panel(vp: Vector2, font: Font, ink: Color, muted: Color):
 	var visible_count = mini(maxi(0, action_history.size() - history_scroll), capacity)
 	for slot in visible_count:
 		var history_index = history_scroll + slot
-		var color = _player_text_color(action_history[history_index], muted)
-		ui_ctrl.draw_rect(Rect2(inner.position.x, history_top + slot * 25.0, 4, 19), color, true)
-		_draw_fitted_text(action_history[history_index], Rect2(inner.position.x + 12, history_top + slot * 25.0, inner.size.x - 17, 20), font, 10, color)
+		var tone = action_history_tones[history_index] if history_index < action_history_tones.size() else "info"
+		var marker_color = Color("#d4463d") if tone == "warning" else (Color("#b47a16") if tone == "reward" else _player_text_color(action_history[history_index], muted))
+		var text_color = _player_text_color(action_history[history_index], muted)
+		ui_ctrl.draw_rect(Rect2(inner.position.x, history_top + slot * 25.0, 4, 19), marker_color, true)
+		_draw_fitted_text(action_history[history_index], Rect2(inner.position.x + 12, history_top + slot * 25.0, inner.size.x - 17, 20), font, 10, text_color)
 	if action_history.size() > capacity and capacity > 0:
 		var track = Rect2(inner.end.x - 3.0, history_top, 2.0, capacity * 25.0 - 5.0)
 		ui_ctrl.draw_rect(track, Color(0.20, 0.30, 0.26, 0.12), true)
