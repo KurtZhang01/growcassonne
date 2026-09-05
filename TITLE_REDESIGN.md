@@ -43,34 +43,48 @@
 
 ---
 
-## 3. 山体地块网格
+## 3. 地块拼字 + 建筑装饰
 
-### 3.1 规格
-- 网格：**12列 × 10行**
-- 视角：**80度倾角俯视**（Orthographic，rotation = (-80, 0, 0)），无透视
-- 不可缩放、不可平移
-- 地块间距：TILE_SPACING = 1.25（与游戏内一致）
+### 3.1 整体构思
+- 复用游戏内现有地块资源
+- **水域地块**（蓝色）拼出 "GGJ 2026" 字样
+- 周围填充**山体地块**和少量**草地地块**作为背景
+- 在文字周围的空位上放置几个**洪山建筑**
+- 使用游戏内 **2.5D 等距视角**（与游戏一致）
 
-### 3.2 相机设置
+### 3.2 地块布局
+```
+┌─────────────────────────────────────────────────┐
+│  山 山 山 山 🏛山 山 山 山 山 山 山 山 山 山 山  │
+│  山 山 山 山 山 山 山 山 山 🏛山 山 山 山 山 山  │
+│  山 水 水 水 山 水 山 水 水 水 山 水 水 水 山 山  │
+│  山 水 山 山 山 水 山 水 山 水 山 水 山 山 山 山  │
+│  山 水 水 水 山 水 山 水 水 水 山 水 水 山 山 山  │
+│  山 山 山 水 山 水 山 水 山 山 山 山 山 水 山 山  │
+│  山 水 水 水 山 水 山 水 水 水 山 水 水 水 山 山  │
+│  山 山 山 山 山 山 山 山 山 山 山 山 山 山 山 山  │
+│  山 🏛山 山 山 山 山 山 山 山 山 🏛山 山 山 山 山  │
+└─────────────────────────────────────────────────┘
+```
+- 🏛 = 洪山建筑（在文字周围的空位上）
+
+### 3.3 相机设置（2.5D等距，与游戏一致）
 ```gdscript
 title_camera.projection = Camera3D.PROJECTION_ORTHOGONAL
-title_camera.size = 16.0  # 覆盖整个网格
-title_camera.position = Vector3(7.5, 18, 6.25)  # 网格中心上方
-title_camera.rotation_degrees = Vector3(-80, 0, 0)  # 80度倾角俯视
+title_camera.size = 14.5
+title_camera.position = Vector3(7.2, 14.2, 10.8)
+title_camera.rotation_degrees = Vector3(-42, 42, 0)  # 等距视角
 ```
 
-### 3.3 地块生成
-- 全部为山体地块（T_MOUNTAIN）
-- 使用现有 `_tile_mountain_surface()` 建模
-- 每个地块有随机微小色差（shading ±5%）
-- 地块之间有边框连接（edge trim）
+### 3.4 地块生成规则
+- 水域位置：根据 "GGJ 2026" 像素模板计算坐标
+- 山体/草地：背景填充，草地占约20%
+- 建筑：5个位置，使用 `_landmark_texture()` 渲染
+- 所有地块使用游戏内 `_spawn_tile()` 生成，包含完整底座+表面+边框
 
-### 3.4 网格尺寸计算
-```
-网格宽度 = 12 × 1.25 = 15.0
-网格高度 = 10 × 1.25 = 12.5
-中心偏移 = (15.0/2, 0, 12.5/2) = (7.5, 0, 6.25)
-```
+### 3.5 不可交互
+- 禁用缩放、平移、地块点击
+- 只响应玩家人数按钮点击
 
 ---
 
@@ -115,19 +129,32 @@ title_camera.rotation_degrees = Vector3(-80, 0, 0)  # 80度倾角俯视
 
 ### 6.1 场景切换
 ```gdscript
-# 在 _ready() 中创建标题场景
 func _setup_title_scene():
     title_root = Node3D.new(); add_child(title_root)
     title_camera = Camera3D.new()
     title_camera.projection = Camera3D.PROJECTION_ORTHOGONAL
-    title_camera.size = 16.0
-    title_camera.position = Vector3(7.5, 18, 6.25)
-    title_camera.rotation_degrees = Vector3(-80, 0, 0)
+    title_camera.size = 14.5
+    title_camera.position = Vector3(7.2, 14.2, 10.8)
+    title_camera.rotation_degrees = Vector3(-42, 42, 0)
     title_root.add_child(title_camera)
-    _generate_title_mountains()
+    _generate_title_world()
 
-func _generate_title_mountains():
-    for x in 12:
+func _generate_title_world():
+    var text_cells = _get_ggj2026_cells()  # 返回水域坐标列表
+    var building_cells = _get_building_cells()
+    for x in 16:
+        for y in 10:
+            var pos = Vector2i(x, y)
+            if pos in building_cells:
+                _force_tile(pos, T_BUILDING, false, 0)
+                # 渲染建筑模型
+            elif pos in text_cells:
+                _force_tile(pos, T_WATER, false, 0)
+            elif randf() < 0.2:
+                _force_tile(pos, T_GRASS, false, 0)
+            else:
+                _force_tile(pos, T_MOUNTAIN, false, 0)
+```
         for y in 10:
             var pos = Vector2i(x, y)
             var root = Node3D.new()
