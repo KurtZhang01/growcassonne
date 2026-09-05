@@ -115,6 +115,8 @@ var placement_highlight_root: Node3D
 var ranking_order: Array[int] = []
 var ranking_y: Dictionary = {}
 var ranking_values: Dictionary = {}
+var card_preview_viewport: SubViewport; var card_preview_root: Node3D; var card_preview_camera: Camera3D
+var card_preview_signature := ""
 
 func _ready():
 	_setup_scene()
@@ -201,6 +203,25 @@ func _setup_scene():
 	var canvas = CanvasLayer.new(); canvas.layer = 10
 	add_child(canvas); canvas.add_child(ui_ctrl)
 	ui_ctrl.connect("draw", _draw_ui)
+	_setup_card_preview_viewport()
+
+func _setup_card_preview_viewport():
+	card_preview_viewport = SubViewport.new()
+	card_preview_viewport.size = Vector2i(300, 190)
+	card_preview_viewport.transparent_bg = true
+	card_preview_viewport.own_world_3d = true
+	card_preview_viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	add_child(card_preview_viewport)
+	card_preview_root = Node3D.new(); card_preview_viewport.add_child(card_preview_root)
+	card_preview_camera = Camera3D.new()
+	card_preview_camera.projection = Camera3D.PROJECTION_ORTHOGONAL
+	card_preview_camera.size = 3.4; card_preview_camera.position = Vector3(3.2, 3.8, 4.2)
+	card_preview_viewport.add_child(card_preview_camera)
+	card_preview_camera.look_at_from_position(card_preview_camera.position, Vector3(0, 0.18, 0))
+	var key_light = DirectionalLight3D.new(); key_light.rotation_degrees = Vector3(-50, -30, 0); key_light.light_energy = 1.05
+	card_preview_viewport.add_child(key_light)
+	var fill_light = DirectionalLight3D.new(); fill_light.rotation_degrees = Vector3(30, 150, 0); fill_light.light_energy = 0.45
+	card_preview_viewport.add_child(fill_light)
 
 func _setup_sky_world():
 	sky_root = Node3D.new(); sky_root.name = "LivingSky"; add_child(sky_root)
@@ -2949,8 +2970,9 @@ func _spawn_preview_tile_model(root: Node3D, terrain: int, card: Dictionary, ind
 		T_WATER: _tile_water_surface(root, 0)
 		T_FOREST: _tile_forest_surface(root, 0)
 		T_DESERT: _tile_desert_surface(root, 0)
+		T_MOUNTAIN: _tile_mountain_surface(root)
 		T_BUILDING:
-			if int(card.get("level", 1)) == 2:
+			if card.get("kind", "") == "building_develop" and int(card.get("level", 1)) == 2:
 				_tile_hongshan_tech_surface(root, {"part": index, "direction": piece_rotation})
 			else: _tile_pavilion_surface(root, 0)
 		_: pass
@@ -3285,35 +3307,59 @@ func _draw_develop_preview_panel(vp: Vector2, font: Font, ink: Color, muted: Col
 	if drag_card_index < 0 or drag_card_index >= current_hand.size(): return
 	var card: Dictionary = current_hand[drag_card_index]
 	if card["kind"] != "develop" and card["kind"] != "building_develop": return
+	_rebuild_card_model_preview(card)
+	var panel_w = minf(260.0, vp.x - 48.0)
+	var panel_h = 190.0
+	var panel = Rect2(vp.x - panel_w - 24.0, vp.y - panel_h - 72.0, panel_w, panel_h)
+	_draw_flat_card(panel, Color(0.11, 0.14, 0.13, 0.92), Color(0.03, 0.06, 0.05, 0.95))
+	_draw_fitted_text("真实地块预览  Q/E", Rect2(panel.position + Vector2(12, 9), Vector2(panel.size.x - 24, 18)), font, 12, Color("#e7eadc"))
+	ui_ctrl.draw_texture_rect(card_preview_viewport.get_texture(), Rect2(panel.position + Vector2(8, 28), panel.size - Vector2(16, 36)), false)
+
+func _rebuild_card_model_preview(card: Dictionary):
+	var terrains: Array = pending_develop.get("terrains", card.get("rolled_terrains", []))
+	var roads_data: Array = pending_develop.get("roads", card.get("rolled_roads", []))
+	var signature = "%s|%s|%s|%d" % [str(card), str(terrains), str(roads_data), piece_rotation]
+	if signature == card_preview_signature: return
+	card_preview_signature = signature
+	for child in card_preview_root.get_children(): child.free()
 	var cells := []
-	var preview_terrains := []
 	if card["kind"] == "develop":
-		cells = _develop_card_cells(Vector2i.ZERO, int(card["level"]), piece_rotation)
-		preview_terrains = pending_develop.get("terrains", card.get("rolled_terrains", []))
+		for offset in _development_shape_offsets(int(card["level"]), int(card.get("shape", 0))): cells.append(_rotate_cell(offset, piece_rotation))
 	else:
 		cells = [Vector2i.ZERO] if int(card["level"]) == 1 else [Vector2i.ZERO, DIRS[piece_rotation]]
-		for cell in cells: preview_terrains.append(T_BUILDING)
+		terrains = []
+		for cell in cells: terrains.append(T_BUILDING)
 	if cells.is_empty(): return
 	var min_cell: Vector2i = cells[0]; var max_cell: Vector2i = cells[0]
 	for cell in cells:
-		min_cell = Vector2i(mini(min_cell.x, cell.x), mini(min_cell.y, cell.y))
-		max_cell = Vector2i(maxi(max_cell.x, cell.x), maxi(max_cell.y, cell.y))
-	var cell_px := 30.0
-	var shape_size = Vector2(max_cell.x - min_cell.x + 1, max_cell.y - min_cell.y + 1)
-	var panel_w = maxf(132.0, shape_size.x * cell_px + 28.0)
-	var panel_h = shape_size.y * cell_px + 58.0
-	var panel = Rect2(vp.x - panel_w - 24.0, vp.y - panel_h - 184.0, panel_w, panel_h)
-	_draw_flat_card(panel, Color(0.11, 0.14, 0.13, 0.92), Color(0.03, 0.06, 0.05, 0.95))
-	_draw_fitted_text("地块预览 Q/E", Rect2(panel.position + Vector2(12, 10), Vector2(panel.size.x - 24, 18)), font, 12, Color("#e7eadc"))
-	var origin = panel.position + Vector2(14, 34)
-	var abbrev = ["草", "水", "林", "漠", "建", "山", "缺"]
-	for i in cells.size():
-		var local: Vector2i = cells[i] - min_cell
-		var terrain: int = preview_terrains[i] if i < preview_terrains.size() else T_GRASS
-		var rect = Rect2(origin + Vector2(local.x, local.y) * cell_px, Vector2(cell_px - 3, cell_px - 3))
-		ui_ctrl.draw_rect(rect, TERRAIN_TOP[terrain], true)
-		ui_ctrl.draw_rect(rect, TERRAIN_TOP[terrain].darkened(0.35), false, 1.5)
-		_draw_fitted_text(abbrev[terrain], Rect2(rect.position + Vector2(5, 5), rect.size - Vector2(10, 10)), font, 13, Color.WHITE)
+		min_cell = Vector2i(mini(min_cell.x, cell.x), mini(min_cell.y, cell.y)); max_cell = Vector2i(maxi(max_cell.x, cell.x), maxi(max_cell.y, cell.y))
+	var shape_center = Vector3(float(min_cell.x + max_cell.x) * TILE_SPACING * 0.5, 0, float(min_cell.y + max_cell.y) * TILE_SPACING * 0.5)
+	for index in cells.size():
+		var terrain: int = terrains[index] if index < terrains.size() else T_GRASS
+		var tile_root = Node3D.new(); tile_root.position = Vector3(cells[index].x * TILE_SPACING, 0, cells[index].y * TILE_SPACING) - shape_center
+		card_preview_root.add_child(tile_root)
+		_spawn_exact_preview_tile(tile_root, terrain, card, index)
+		if card["kind"] == "develop" and index < roads_data.size():
+			var mask = _rotate_road_mask(int(roads_data[index]), piece_rotation)
+			if mask != 0: _spawn_road(tile_root, mask)
+	var span = maxi(max_cell.x - min_cell.x + 1, max_cell.y - min_cell.y + 1)
+	card_preview_camera.size = 2.4 + maxf(0.0, float(span - 1)) * 1.05
+	var target = Vector3(0, 0.25, 0)
+	card_preview_camera.look_at_from_position(target + Vector3(3.2, 3.4, 4.2), target)
+
+func _spawn_exact_preview_tile(root: Node3D, terrain: int, card: Dictionary, index: int):
+	if terrain != T_GAP: _spawn_island_base(root, terrain)
+	match terrain:
+		T_GRASS: _tile_grass_surface(root, 0)
+		T_WATER: _tile_water_surface(root, 0)
+		T_FOREST: _tile_forest_surface(root, 0)
+		T_DESERT: _tile_desert_surface(root, 0)
+		T_MOUNTAIN: _tile_mountain_surface(root)
+		T_GAP: _tile_gap_surface(root)
+		T_BUILDING:
+			if card.get("kind", "") == "building_develop" and int(card.get("level", 1)) == 2: _tile_hongshan_tech_surface(root, {"part": index, "direction": piece_rotation})
+			else: _tile_pavilion_surface(root, 0)
+	_spawn_decor(terrain, root, 0)
 
 func _draw_top_info_bar(vp: Vector2, font: Font, ink: Color, muted: Color):
 	var bar_y = 8.0; var bar_h = 36.0
@@ -3392,9 +3438,10 @@ func _draw_hand_card_face(card: Dictionary, rect: Rect2, font: Font, ink: Color,
 	var base = _card_base_color(card)
 	var accent = _card_accent(card)
 	var active = index == selected_card or index == hovered_card_index
-	# The hand has its own borderless treatment: layered shadow, then a smooth color ramp.
+	# Shadow, paper backing, then the borderless color face.
 	var shadow_alpha = 0.28 if active else 0.18
 	ui_ctrl.draw_rect(Rect2(rect.position + Vector2(5, 8), rect.size), Color(0, 0, 0, shadow_alpha), true)
+	ui_ctrl.draw_rect(Rect2(rect.position + Vector2(2, 3), rect.size), Color(1.0, 1.0, 0.98, 0.96), true)
 	var bands = 12
 	for band in bands:
 		var t = float(band) / float(bands - 1)
@@ -3405,7 +3452,7 @@ func _draw_hand_card_face(card: Dictionary, rect: Rect2, font: Font, ink: Color,
 		ui_ctrl.draw_rect(Rect2(rect.position.x, band_y, rect.size.x, next_y - band_y + 1.0), band_color, true)
 	_draw_repeating_card_pattern(rect, card["kind"], base.darkened(0.16))
 	_draw_fitted_text(card["name"], Rect2(rect.position + Vector2(9, 11), Vector2(rect.size.x - 18, 22)), font, 13, ink)
-	_draw_card_symbol(card, rect.get_center() + Vector2(0, -3), accent.lightened(0.08))
+	_draw_card_model_icon(card, rect.get_center() + Vector2(0, -3), accent.lightened(0.08))
 	_draw_fitted_text(_card_description(card), Rect2(rect.position + Vector2(8, 116), Vector2(rect.size.x - 16, 18)), font, 10, ink)
 	_draw_fitted_text(card["deck"], Rect2(rect.position + Vector2(8, 134), Vector2(rect.size.x - 16, 14)), font, 10, muted)
 	if active:
@@ -3413,6 +3460,112 @@ func _draw_hand_card_face(card: Dictionary, rect: Rect2, font: Font, ink: Color,
 	elif index != selected_card:
 		var depth = float(index) / maxf(float(current_hand.size() - 1), 1.0)
 		ui_ctrl.draw_rect(rect, Color(0.03, 0.06, 0.05, 0.05 + (1.0 - depth) * 0.09), true)
+
+func _draw_card_model_icon(card: Dictionary, center: Vector2, color: Color):
+	match card["kind"]:
+		"seed": _draw_seed_card_flowers(center, int(card["level"]))
+		"develop": _draw_develop_card_mountains(center, card)
+		"building_develop": _draw_building_card_model(center, int(card["level"]))
+		"weather": _draw_weather_card_forecast(center, str(card.get("weather", "")))
+		_: _draw_card_symbol(card, center, color)
+
+func _draw_seed_card_flowers(center: Vector2, level: int):
+	var count = clampi(level, 1, 5)
+	for flower_index in count:
+		var x = center.x + (flower_index - (count - 1) * 0.5) * 17.0
+		var y = center.y + absf(flower_index - (count - 1) * 0.5) * 3.0
+		var scale = 0.82 + float((flower_index + level) % 3) * 0.10
+		ui_ctrl.draw_line(Vector2(x, y + 23), Vector2(x, y + 2), Color("#397044"), 2.2)
+		_draw_card_flower_bloom(Vector2(x, y), current_player, scale, flower_index)
+
+func _draw_card_flower_bloom(center: Vector2, owner: int, scale: float, variant: int):
+	var flower_color = PLAYER_COLORS[owner]
+	flower_color = flower_color.lightened(0.08) if variant % 2 == 0 else flower_color.darkened(0.08)
+	match owner:
+		0:
+			for petal in 4:
+				var angle = TAU * float(petal) / 4.0
+				ui_ctrl.draw_circle(center + Vector2(cos(angle), sin(angle)) * 6.0 * scale, 4.5 * scale, flower_color)
+		1:
+			ui_ctrl.draw_colored_polygon(PackedVector2Array([
+				center + Vector2(-7, -5) * scale, center + Vector2(7, -5) * scale,
+				center + Vector2(5, 7) * scale, center + Vector2(0, 11) * scale, center + Vector2(-5, 7) * scale
+			]), flower_color)
+		2:
+			for petal in 7:
+				var angle = TAU * float(petal) / 7.0
+				ui_ctrl.draw_circle(center + Vector2(cos(angle), sin(angle)) * 6.5 * scale, 3.5 * scale, flower_color)
+		3:
+			for petal in 6:
+				var angle = TAU * float(petal) / 6.0
+				var direction = Vector2(cos(angle), sin(angle))
+				ui_ctrl.draw_line(center + direction * 2.0 * scale, center + direction * 9.0 * scale, flower_color, 4.2 * scale)
+	ui_ctrl.draw_circle(center, 3.0 * scale, Color("#f2c84b"))
+
+func _draw_iso_tile(center: Vector2, top_color: Color, side_color: Color, size: float = 18.0):
+	var top = PackedVector2Array([center + Vector2(0, -size * 0.52), center + Vector2(size, 0), center + Vector2(0, size * 0.52), center + Vector2(-size, 0)])
+	ui_ctrl.draw_colored_polygon(top, top_color)
+	ui_ctrl.draw_colored_polygon(PackedVector2Array([top[3], top[2], top[2] + Vector2(0, 6), top[3] + Vector2(0, 6)]), side_color.darkened(0.14))
+	ui_ctrl.draw_colored_polygon(PackedVector2Array([top[2], top[1], top[1] + Vector2(0, 6), top[2] + Vector2(0, 6)]), side_color)
+
+func _draw_develop_card_mountains(center: Vector2, card: Dictionary):
+	var cells = _development_shape_offsets(int(card["level"]), int(card.get("shape", 0)))
+	if cells.is_empty(): return
+	var min_cell: Vector2i = cells[0]; var max_cell: Vector2i = cells[0]
+	for cell in cells:
+		min_cell = Vector2i(mini(min_cell.x, cell.x), mini(min_cell.y, cell.y)); max_cell = Vector2i(maxi(max_cell.x, cell.x), maxi(max_cell.y, cell.y))
+	var shape_center = Vector2(float(min_cell.x + max_cell.x), float(min_cell.y + max_cell.y)) * 0.5
+	for cell in cells:
+		var relative = Vector2(cell) - shape_center
+		var tile_center = center + Vector2((relative.x - relative.y) * 17.0, (relative.x + relative.y) * 8.0 + 4.0)
+		_draw_iso_tile(tile_center, TERRAIN_TOP[T_MOUNTAIN], TERRAIN_MID[T_MOUNTAIN], 15.0)
+		ui_ctrl.draw_colored_polygon(PackedVector2Array([tile_center + Vector2(-9, 1), tile_center + Vector2(-1, -17), tile_center + Vector2(6, 1)]), TERRAIN_TOP[T_MOUNTAIN].lightened(0.10))
+		ui_ctrl.draw_colored_polygon(PackedVector2Array([tile_center + Vector2(-1, -17), tile_center + Vector2(12, 2), tile_center + Vector2(6, 1)]), TERRAIN_TOP[T_MOUNTAIN].darkened(0.22))
+
+func _draw_building_card_model(center: Vector2, level: int):
+	if level <= 1:
+		_draw_iso_tile(center + Vector2(0, 16), Color("#9d654d"), Color("#684638"), 25.0)
+		for tier in 5:
+			var width = 34.0 - tier * 4.8; var y = center.y + 9.0 - tier * 11.0
+			ui_ctrl.draw_rect(Rect2(center.x - width * 0.33, y - 7, width * 0.66, 8), Color("#b43b32"), true)
+			ui_ctrl.draw_colored_polygon(PackedVector2Array([Vector2(center.x - width * 0.58, y - 2), Vector2(center.x + width * 0.58, y - 2), Vector2(center.x + width * 0.40, y + 3), Vector2(center.x - width * 0.40, y + 3)]), Color("#d99a26"))
+		ui_ctrl.draw_colored_polygon(PackedVector2Array([center + Vector2(-7, -43), center + Vector2(0, -54), center + Vector2(7, -43)]), Color("#d99a26"))
+	else:
+		_draw_iso_tile(center + Vector2(0, 17), Color("#f4f5f2"), Color("#b8c0c0"), 31.0)
+		for side in [-1, 1]:
+			var tower = Rect2(center + Vector2(side * 18 - 12, -37), Vector2(24, 49))
+			ui_ctrl.draw_rect(tower, Color("#f5f6f3"), true)
+			for floor_index in 6:
+				ui_ctrl.draw_rect(Rect2(tower.position + Vector2(3, 4 + floor_index * 7), Vector2(18, 4)), Color("#5aa5bc").darkened(float(floor_index % 2) * 0.12), true)
+		ui_ctrl.draw_rect(Rect2(center + Vector2(-18, -9), Vector2(36, 9)), Color("#76b8c8"), true)
+
+func _draw_weather_card_forecast(center: Vector2, weather: String):
+	match weather:
+		"台风":
+			for ring in 3: ui_ctrl.draw_arc(center, 10.0 + ring * 7.0, -2.5 + ring * 0.28, 2.1 + ring * 0.18, 20, Color("#dcecf5"), 3.0)
+			for drop in 4: ui_ctrl.draw_line(center + Vector2(-24 + drop * 15, 24), center + Vector2(-30 + drop * 15, 36), Color("#73b9df"), 2.5)
+		"沙尘暴":
+			for line_index in 4:
+				var y = center.y - 19 + line_index * 13
+				ui_ctrl.draw_arc(Vector2(center.x - 4 + line_index * 3, y), 23.0, -0.45, 0.65, 16, Color("#bd8845").lightened(line_index * 0.05), 4.0)
+				ui_ctrl.draw_circle(Vector2(center.x + 27 - line_index * 4, y + 7), 2.5, Color("#d6aa65"))
+		"雨季":
+			_draw_weather_cloud(center + Vector2(0, -9), Color("#dceaf0"))
+			for drop in 5: ui_ctrl.draw_line(center + Vector2(-25 + drop * 12, 12), center + Vector2(-29 + drop * 12, 27), Color("#4e9ed0"), 3.0)
+		"旱季":
+			ui_ctrl.draw_circle(center + Vector2(0, -14), 17, Color("#e6b34e"))
+			for ray in 8:
+				var direction = Vector2(cos(ray * TAU / 8.0), sin(ray * TAU / 8.0)); ui_ctrl.draw_line(center + Vector2(0, -14) + direction * 22, center + Vector2(0, -14) + direction * 29, Color("#d9963c"), 3.0)
+			ui_ctrl.draw_polyline(PackedVector2Array([center + Vector2(-27, 26), center + Vector2(-10, 18), center + Vector2(-2, 30), center + Vector2(9, 19), center + Vector2(27, 27)]), Color("#875f42"), 3.0)
+		"彩虹":
+			var colors = [Color("#dd5149"), Color("#e5a645"), Color("#6fba65"), Color("#5799cf")]
+			for band in colors.size(): ui_ctrl.draw_arc(center + Vector2(0, 20), 30.0 - band * 5.0, PI, TAU, 28, colors[band], 5.0)
+		_:
+			_draw_weather_cloud(center, Color("#dceaf0"))
+
+func _draw_weather_cloud(center: Vector2, color: Color):
+	ui_ctrl.draw_circle(center + Vector2(-16, 4), 12, color); ui_ctrl.draw_circle(center + Vector2(0, -4), 18, color); ui_ctrl.draw_circle(center + Vector2(18, 5), 12, color)
+	ui_ctrl.draw_rect(Rect2(center + Vector2(-17, 3), Vector2(36, 13)), color, true)
 
 func _draw_fitted_text(value: String, rect: Rect2, font: Font, size: int, color: Color):
 	var fitted: String = value
