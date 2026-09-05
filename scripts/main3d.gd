@@ -2327,19 +2327,21 @@ func _apply_weather_visual(weather: String):
 		tween.tween_property(sun, "scale", Vector3.ONE * 1.14, 1.8).set_trans(Tween.TRANS_SINE)
 		tween.tween_property(sun, "scale", Vector3.ONE, 1.8).set_trans(Tween.TRANS_SINE)
 	else:
-		# 彩虹：3D环形，不随视角移动或变形
+		# 彩虹：3D环形，放在地块缝隙中心，抬高避免下半被遮挡
 		var rainbow_colors = [Color("#e85b56"), Color("#e99b45"), Color("#ead45d"), Color("#68b978"), Color("#5fb8c7"), Color("#5b78c9"), Color("#a46ab9")]
+		# 缝隙中心 = 棋盘中心地块偏移半格
+		var gap_center = _world(Vector2i(_grid_width() / 2, _grid_height() / 2)) + Vector3(TILE_SPACING * 0.5, 0, TILE_SPACING * 0.5)
 		for index in rainbow_colors.size():
 			var ring = MeshInstance3D.new()
 			var tm = TorusMesh.new()
-			tm.inner_radius = 2.9 + index * 0.12
-			tm.outer_radius = tm.inner_radius + 0.08
-			tm.rings = 32; tm.ring_segments = 12
+			tm.inner_radius = 1.5 + index * 0.08
+			tm.outer_radius = tm.inner_radius + 0.06
+			tm.rings = 32; tm.ring_segments = 10
 			ring.mesh = tm
 			var material = _soft_material(Color(rainbow_colors[index], 0.45), 0.35)
 			material.cull_mode = BaseMaterial3D.CULL_DISABLED
 			ring.material_override = material
-			ring.position = center + Vector3(0, 0.8, 0)
+			ring.position = gap_center + Vector3(0, 2.5, 0)
 			ring.rotation_degrees.x = 90
 			weather_fx_root.add_child(ring)
 
