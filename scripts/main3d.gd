@@ -965,45 +965,6 @@ func _spawn_merge_fills(root: Node3D, terr: int, pos: Vector2i):
 			cf.position = Vector3(dir.x * (0.515 + cap_fill_w * 0.5), 0.12, dir.y * (0.515 + cap_fill_w * 0.5))
 			cf.set_meta("merge_fill", true); root.add_child(cf)
 
-	# 角部填充（两个方向都合并时）
-	for i in merge_dirs.size():
-		for j in range(i + 1, merge_dirs.size()):
-			var d1 = merge_dirs[i]; var d2 = merge_dirs[j]
-			if d1.x != 0 and d2.x != 0: continue  # 同轴不处理
-			if d1.y != 0 and d2.y != 0: continue
-			# 角部地形表面填充
-			var corner_sf = MeshInstance3D.new(); var corner_sfm = BoxMesh.new()
-			corner_sfm.size = Vector3(surface_fill_w, surface_h, surface_fill_w)
-			corner_sf.mesh = corner_sfm; corner_sf.material_override = surface_mat
-			corner_sf.position = Vector3(d1.x * (surface_edge + surface_fill_w * 0.5), surface_y, d2.y * (surface_edge + surface_fill_w * 0.5))
-			corner_sf.set_meta("merge_fill", true); root.add_child(corner_sf)
-			# 角部边框填充
-			var trim_mat_c = StandardMaterial3D.new()
-			trim_mat_c.albedo_color = TERRAIN_TOP[terr].lightened(0.08); trim_mat_c.roughness = 0.76
-			var corner_trim = MeshInstance3D.new(); var ctfm = BoxMesh.new()
-			ctfm.size = Vector3(0.095, 0.14, 0.095)
-			corner_trim.mesh = ctfm; corner_trim.material_override = trim_mat_c
-			corner_trim.position = Vector3(d1.x * (0.53 + 0.0475), 0.10, d2.y * (0.53 + 0.0475))
-			corner_trim.set_meta("merge_fill", true); root.add_child(corner_trim)
-			# 角部Top层填充
-			if not _is_developable(terr):
-				var top_fill_w = 0.625 - 0.53
-				var corner_tf = MeshInstance3D.new(); var corner_tfm = BoxMesh.new()
-				corner_tfm.size = Vector3(top_fill_w, 0.13, top_fill_w)
-				corner_tf.mesh = corner_tfm
-				var top_mat = StandardMaterial3D.new(); top_mat.albedo_color = TERRAIN_MID[terr]; top_mat.roughness = 0.94
-				corner_tf.material_override = top_mat
-				corner_tf.position = Vector3(d1.x * (0.53 + top_fill_w * 0.5), 0.025, d2.y * (0.53 + top_fill_w * 0.5))
-				corner_tf.set_meta("merge_fill", true); root.add_child(corner_tf)
-			# 角部Cap填充
-			if terr != T_WATER and not _is_developable(terr):
-				var cap_fill_w = 0.625 - 0.515
-				var corner_cf = MeshInstance3D.new(); var corner_cfm = BoxMesh.new()
-				corner_cfm.size = Vector3(cap_fill_w, 0.06, cap_fill_w)
-				corner_cf.mesh = corner_cfm; corner_cf.material_override = edge_materials[terr]
-				corner_cf.position = Vector3(d1.x * (0.515 + cap_fill_w * 0.5), 0.12, d2.y * (0.515 + cap_fill_w * 0.5))
-				corner_cf.set_meta("merge_fill", true); root.add_child(corner_cf)
-
 func _rebuild_merge_fills(pos: Vector2i):
 	if not _in_bounds(pos) or grid[pos.x][pos.y] < 0 or grid[pos.x][pos.y] == T_GAP: return
 	var root = tile_nodes[pos.x][pos.y]
