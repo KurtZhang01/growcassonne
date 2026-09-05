@@ -1,0 +1,83 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="640" viewBox="0 0 760 640">
+  <defs>
+    <linearGradient id="frontGlass" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#7896a1"/>
+      <stop offset="0.48" stop-color="#557985"/>
+      <stop offset="1" stop-color="#3f626f"/>
+    </linearGradient>
+    <linearGradient id="sideGlass" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#4a6e7b"/>
+      <stop offset="1" stop-color="#294b58"/>
+    </linearGradient>
+    <linearGradient id="roof" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f1f4f3"/>
+      <stop offset="1" stop-color="#b9c4c4"/>
+    </linearGradient>
+    <pattern id="frontGrid" width="25" height="18" patternUnits="userSpaceOnUse">
+      <path d="M0 0H25M0 0V18" fill="none" stroke="#e3e8e7" stroke-width="3"/>
+      <path d="M4 4H21V14H4Z" fill="#89a7b1" fill-opacity=".15"/>
+    </pattern>
+    <pattern id="sideGrid" width="20" height="18" patternUnits="userSpaceOnUse">
+      <path d="M0 0H20M0 0V18" fill="none" stroke="#cbd5d4" stroke-width="2.6"/>
+    </pattern>
+    <pattern id="louver" width="15" height="12" patternUnits="userSpaceOnUse">
+      <path d="M2 0V12" stroke="#e4e9e8" stroke-width="4"/>
+    </pattern>
+  </defs>
+
+  <path d="M74 563L388 414L727 475L414 626Z" fill="#1f3740" opacity=".16"/>
+  <path d="M97 548L382 417L704 475L421 608Z" fill="#dce2df"/>
+  <path d="M110 548L383 427L690 480L419 598Z" fill="#eef1ef"/>
+
+  <!-- Five-storey podium extending from the tower toward the right. -->
+  <path d="M358 391L455 347L706 389L607 438Z" fill="url(#roof)" stroke="#aeb9b8" stroke-width="4"/>
+  <path d="M358 391L607 438V548L358 503Z" fill="url(#frontGlass)"/>
+  <path d="M358 391L607 438V548L358 503Z" fill="url(#frontGrid)" opacity=".94"/>
+  <path d="M607 438L706 389V498L607 548Z" fill="url(#sideGlass)"/>
+  <path d="M607 438L706 389V498L607 548Z" fill="url(#sideGrid)" opacity=".92"/>
+  <path d="M357 502L607 547L706 497V514L609 565L357 520Z" fill="#c1cbca"/>
+  <path d="M625 458L680 431V493L625 521Z" fill="#274a57" stroke="#d8dfde" stroke-width="4"/>
+  <path d="M614 454L691 417L710 420L631 460Z" fill="#edf1ef"/>
+
+  <!-- Main tower: one clean slab, matching the photographed proportions. -->
+  <path d="M129 116L224 70L489 101L392 150Z" fill="url(#roof)" stroke="#aab6b5" stroke-width="5"/>
+  <path d="M129 116L392 150V494L129 449Z" fill="url(#frontGlass)"/>
+  <path d="M129 116L392 150V494L129 449Z" fill="url(#frontGrid)" opacity=".98"/>
+  <path d="M392 150L489 101V447L392 494Z" fill="url(#sideGlass)"/>
+  <path d="M392 150L489 101V447L392 494Z" fill="url(#sideGrid)" opacity=".96"/>
+
+  <!-- Strong corner posts and the recessed mechanical crown. -->
+  <path d="M125 111L134 113V452L125 450Z" fill="#eef2f1"/>
+  <path d="M388 147L397 145V495L388 497Z" fill="#dce3e2"/>
+  <path d="M485 98L493 100V449L485 452Z" fill="#bbc7c7"/>
+  <path d="M139 100L226 59L491 89L401 135Z" fill="#eef2f1" stroke="#aab6b5" stroke-width="4"/>
+  <path d="M151 94L229 58L477 85L397 125Z" fill="#64777b"/>
+  <path d="M151 94L397 125V145L151 115Z" fill="url(#louver)"/>
+  <path d="M397 125L477 85V105L397 145Z" fill="#9daaaa"/>
+  <path d="M145 83L227 44L493 74L407 117L397 108L478 69L229 42L153 78Z" fill="#dce3e2"/>
+
+  <!-- Double-height base and street entrance. -->
+  <path d="M121 448L392 494V544L121 497Z" fill="#aeb9b8"/>
+  <path d="M392 494L489 447V498L392 544Z" fill="#899999"/>
+  <path d="M205 472L309 490V526L205 508Z" fill="#284b58" stroke="#e3e8e7" stroke-width="4"/>
+  <path d="M192 468L326 491L344 482L211 459Z" fill="#f1f3f1"/>
+  <path d="M221 477V511M257 483V517M293 489V523" stroke="#cbd5d4" stroke-width="3"/>
+  <g transform="rotate(9 274 463)">
+    <rect x="207" y="450" width="134" height="23" rx="2" fill="#e8edeb" stroke="#7d8c8d" stroke-width="2"/>
+    <text x="274" y="466" text-anchor="middle" font-family="Microsoft YaHei,Noto Sans SC,sans-serif" font-size="14" font-weight="700" fill="#334f59">洪山科创大厦</text>
+  </g>
+
+  <!-- Low glazed gallery visibly joins tower and podium without overlapping silhouettes. -->
+  <path d="M392 463L465 427L522 438L448 475Z" fill="#e7ecea"/>
+  <path d="M392 463L448 475V520L392 509Z" fill="#3c6471" stroke="#d8dfde" stroke-width="3"/>
+  <path d="M448 475L522 438V483L448 520Z" fill="#315563" stroke="#bdc9c8" stroke-width="3"/>
+
+  <g fill="#4f7b57">
+    <circle cx="123" cy="541" r="14"/><circle cx="145" cy="548" r="11"/>
+    <circle cx="524" cy="579" r="13"/><circle cx="548" cy="570" r="10"/>
+    <circle cx="668" cy="527" r="12"/><circle cx="687" cy="521" r="9"/>
+  </g>
+  <g fill="#315f42">
+    <circle cx="132" cy="538" r="7"/><circle cx="535" cy="574" r="7"/><circle cx="677" cy="523" r="6"/>
+  </g>
+</svg>

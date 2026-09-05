@@ -2,6 +2,8 @@ extends Node3D
 
 const WATER_TILE_SHADER: Shader = preload("res://shaders/water_tile.gdshader")
 const UI_FROSTED_GLASS_SHADER: Shader = preload("res://shaders/ui_frosted_glass.gdshader")
+const HONGSHAN_TOWER_AXIS_X: Texture2D = preload("res://assets/buildings/hongshan-tower-axis-x.svg")
+const HONGSHAN_TOWER_AXIS_Z: Texture2D = preload("res://assets/buildings/hongshan-tower-axis-z.svg")
 
 # ---- Config ----
 const GRID_SIZE := 8
@@ -1510,115 +1512,29 @@ func _tile_pavilion_surface(root: Node3D, road_mask: int):
 
 # ---- Level-2 landmark: Hongshan Technology Building across two tiles ----
 func _tile_hongshan_tech_surface(root: Node3D, data: Dictionary):
-	var direction_index: int = int(data.get("direction", 1)); var part: int = int(data.get("part", 0))
+	var direction_index: int = int(data.get("direction", 1))
+	var part: int = int(data.get("part", 0))
 	var direction: Vector2i = DIRS[direction_index]
-	var toward_joint = Vector3(direction.x, 0, direction.y) * (1.0 if part == 0 else -1.0)
-	var along_x = direction.x != 0
-	var lateral = Vector3(-direction.y, 0, direction.x)
-	var frame = _soft_material(Color("#d7dddc"))
-	var concrete = _soft_material(Color("#aeb8b7"))
-	var glass = _soft_material(Color("#557783"), 0.025); glass.metallic = 0.30; glass.roughness = 0.20
-	var inset_glass = _soft_material(Color("#2f505d"), 0.035); inset_glass.metallic = 0.34; inset_glass.roughness = 0.17
-	var roof_dark = _soft_material(Color("#718080"))
-	var green = _soft_material(Color("#3f704d"))
+	var toward_joint := Vector3(direction.x, 0, direction.y) * (1.0 if part == 0 else -1.0)
+	var along_x := direction.x != 0
+	var concrete := _soft_material(Color("#aeb8b7"))
 
-	# TILE_SPACING is 1.25, so both halves terminate exactly at the 0.625 joint.
-	var plaza_length = 0.76 if part == 0 else 1.0
-	var plaza_offset = 0.245 if part == 0 else 0.125
-	var plaza_size = Vector3(plaza_length if along_x else 0.94, 0.05, 0.94 if along_x else plaza_length)
+	# Both ground slabs terminate at the exact midpoint between the two tile roots.
+	var plaza_length := 0.76 if part == 0 else 1.0
+	var plaza_offset := 0.245 if part == 0 else 0.125
+	var plaza_size := Vector3(plaza_length if along_x else 0.94, 0.05, 0.94 if along_x else plaza_length)
 	_building_box(root, plaza_size, toward_joint * plaza_offset + Vector3(0, 0.145, 0), concrete)
+	if part != 0:
+		return
 
-	if part == 0:
-		# Photo proportions: lobby 13%, office facade 79%, crown 8% of total height.
-		var tower_axis_center = toward_joint * 0.17
-		var lobby_center = tower_axis_center + Vector3(0, 0.265, 0)
-		var lobby_size = Vector3(0.66 if along_x else 0.72, 0.19, 0.72 if along_x else 0.66)
-		_building_box(root, lobby_size, lobby_center, concrete)
-
-		# The reference facade is a dense, almost square grid over a clean glass slab.
-		var tower_center = tower_axis_center + Vector3(0, 0.915, 0)
-		var tower_size = Vector3(0.66 if along_x else 0.72, 1.11, 0.72 if along_x else 0.66)
-		_building_box(root, tower_size, tower_center, glass)
-		_hongshan_facade_grid(root, tower_center, tower_size, frame, 20, 10)
-
-		# Crown pieces are stacked on exact boundaries instead of intersecting the tower.
-		var roof_y = tower_center.y + tower_size.y * 0.5
-		var crown_size = Vector3(tower_size.x + 0.055, 0.03, tower_size.z + 0.055)
-		_building_box(root, crown_size, Vector3(tower_center.x, roof_y + 0.015, tower_center.z), frame)
-		var mechanical_size = Vector3(tower_size.x * 0.84, 0.06, tower_size.z * 0.84)
-		var mechanical_center = Vector3(tower_center.x, roof_y + 0.06, tower_center.z)
-		_building_box(root, mechanical_size, mechanical_center, roof_dark)
-		_hongshan_roof_louvers(root, mechanical_center, mechanical_size, frame)
-		_building_box(root, Vector3(tower_size.x * 0.90, 0.02, tower_size.z * 0.90), Vector3(tower_center.x, roof_y + 0.10, tower_center.z), frame)
-
-		# The entrance glazing is a thin surface panel on the street-facing lobby wall.
-		var entrance_face = tower_axis_center - toward_joint * 0.337
-		var portal_size = Vector3(0.018 if along_x else 0.34, 0.135, 0.34 if along_x else 0.018)
-		_building_box(root, portal_size, entrance_face + Vector3(0, 0.26, 0), inset_glass)
-		var canopy_size = Vector3(0.16 if along_x else 0.42, 0.025, 0.42 if along_x else 0.16)
-		_building_box(root, canopy_size, entrance_face - toward_joint * 0.07 + Vector3(0, 0.355, 0), frame)
-		for entrance_side in [-1.0, 1.0]:
-			var entrance_pier = entrance_face + lateral * entrance_side * 0.185 + Vector3(0, 0.26, 0)
-			_building_box(root, Vector3(0.025, 0.15, 0.025), entrance_pier, frame)
-
-		# This short gallery ends at the exact tile joint and meets the podium face-to-face.
-		var gallery_center = toward_joint * 0.5625 + Vector3(0, 0.31, 0)
-		var gallery_size = Vector3(0.125 if along_x else 0.50, 0.28, 0.50 if along_x else 0.125)
-		_building_box(root, gallery_size, gallery_center, inset_glass)
-		_hongshan_facade_grid(root, gallery_center, gallery_size, frame, 3, 3)
-	else:
-		# The low wing starts exactly at the joint and remains a separate attached mass.
-		var podium_center = toward_joint * 0.125 + lateral * 0.055 + Vector3(0, 0.36, 0)
-		var podium_size = Vector3(1.0 if along_x else 0.62, 0.38, 0.62 if along_x else 1.0)
-		_building_box(root, podium_size, podium_center, glass)
-		_hongshan_facade_grid(root, podium_center, podium_size, frame, 5, 9)
-		_building_box(root, Vector3(podium_size.x + 0.04, 0.035, podium_size.z + 0.04), podium_center + Vector3(0, podium_size.y * 0.5 + 0.0175, 0), frame)
-
-		# A shallow entrance bay is attached to, not embedded inside, the outer end wall.
-		var podium_end = podium_center - toward_joint * 0.507
-		var end_bay_size = Vector3(0.018 if along_x else 0.34, 0.22, 0.34 if along_x else 0.018)
-		_building_box(root, end_bay_size, podium_end + Vector3(0, -0.015, 0), inset_glass)
-		var podium_canopy = Vector3(0.13 if along_x else 0.42, 0.025, 0.42 if along_x else 0.13)
-		_building_box(root, podium_canopy, podium_end - toward_joint * 0.055 + Vector3(0, 0.13, 0), frame)
-
-	# Small asymmetrical planters echo the landscaped forecourt without hiding the massing.
-	for planter_side in [-1, 1]:
-		var planter_pos = lateral * planter_side * 0.40 - toward_joint * (0.25 if part == 0 else 0.20)
-		_building_box(root, Vector3(0.16, 0.045, 0.16), planter_pos + Vector3(0, 0.19, 0), concrete)
-		var shrub = MeshInstance3D.new(); var shrub_mesh = SphereMesh.new(); shrub_mesh.radius = 0.08; shrub_mesh.height = 0.11; shrub_mesh.radial_segments = 7; shrub_mesh.rings = 4
-		shrub.mesh = shrub_mesh; shrub.material_override = green; shrub.position = planter_pos + Vector3(0, 0.265, 0); shrub.scale = Vector3(1.25, 0.68, 0.95); root.add_child(shrub)
-
-func _hongshan_facade_grid(root: Node3D, center: Vector3, size: Vector3, material: Material, floor_count: int, mullion_count: int):
-	# Every band is four shallow facade strips; none passes through the glass core.
-	for floor_index in range(1, floor_count + 1):
-		var band_y = center.y - size.y * 0.5 + size.y * float(floor_index) / float(floor_count + 1)
-		_building_box(root, Vector3(size.x + 0.018, 0.009, 0.014), Vector3(center.x, band_y, center.z + size.z * 0.5 + 0.006), material)
-		_building_box(root, Vector3(size.x + 0.018, 0.009, 0.014), Vector3(center.x, band_y, center.z - size.z * 0.5 - 0.006), material)
-		_building_box(root, Vector3(0.014, 0.009, size.z + 0.018), Vector3(center.x + size.x * 0.5 + 0.006, band_y, center.z), material)
-		_building_box(root, Vector3(0.014, 0.009, size.z + 0.018), Vector3(center.x - size.x * 0.5 - 0.006, band_y, center.z), material)
-
-	var strip_height = size.y - 0.035
-	for strip_index in range(1, mullion_count + 1):
-		var x_offset = -size.x * 0.5 + size.x * float(strip_index) / float(mullion_count + 1)
-		var z_offset = -size.z * 0.5 + size.z * float(strip_index) / float(mullion_count + 1)
-		_building_box(root, Vector3(0.009, strip_height, 0.014), center + Vector3(x_offset, 0, size.z * 0.5 + 0.006), material)
-		_building_box(root, Vector3(0.009, strip_height, 0.014), center + Vector3(x_offset, 0, -size.z * 0.5 - 0.006), material)
-		_building_box(root, Vector3(0.014, strip_height, 0.009), center + Vector3(size.x * 0.5 + 0.006, 0, z_offset), material)
-		_building_box(root, Vector3(0.014, strip_height, 0.009), center + Vector3(-size.x * 0.5 - 0.006, 0, z_offset), material)
-
-	# Four continuous corner posts make the tower silhouette crisp from every camera angle.
-	for x_side in [-1.0, 1.0]:
-		for z_side in [-1.0, 1.0]:
-			_building_box(root, Vector3(0.026, size.y + 0.025, 0.026), center + Vector3(x_side * size.x * 0.5, 0, z_side * size.z * 0.5), material)
-
-func _hongshan_roof_louvers(root: Node3D, center: Vector3, size: Vector3, material: Material):
-	for louver_index in range(1, 8):
-		var x_offset = -size.x * 0.5 + size.x * float(louver_index) / 8.0
-		var z_offset = -size.z * 0.5 + size.z * float(louver_index) / 8.0
-		_building_box(root, Vector3(0.012, size.y, 0.016), center + Vector3(x_offset, 0, size.z * 0.5 + 0.006), material)
-		_building_box(root, Vector3(0.012, size.y, 0.016), center + Vector3(x_offset, 0, -size.z * 0.5 - 0.006), material)
-		_building_box(root, Vector3(0.016, size.y, 0.012), center + Vector3(size.x * 0.5 + 0.006, 0, z_offset), material)
-		_building_box(root, Vector3(0.016, size.y, 0.012), center + Vector3(-size.x * 0.5 - 0.006, 0, z_offset), material)
+	# One complete vector illustration spans both cells, eliminating split-model seams.
+	var building := Sprite3D.new()
+	building.texture = HONGSHAN_TOWER_AXIS_X if along_x else HONGSHAN_TOWER_AXIS_Z
+	building.pixel_size = 0.0028
+	building.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	building.flip_h = direction.x < 0 if along_x else direction.y < 0
+	building.position = toward_joint * (TILE_SPACING * 0.5) + Vector3(0, 0.955, 0)
+	root.add_child(building)
 
 func _building_box(root: Node3D, size: Vector3, position: Vector3, material: Material):
 	var mesh_instance = MeshInstance3D.new(); var mesh = BoxMesh.new(); mesh.size = size
