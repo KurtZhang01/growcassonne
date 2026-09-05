@@ -3461,7 +3461,7 @@ func _draw_hand_card_face(card: Dictionary, rect: Rect2, font: Font, ink: Color,
 	# 4. 连续渐变：accent(顶) → 目标淡色(中) → 白(底)
 	# 开发卡跳过灰色base，直接accent→皮肤色→白
 	var fade_target := Color(1.0, 1.0, 0.97, 1.0)  # 默认白色
-	var grad_start := accent
+	var grad_start: Color = accent
 	match card["kind"]:
 		"develop", "building_develop":
 			fade_target = Color("#f0d0b0")  # 皮肤色
