@@ -653,72 +653,28 @@ func _flower_total(pos: Vector2i) -> int:
 #  EDGE BRIDGES — seamless terrain connections
 # ================================================================
 func _update_edge_bridges(pos: Vector2i):
-	"""Spawn bridge pieces between pos and all matching neighbors."""
-	var terr = grid[pos.x][pos.y]
-	if terr < 0: return
-	if _is_developable(terr): return
-
-	var dirs = [
-		[Vector2i.UP, Vector3(0, 0, -TILE_SPACING * 0.5), Vector3(TILE_SPACING * 0.7, 0.04, 0.12)],
-		[Vector2i.DOWN, Vector3(0, 0, TILE_SPACING * 0.5), Vector3(TILE_SPACING * 0.7, 0.04, 0.12)],
-		[Vector2i.LEFT, Vector3(-TILE_SPACING * 0.5, 0, 0), Vector3(0.12, 0.04, TILE_SPACING * 0.7)],
-		[Vector2i.RIGHT, Vector3(TILE_SPACING * 0.5, 0, 0), Vector3(0.12, 0.04, TILE_SPACING * 0.7)],
-	]
-
-	for d in dirs:
-		var dir: Vector2i = d[0]
-		var offset: Vector3 = d[1]
-		var size: Vector3 = d[2]
-		var neighbor = pos + dir
-		if _in_bounds(neighbor):
-			if grid[neighbor.x][neighbor.y] == terr:
-				_spawn_bridge(pos, terr, offset, size)
-
-	# Also update all neighbors' bridges (they might now connect to this new tile)
-	for dir in [Vector2i.UP, Vector2i.DOWN, Vector2i.LEFT, Vector2i.RIGHT]:
-		var neighbor = pos + dir
-		if _in_bounds(neighbor):
-			if grid[neighbor.x][neighbor.y] == terr:
-				# Rebuild bridges for neighbor
-				_rebuild_bridges_for(neighbor)
+	if not _in_bounds(pos): return
+	_rebuild_bridges_for(pos)
+	for direction in DIRS: _rebuild_bridges_for(pos + direction)
 
 func _rebuild_bridges_for(pos: Vector2i):
-	"""Remove old bridges for a tile and rebuild them."""
-	# Remove existing bridge children from edge_root that belong to this position
-	var to_remove := []
+	if not _in_bounds(pos): return
 	for child in edge_root.get_children():
-		if child.has_meta("bridge_owner") and child.get_meta("bridge_owner") == str(pos):
-			to_remove.append(child)
-	for child in to_remove:
-		child.queue_free()
+		if child.has_meta("bridge_owner") and child.get_meta("bridge_owner") == str(pos): child.free()
+	var terr: int = grid[pos.x][pos.y]
+	if terr < 0 or _is_developable(terr): return
+	for direction in [Vector2i.RIGHT, Vector2i.DOWN]:
+		var neighbor: Vector2i = pos + direction
+		if _in_bounds(neighbor) and grid[neighbor.x][neighbor.y] == terr:
+			_spawn_bridge(pos, neighbor, terr)
 
-	var terr = grid[pos.x][pos.y]
-	if terr < 0: return
-	if _is_developable(terr): return
-
-	var dirs = [
-		[Vector2i.UP, Vector3(0, 0, -TILE_SPACING * 0.5), Vector3(TILE_SPACING * 0.7, 0.04, 0.12)],
-		[Vector2i.DOWN, Vector3(0, 0, TILE_SPACING * 0.5), Vector3(TILE_SPACING * 0.7, 0.04, 0.12)],
-		[Vector2i.LEFT, Vector3(-TILE_SPACING * 0.5, 0, 0), Vector3(0.12, 0.04, TILE_SPACING * 0.7)],
-		[Vector2i.RIGHT, Vector3(TILE_SPACING * 0.5, 0, 0), Vector3(0.12, 0.04, TILE_SPACING * 0.7)],
-	]
-
-	for d in dirs:
-		var dir: Vector2i = d[0]
-		var offset: Vector3 = d[1]
-		var size: Vector3 = d[2]
-		var neighbor = pos + dir
-		if _in_bounds(neighbor):
-			if grid[neighbor.x][neighbor.y] == terr:
-				_spawn_bridge(pos, terr, offset, size)
-
-func _spawn_bridge(owner_pos: Vector2i, terr: int, offset: Vector3, size: Vector3):
-	"""Spawn a single bridge piece connecting two tiles."""
+func _spawn_bridge(owner_pos: Vector2i, neighbor_pos: Vector2i, terr: int):
 	var mi = MeshInstance3D.new()
-	var bm = BoxMesh.new(); bm.size = size
+	var bm = BoxMesh.new(); var horizontal = owner_pos.y == neighbor_pos.y
+	bm.size = Vector3(0.28 if horizontal else 1.03, 0.035, 1.03 if horizontal else 0.28)
 	mi.mesh = bm
 	mi.material_override = edge_materials[terr]
-	mi.position = _world(owner_pos) + offset + Vector3(0, 0.13, 0)
+	mi.position = (_world(owner_pos) + _world(neighbor_pos)) * 0.5 + Vector3(0, 0.1425, 0)
 	mi.set_meta("bridge_owner", str(owner_pos))
 	edge_root.add_child(mi)
 
@@ -728,29 +684,32 @@ func _road_pair_key(a: Vector2i, b: Vector2i) -> String:
 	return "%d,%d-%d,%d" % [a.x, a.y, b.x, b.y]
 
 func _update_road_bridges(pos: Vector2i):
-	if grid[pos.x][pos.y] < 0: return
-	if grid[pos.x][pos.y] == T_BUILDING: return
-	for dir in DIRS:
-		var neighbor = pos + dir
-		if not _in_bounds(neighbor): continue
-		if grid[neighbor.x][neighbor.y] == T_BUILDING: continue
-		if grid[neighbor.x][neighbor.y] < 0 or not _roads_connect(pos, neighbor): continue
-		var key = _road_pair_key(pos, neighbor); var exists = false
-		for child in edge_root.get_children():
-			if child.has_meta("road_key") and child.get_meta("road_key") == key:
-				exists = true; break
-		if exists: continue
-		var bridge = MeshInstance3D.new(); var mesh = BoxMesh.new()
-		var horizontal = dir.x != 0
-		mesh.size = Vector3(0.34 if horizontal else 0.16, 0.03, 0.16 if horizontal else 0.34)
-		var bridge_material = _road_material(Color("#f2d99b"), 0.72)
-		bridge_material.emission_enabled = true; bridge_material.emission = Color("#8be5d1")
-		bridge_material.emission_energy_multiplier = 2.2
-		bridge.mesh = mesh; bridge.material_override = bridge_material
-		bridge.position = (_world(pos) + _world(neighbor)) * 0.5 + Vector3(0, 0.178, 0)
-		bridge.set_meta("road_key", key); edge_root.add_child(bridge)
-		var flash = create_tween()
-		flash.tween_property(bridge_material, "emission_energy_multiplier", 0.08, 0.9).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_QUAD)
+	if not _in_bounds(pos): return
+	for owner in [pos, pos + Vector2i.LEFT, pos + Vector2i.UP]: _rebuild_road_bridges_for(owner)
+
+func _rebuild_road_bridges_for(owner: Vector2i):
+	if not _in_bounds(owner): return
+	for child in edge_root.get_children():
+		if child.has_meta("road_bridge_owner") and child.get_meta("road_bridge_owner") == str(owner): child.free()
+	if grid[owner.x][owner.y] < 0 or grid[owner.x][owner.y] == T_BUILDING: return
+	for direction in [Vector2i.RIGHT, Vector2i.DOWN]:
+		var neighbor: Vector2i = owner + direction
+		if not _in_bounds(neighbor) or grid[neighbor.x][neighbor.y] < 0 or grid[neighbor.x][neighbor.y] == T_BUILDING: continue
+		if _roads_connect(owner, neighbor): _spawn_road_bridge_pair(owner, neighbor)
+
+func _spawn_road_bridge_pair(owner: Vector2i, neighbor: Vector2i):
+	var horizontal := owner.y == neighbor.y
+	var center := (_world(owner) + _world(neighbor)) * 0.5
+	var layers = [
+		[Vector3(0.24, 0.026, 0.24) if horizontal else Vector3(0.24, 0.026, 0.24), 0.165, Color("#5a4430"), 0.95, "under"],
+		[Vector3(0.24, 0.022, 0.20) if horizontal else Vector3(0.20, 0.022, 0.24), 0.178, Color("#d8bd80"), 0.82, "surface"],
+	]
+	for layer_data in layers:
+		var bridge = MeshInstance3D.new(); var mesh = BoxMesh.new(); mesh.size = layer_data[0]
+		bridge.mesh = mesh; bridge.material_override = _road_material(layer_data[2], layer_data[3])
+		bridge.position = center + Vector3(0, layer_data[1], 0)
+		bridge.set_meta("road_key", _road_pair_key(owner, neighbor)); bridge.set_meta("road_bridge_owner", str(owner))
+		bridge.set_meta("road_bridge_layer", layer_data[4]); edge_root.add_child(bridge)
 
 func _refresh_road_effects():
 	last_road_event = ""
@@ -893,11 +852,11 @@ func _spawn_tile(pos: Vector2i, terr: int, animate: bool, road_mask: int = 0):
 
 func _spawn_island_base(root: Node3D, terr: int):
 	# The continuous cap covers both seams and four-cell junctions.
-	_building_box(root, Vector3(TILE_SPACING, 0.06, TILE_SPACING), Vector3(0, 0.12, 0), edge_materials[terr])
+	_building_box(root, Vector3(1.03, 0.06, 1.03), Vector3(0, 0.12, 0), edge_materials[terr])
 	var layers = [
-		[Vector3(TILE_SPACING, 0.13, TILE_SPACING), 0.025, TERRAIN_MID[terr]],
-		[Vector3(TILE_SPACING, 0.12, TILE_SPACING), -0.095, TERRAIN_BOT[terr]],
-		[Vector3(TILE_SPACING, 0.16, TILE_SPACING), -0.225, TERRAIN_BOT[terr].darkened(0.20)],
+		[Vector3(1.06, 0.13, 1.06), 0.025, TERRAIN_MID[terr]],
+		[Vector3(0.88, 0.12, 0.88), -0.095, TERRAIN_BOT[terr]],
+		[Vector3(0.56, 0.16, 0.56), -0.225, TERRAIN_BOT[terr].darkened(0.20)],
 	]
 	for layer_data in layers:
 		var layer = MeshInstance3D.new(); var mesh = BoxMesh.new()
@@ -920,9 +879,9 @@ func _spawn_edge_trim(root: Node3D, terr: int, pos: Vector2i):
 		if _in_bounds(neighbor) and grid[neighbor.x][neighbor.y] == terr: continue
 		var trim = MeshInstance3D.new(); var mesh = BoxMesh.new()
 		var horizontal = side == 0 or side == 2
-		mesh.size = Vector3(TILE_SPACING if horizontal else 0.02, 0.18, 0.02 if horizontal else TILE_SPACING)
+		mesh.size = Vector3(1.09 if horizontal else 0.03, 0.14, 0.03 if horizontal else 1.09)
 		trim.mesh = mesh; trim.material_override = trim_material
-		trim.position = Vector3(DIRS[side].x * (TILE_SPACING * 0.5 - 0.01), 0.09, DIRS[side].y * (TILE_SPACING * 0.5 - 0.01))
+		trim.position = Vector3(DIRS[side].x * 0.53, 0.10, DIRS[side].y * 0.53)
 		trim.set_meta("edge_trim", true)
 		root.add_child(trim)
 
@@ -1090,15 +1049,22 @@ func _tile_forest_surface(root: Node3D, road_mask: int):
 	mat.roughness = 1.0; top.material_override = mat; top.position.y = 0.138
 	root.add_child(top)
 
-	# Moss layer on top
-	var moss = MeshInstance3D.new()
-	var mm2 = CylinderMesh.new()
-	mm2.top_radius = 0.31; mm2.bottom_radius = 0.34; mm2.height = 0.025; mm2.radial_segments = 14
-	moss.mesh = mm2
 	var mmat2 = StandardMaterial3D.new()
 	mmat2.albedo_color = TERRAIN_TOP[2]
-	moss.material_override = mmat2; moss.position.y = 0.19
-	root.add_child(moss)
+	if road_mask == 0:
+		var moss = MeshInstance3D.new(); var moss_mesh = CylinderMesh.new()
+		moss_mesh.top_radius = 0.31; moss_mesh.bottom_radius = 0.34; moss_mesh.height = 0.025; moss_mesh.radial_segments = 14
+		moss.mesh = moss_mesh; moss.material_override = mmat2; moss.position.y = 0.19
+		root.add_child(moss)
+	else:
+		for patch_index in 3:
+			var moss_patch = MeshInstance3D.new(); var patch_mesh = CylinderMesh.new()
+			patch_mesh.top_radius = randf_range(0.08, 0.13); patch_mesh.bottom_radius = patch_mesh.top_radius * 1.08
+			patch_mesh.height = 0.012; patch_mesh.radial_segments = 9; moss_patch.mesh = patch_mesh
+			moss_patch.material_override = mmat2
+			var patch_pos = _feature_position(road_mask, 0.37)
+			moss_patch.position = Vector3(patch_pos.x, 0.163, patch_pos.y)
+			moss_patch.scale.z = randf_range(0.65, 1.15); root.add_child(moss_patch)
 
 	# Stumps and fallen timber make the forest floor legible between canopies.
 	for i in 1:
@@ -1227,16 +1193,26 @@ func _try_select_tile(pos: Vector2i):
 	label.modulate = Color("#f8fbf5"); label.outline_size = 7
 	label.outline_modulate = Color(0.05, 0.08, 0.07, 0.90)
 	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED; label.no_depth_test = true
-	label.position = _world(pos) + Vector3(0, 1.15, 0)
+	label.position = _world(pos) + Vector3(0, 1.28, 0)
 	tile_select_root.add_child(label)
+	if _is_plant_terrain(grid[pos.x][pos.y]):
+		var player_line := 0
+		for player_id in player_count:
+			var amount: int = flowers[pos.x][pos.y][player_id]
+			if amount <= 0: continue
+			var player_label = Label3D.new()
+			player_label.text = "%s  %d朵" % [PLAYER_NAMES[player_id], amount]
+			player_label.font_size = 15; player_label.pixel_size = 0.0065
+			player_label.modulate = PLAYER_COLORS[player_id]; player_label.outline_size = 7
+			player_label.outline_modulate = Color(0.05, 0.08, 0.07, 0.90)
+			player_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED; player_label.no_depth_test = true
+			player_label.position = _world(pos) + Vector3(0, 0.92 - player_line * 0.12, 0)
+			tile_select_root.add_child(player_label); player_line += 1
 
 func _tile_info_text(pos: Vector2i) -> String:
 	var terr: int = grid[pos.x][pos.y]
 	if _is_plant_terrain(terr):
 		var lines = [TERRAIN_NAMES[terr], "生长率 %.1f   容积 %d/%d" % [TERRAIN_GROWTH[terr], _flower_total(pos), _tile_capacity(pos)]]
-		for player_id in player_count:
-			var amount: int = flowers[pos.x][pos.y][player_id]
-			if amount > 0: lines.append("%s  %d朵" % [PLAYER_NAMES[player_id], amount])
 		var water_count := 0; var building_count := 0
 		for dx in range(-1, 2):
 			for dy in range(-1, 2):
@@ -2350,7 +2326,7 @@ func _emit_settlement_labels(grid_snapshot: Array, flower_snapshot: Array):
 				_float_settlement_label(pos, "%s > %s" % [TERRAIN_NAMES[old_terrain], TERRAIN_NAMES[grid[x][y]]], Color("#e8c840"))
 
 func _float_settlement_label(pos: Vector2i, label_text: String, color: Color):
-	var label = Label3D.new(); label.text = label_text; label.font_size = 15; label.pixel_size = 0.006
+	var label = Label3D.new(); label.text = label_text; label.font_size = 24; label.pixel_size = 0.007
 	label.modulate = color; label.outline_size = 6; label.outline_modulate = Color(0.04, 0.06, 0.05, 0.82)
 	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED; label.no_depth_test = true
 	label.position = _world(pos) + Vector3(randf_range(-0.14, 0.14), 0.54, 0)
@@ -3004,7 +2980,7 @@ func _draw_ui():
 		var row_y: float = sy + 92 + float(ranking_y.get(i, i * 30.0))
 		var amount: float = float(ranking_values.get(i, scores[i]))
 		var maximum: float = maxf(float(scores.max()), 1.0)
-		ui_ctrl.draw_string(font, Vector2(ux + 12, row_y), PLAYER_NAMES[i], HORIZONTAL_ALIGNMENT_LEFT, 60, 12, ink)
+		ui_ctrl.draw_string(font, Vector2(ux + 12, row_y), PLAYER_NAMES[i], HORIZONTAL_ALIGNMENT_LEFT, 60, 12, PLAYER_COLORS[i])
 		ui_ctrl.draw_rect(Rect2(ux + 76, row_y - 10, 125, 10), Color(0.2, 0.3, 0.25, 0.12))
 		ui_ctrl.draw_rect(Rect2(ux + 76, row_y - 10, 125 * clampf(amount / maximum, 0.0, 1.0), 10), PLAYER_COLORS[i])
 		_draw_fitted_text(str(roundi(amount)), Rect2(ux + 207, row_y - 14, 50, 18), font, 13, ink)
@@ -3022,7 +2998,7 @@ func _draw_ui():
 	_draw_fitted_text(last_settlement, Rect2(ux + 12, wy + 15, 246, 22), font, 12, muted)
 	ui_ctrl.draw_string(font, Vector2(ux + 12, wy + 82), "最近操作", HORIZONTAL_ALIGNMENT_LEFT, 246, 13, ink)
 	for index in action_history.size():
-		_draw_fitted_text(action_history[index], Rect2(ux + 12, wy + 92 + index * 24, 246, 22), font, 12, muted)
+		_draw_fitted_text(action_history[index], Rect2(ux + 12, wy + 92 + index * 24, 246, 22), font, 12, _player_text_color(action_history[index], muted))
 
 	ui_ctrl.draw_line(Vector2(ux + 4, vp.y - 55), Vector2(ux + 266, vp.y - 55), Color(1.0, 1.0, 1.0, 0.28), 1.0)
 	ui_ctrl.draw_string(font, Vector2(ux + 12, vp.y - 36), "滚轮缩放 · 中键平移 · R 重开", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, muted)
@@ -3073,6 +3049,11 @@ func _draw_fitted_text(value: String, rect: Rect2, font: Font, size: int, color:
 			fitted = fitted.left(fitted.length() - 1)
 		fitted += "..."
 	ui_ctrl.draw_string(font, rect.position + Vector2(0, font.get_ascent(size)), fitted, HORIZONTAL_ALIGNMENT_LEFT, rect.size.x, size, color)
+
+func _player_text_color(value: String, fallback: Color) -> Color:
+	for player_id in player_count:
+		if value.contains(PLAYER_NAMES[player_id]): return PLAYER_COLORS[player_id]
+	return fallback
 
 func _draw_card_symbol(card: Dictionary, center: Vector2, color: Color):
 	match card["kind"]:
