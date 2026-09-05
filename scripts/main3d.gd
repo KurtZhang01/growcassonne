@@ -170,7 +170,17 @@ var flower_chart_glass: ColorRect
 func _ready():
 	_setup_scene()
 	_setup_title_world()
+	_setup_music()
 	state = S.TITLE
+
+func _setup_music():
+	var player = AudioStreamPlayer.new()
+	var stream = preload("res://assets/music/Blossom in the Light.mp3")
+	stream.loop = true
+	player.stream = stream
+	player.volume_db = -12.0
+	add_child(player)
+	player.play()
 
 # ================================================================
 #  SCENE
