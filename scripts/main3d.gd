@@ -881,11 +881,9 @@ func _spawn_edge_trim(root: Node3D, terr: int, pos: Vector2i):
 		if _in_bounds(neighbor) and grid[neighbor.x][neighbor.y] == terr: continue
 		var trim = MeshInstance3D.new(); var mesh = BoxMesh.new()
 		var horizontal = side == 0 or side == 2
-		# 嵌入底座：宽度1.08覆盖底座侧面，高度0.30覆盖整个浮岛
-		mesh.size = Vector3(1.08 if horizontal else 0.05, 0.30, 0.05 if horizontal else 1.08)
+		mesh.size = Vector3(1.09 if horizontal else 0.03, 0.14, 0.03 if horizontal else 1.09)
 		trim.mesh = mesh; trim.material_override = trim_material
-		# 向内偏移0.02，让边框嵌入底座而非悬浮
-		trim.position = Vector3(DIRS[side].x * 0.51, 0.04, DIRS[side].y * 0.51)
+		trim.position = Vector3(DIRS[side].x * 0.53, 0.10, DIRS[side].y * 0.53)
 		trim.set_meta("edge_trim", true)
 		root.add_child(trim)
 
