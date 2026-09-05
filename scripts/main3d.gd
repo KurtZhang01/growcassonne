@@ -3640,34 +3640,36 @@ func _draw_card_symbol(card: Dictionary, center: Vector2, color: Color):
 			ui_ctrl.draw_circle(center + Vector2(18, 5), 12, color.lightened(0.45))
 
 func _draw_repeating_card_pattern(rect: Rect2, kind: String, color: Color):
-	# 底纹颜色更接近白色
 	var pattern_color = color.lerp(Color.WHITE, 0.55)
-	# 整齐网格排列
-	var spacing_x = 28.0; var spacing_y = 26.0
-	var start_x = rect.position.x + 14.0
-	var start_y = rect.position.y + 38.0
-	var cols = maxi(1, floori((rect.size.x - 20) / spacing_x))
-	var rows = maxi(1, floori((rect.size.y - 50) / spacing_y))
+	# 斜向排列：每行错开半格，覆盖整个卡面
+	var spacing = 22.0
+	var diag_x = 14.0  # 斜向x偏移
+	var start_y = rect.position.y + 12.0
+	var rows = maxi(1, floori((rect.size.y - 16) / spacing))
+	var cols = maxi(1, floori(rect.size.x / diag_x)) + 2
 	for row in rows:
+		var offset_x = (row % 2) * (diag_x * 0.5)  # 奇数行错开半格
 		for col in cols:
-			var p = Vector2(start_x + col * spacing_x, start_y + row * spacing_y)
-			if not rect.grow(-6.0).has_point(p): continue
+			var px = rect.position.x + offset_x + col * diag_x
+			var py = start_y + row * spacing
+			var p = Vector2(px, py)
+			if not rect.grow(-4.0).has_point(p): continue
 			match kind:
 				"seed":
-					ui_ctrl.draw_line(p + Vector2(0, 5), p + Vector2(0, -3), pattern_color, 1.0)
-					ui_ctrl.draw_circle(p + Vector2(-3, -4), 2.5, pattern_color)
-					ui_ctrl.draw_circle(p + Vector2(3, -5), 2.5, pattern_color)
+					ui_ctrl.draw_line(p + Vector2(0, 4), p + Vector2(0, -3), pattern_color, 0.9)
+					ui_ctrl.draw_circle(p + Vector2(-2.5, -3.5), 2.0, pattern_color)
+					ui_ctrl.draw_circle(p + Vector2(2.5, -4.5), 2.0, pattern_color)
 				"develop", "building_develop":
-					ui_ctrl.draw_line(p + Vector2(4, -5), p + Vector2(-3, 5), pattern_color, 1.5)
-					ui_ctrl.draw_line(p + Vector2(-6, 3), p + Vector2(1, 6), pattern_color, 2.0)
+					ui_ctrl.draw_line(p + Vector2(3, -4), p + Vector2(-2, 4), pattern_color, 1.2)
+					ui_ctrl.draw_line(p + Vector2(-5, 2), p + Vector2(1, 5), pattern_color, 1.5)
 				"road":
-					ui_ctrl.draw_line(p + Vector2(-5, -2), p + Vector2(5, 3), pattern_color, 2.0)
-					ui_ctrl.draw_line(p + Vector2(-4, -5), p + Vector2(-4, 4), pattern_color, 1.5)
-					ui_ctrl.draw_line(p + Vector2(4, -1), p + Vector2(4, 6), pattern_color, 1.5)
+					ui_ctrl.draw_line(p + Vector2(-4, -2), p + Vector2(4, 2), pattern_color, 1.5)
+					ui_ctrl.draw_line(p + Vector2(-3, -4), p + Vector2(-3, 3), pattern_color, 1.0)
+					ui_ctrl.draw_line(p + Vector2(3, -1), p + Vector2(3, 5), pattern_color, 1.0)
 				"weather":
-					ui_ctrl.draw_circle(p + Vector2(-3, 1), 3, pattern_color)
-					ui_ctrl.draw_circle(p + Vector2(2, -2), 4.5, pattern_color)
-					ui_ctrl.draw_circle(p + Vector2(5, 1), 3, pattern_color)
+					ui_ctrl.draw_circle(p + Vector2(-2.5, 0.5), 2.5, pattern_color)
+					ui_ctrl.draw_circle(p + Vector2(1.5, -1.5), 3.5, pattern_color)
+					ui_ctrl.draw_circle(p + Vector2(4, 0.5), 2.5, pattern_color)
 
 func _draw_glass_card(rect: Rect2, fill: Color, line: Color = Color(1.0, 1.0, 1.0, 0.45), radius: float = 18.0):
 	fill.a = 0.94
