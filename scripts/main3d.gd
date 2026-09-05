@@ -8,6 +8,24 @@ const HONGSHAN_TOWER_VIEWS = [
 	preload("res://assets/buildings/isometric/hongshan-2.svg"),
 	preload("res://assets/buildings/isometric/hongshan-3.svg"),
 ]
+const LIBRARY_VIEWS = [
+	preload("res://assets/buildings/isometric/library-0.svg"),
+	preload("res://assets/buildings/isometric/library-1.svg"),
+	preload("res://assets/buildings/isometric/library-2.svg"),
+	preload("res://assets/buildings/isometric/library-3.svg"),
+]
+const GATE_VIEWS = [
+	preload("res://assets/buildings/isometric/gate-0.svg"),
+	preload("res://assets/buildings/isometric/gate-1.svg"),
+	preload("res://assets/buildings/isometric/gate-2.svg"),
+	preload("res://assets/buildings/isometric/gate-3.svg"),
+]
+const REDHALL_VIEWS = [
+	preload("res://assets/buildings/isometric/redhall-0.svg"),
+	preload("res://assets/buildings/isometric/redhall-1.svg"),
+	preload("res://assets/buildings/isometric/redhall-2.svg"),
+	preload("res://assets/buildings/isometric/redhall-3.svg"),
+]
 
 # ---- Config ----
 const GRID_SIZE := 8
@@ -1431,7 +1449,7 @@ func _tile_info_text(pos: Vector2i) -> String:
 func _tile_pavilion_surface(root: Node3D, _road_mask: int):
 	var library := Sprite3D.new()
 	library.texture = _landmark_texture("library", 0)
-	library.pixel_size = 0.5 / 180.0
+	library.pixel_size = 0.45 / 180.0
 	library.offset = Vector2(0, 166)
 	library.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	library.alpha_cut = SpriteBase3D.ALPHA_CUT_DISCARD
@@ -1460,7 +1478,7 @@ func _tile_hongshan_tech_surface(root: Node3D, data: Dictionary):
 	var building := Sprite3D.new()
 	# The source geometry extends along +X. DIRS starts at -Z.
 	building.texture = _landmark_texture(str(data.get("landmark", "hongshan_tech")), posmod(direction_index - 1, 4))
-	building.pixel_size = 1.0 / 180.0
+	building.pixel_size = 0.9 / 180.0
 	building.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	building.alpha_cut = SpriteBase3D.ALPHA_CUT_DISCARD
 	building.alpha_scissor_threshold = 0.1
@@ -4139,7 +4157,7 @@ func _draw_develop_card_mountains(center: Vector2, card: Dictionary):
 
 func _draw_building_card_model(center: Vector2, card: Dictionary):
 	var landmark: String = str(card.get("landmark", "library" if int(card.get("level", 1)) == 1 else "hongshan_tech"))
-	ui_ctrl.draw_texture_rect(_landmark_texture(landmark, 0), Rect2(center + Vector2(-52, -60), Vector2(104, 88)), false)
+	ui_ctrl.draw_texture_rect(_landmark_texture(landmark, 0), Rect2(center + Vector2(-44, -52), Vector2(88, 74)), false)
 
 func _draw_weather_card_forecast(center: Vector2, weather: String):
 	match weather:
@@ -4354,8 +4372,12 @@ func _landmark_name(kind: String) -> String:
 	return str({"library": "武汉理工大学图书馆", "hongshan_tech": "洪山科创大厦", "wuhan_university": "武汉大学", "hust": "华中科技大学"}.get(kind, "洪山科创大厦"))
 
 func _landmark_texture(kind: String, turn: int) -> Texture2D:
-	var stem: String = str({"library": "library", "wuhan_university": "gate", "hust": "redhall"}.get(kind, "hongshan"))
-	return load("res://assets/buildings/isometric/%s-%d.svg" % [stem, posmod(turn, 4)]) as Texture2D
+	var t = posmod(turn, 4)
+	match kind:
+		"library": return LIBRARY_VIEWS[t]
+		"wuhan_university": return GATE_VIEWS[t]
+		"hust": return REDHALL_VIEWS[t]
+		_: return HONGSHAN_TOWER_VIEWS[t]
 
 func _reward_developed_buildings(cells: Array):
 	for cell in cells:
