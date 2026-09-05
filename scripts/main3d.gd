@@ -3308,12 +3308,12 @@ func _draw_develop_preview_panel(vp: Vector2, font: Font, ink: Color, muted: Col
 	var card: Dictionary = current_hand[drag_card_index]
 	if card["kind"] != "develop" and card["kind"] != "building_develop": return
 	_rebuild_card_model_preview(card)
-	var panel_w = minf(260.0, vp.x - 48.0)
-	var panel_h = 190.0
-	var panel = Rect2(vp.x - panel_w - 24.0, vp.y - panel_h - 72.0, panel_w, panel_h)
-	_draw_flat_card(panel, Color(0.11, 0.14, 0.13, 0.92), Color(0.03, 0.06, 0.05, 0.95))
-	_draw_fitted_text("真实地块预览  Q/E", Rect2(panel.position + Vector2(12, 9), Vector2(panel.size.x - 24, 18)), font, 12, Color("#e7eadc"))
-	ui_ctrl.draw_texture_rect(card_preview_viewport.get_texture(), Rect2(panel.position + Vector2(8, 28), panel.size - Vector2(16, 36)), false)
+	var panel_w = minf(380.0, vp.x - 48.0)
+	var panel_h = 280.0
+	var panel = Rect2(vp.x - panel_w - 16.0, vp.y - panel_h - 56.0, panel_w, panel_h)
+	# 只画标题，不画背景面板
+	_draw_fitted_text("地块预览（Q/E旋转）", Rect2(panel.position + Vector2(4, 2), Vector2(panel_w - 8, 18)), font, 13, Color("#d8dcd0"))
+	ui_ctrl.draw_texture_rect(card_preview_viewport.get_texture(), Rect2(panel.position + Vector2(0, 20), Vector2(panel_w, panel_h - 24)), false)
 
 func _rebuild_card_model_preview(card: Dictionary):
 	var terrains: Array = pending_develop.get("terrains", card.get("rolled_terrains", []))
@@ -3438,25 +3438,42 @@ func _draw_hand_card_face(card: Dictionary, rect: Rect2, font: Font, ink: Color,
 	var base = _card_base_color(card)
 	var accent = _card_accent(card)
 	var active = index == selected_card or index == hovered_card_index
-	# Shadow, paper backing, then the borderless color face.
+	# 1. 投影
 	var shadow_alpha = 0.28 if active else 0.18
 	ui_ctrl.draw_rect(Rect2(rect.position + Vector2(5, 8), rect.size), Color(0, 0, 0, shadow_alpha), true)
-	ui_ctrl.draw_rect(Rect2(rect.position + Vector2(2, 3), rect.size), Color(1.0, 1.0, 0.98, 0.96), true)
-	var bands = 12
-	for band in bands:
-		var t = float(band) / float(bands - 1)
-		var band_color = accent.lerp(base, clampf(t * 1.7, 0.0, 1.0))
-		if t > 0.62: band_color = base.lerp(base.darkened(0.17), (t - 0.62) / 0.38)
+	# 2. 白色底（与渐变对齐）
+	ui_ctrl.draw_rect(rect, Color(1.0, 1.0, 0.98, 0.96), true)
+	# 3. 连续渐变：accent淡色→base→白色，从上到下平滑过渡
+	var accent_light = accent.lerp(Color.WHITE, 0.55)
+	var rows = 24
+	for row in rows:
+		var t = float(row) / float(rows - 1)
+		var band_color: Color
+		if t < 0.4:
+			band_color = accent_light.lerp(base, t / 0.4)
+		elif t < 0.7:
+			band_color = base.lerp(base.lightened(0.18), (t - 0.4) / 0.3)
+		else:
+			band_color = base.lightened(0.18).lerp(Color(1.0, 1.0, 0.98, 1.0), (t - 0.7) / 0.3)
 		var band_y = rect.position.y + rect.size.y * t
-		var next_y = rect.position.y + rect.size.y * float(band + 1) / float(bands)
+		var next_y = rect.position.y + rect.size.y * float(row + 1) / float(rows)
 		ui_ctrl.draw_rect(Rect2(rect.position.x, band_y, rect.size.x, next_y - band_y + 1.0), band_color, true)
-	_draw_repeating_card_pattern(rect, card["kind"], base.darkened(0.16))
+	# 4. 卡牌内容
+	_draw_repeating_card_pattern(rect, card["kind"], base.darkened(0.10))
 	_draw_fitted_text(card["name"], Rect2(rect.position + Vector2(9, 11), Vector2(rect.size.x - 18, 22)), font, 13, ink)
 	_draw_card_model_icon(card, rect.get_center() + Vector2(0, -3), accent.lightened(0.08))
 	_draw_fitted_text(_card_description(card), Rect2(rect.position + Vector2(8, 116), Vector2(rect.size.x - 16, 18)), font, 10, ink)
 	_draw_fitted_text(card["deck"], Rect2(rect.position + Vector2(8, 134), Vector2(rect.size.x - 16, 14)), font, 10, muted)
+	# 5. 顶部彩色边框 + 阴影
+	var border_h = 5.0
+	var border_color = accent.lerp(Color.WHITE, 0.25)
+	# 阴影（边框下方）
+	ui_ctrl.draw_rect(Rect2(rect.position.x, rect.position.y + border_h, rect.size.x, 3.0), Color(0, 0, 0, 0.15), true)
+	# 边框本体
+	ui_ctrl.draw_rect(Rect2(rect.position, Vector2(rect.size.x, border_h)), border_color, true)
+	# 6. 选中/深度遮罩
 	if active:
-		ui_ctrl.draw_rect(rect, Color(accent.r, accent.g, accent.b, 0.10), true)
+		ui_ctrl.draw_rect(rect, Color(accent.r, accent.g, accent.b, 0.08), true)
 	elif index != selected_card:
 		var depth = float(index) / maxf(float(current_hand.size() - 1), 1.0)
 		ui_ctrl.draw_rect(rect, Color(0.03, 0.06, 0.05, 0.05 + (1.0 - depth) * 0.09), true)
