@@ -1297,11 +1297,12 @@ func _try_select_tile(pos: Vector2i):
 	tween.tween_property(material, "albedo_color:a", 0.18, 1.2).set_trans(Tween.TRANS_SINE)
 
 	var label = Label3D.new()
-	label.text = _tile_info_text(pos); label.font_size = 15; label.pixel_size = 0.0065
+	label.text = _tile_info_text(pos); label.font_size = 20; label.pixel_size = 0.005
 	label.modulate = Color("#f8fbf5"); label.outline_size = 7
 	label.outline_modulate = Color(0.05, 0.08, 0.07, 0.90)
 	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED; label.no_depth_test = true
-	label.position = _world(pos) + Vector3(0, 1.28, 0)
+	label.render_priority = 100
+	label.position = _world(pos) + Vector3(0, 1.38, 0)
 	tile_select_root.add_child(label)
 	if _is_plant_terrain(grid[pos.x][pos.y]):
 		var player_line := 0
@@ -1310,11 +1311,12 @@ func _try_select_tile(pos: Vector2i):
 			if amount <= 0: continue
 			var player_label = Label3D.new()
 			player_label.text = "%s  %d朵" % [PLAYER_NAMES[player_id], amount]
-			player_label.font_size = 15; player_label.pixel_size = 0.0065
+			player_label.font_size = 18; player_label.pixel_size = 0.0055
 			player_label.modulate = PLAYER_COLORS[player_id]; player_label.outline_size = 7
 			player_label.outline_modulate = Color(0.05, 0.08, 0.07, 0.90)
 			player_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED; player_label.no_depth_test = true
-			player_label.position = _world(pos) + Vector3(0, 0.92 - player_line * 0.12, 0)
+			player_label.render_priority = 101
+			player_label.position = _world(pos) + Vector3(0, 0.98 - player_line * 0.16, 0)
 			tile_select_root.add_child(player_label); player_line += 1
 
 func _tile_info_text(pos: Vector2i) -> String:
@@ -2011,13 +2013,14 @@ func _card_base_color(card: Dictionary) -> Color:
 	return Color.WHITE
 
 func _bottom_card_rect(index: int, count: int, vp: Vector2) -> Rect2:
-	var card_size = Vector2(112, 158)
-	var available = maxf(280.0, vp.x - UI_SIDEBAR_WIDTH - 70.0)
-	var step = minf(72.0, (available - card_size.x) / maxf(float(count - 1), 1.0))
+	var card_size = Vector2(100, 145)
+	var available = maxf(250.0, vp.x - UI_SIDEBAR_WIDTH - 50.0)
+	var step = maxf(32.0, minf(65.0, (available - card_size.x) / maxf(float(count - 1), 1.0)))
 	var width = card_size.x + step * maxf(float(count - 1), 0.0)
-	var y = vp.y - 116.0
-	if index == hovered_card_index or index == selected_card: y -= 28.0
-	return Rect2(Vector2((available - width) * 0.5 + index * step + 24.0, y), card_size)
+	var y = vp.y - 105.0
+	if index == hovered_card_index or index == selected_card: y -= 25.0
+	var start_x = maxf(20.0, (available - width) * 0.5 + 20.0)
+	return Rect2(Vector2(start_x + index * step, y), card_size)
 
 func _deck_rect(index: int) -> Rect2:
 	return Rect2(26.0 + index * 112.0, 28.0, 94.0, 132.0)
@@ -2250,7 +2253,9 @@ func _can_play_selected_card(pos: Vector2i) -> bool:
 				if not _in_bounds(cell) or _is_developable(grid[cell.x][cell.y]): return false
 			return true
 		"weather":
-			return true
+			var weather: String = card.get("weather", "")
+			if weather == "彩虹": return rainbow_turns <= 0 or not active_weather.is_empty()
+			return not active_weather.has(weather)
 	return false
 
 func _play_selected_card(pos: Vector2i) -> bool:
@@ -2372,17 +2377,20 @@ func _connect_road(a: Vector2i, b: Vector2i):
 
 func _apply_weather_card(card: Dictionary) -> bool:
 	var weather: String = card["weather"]
-	_apply_weather_visual(weather)
 	if weather == "彩虹":
+		if rainbow_turns > 0 and active_weather.is_empty(): return false
+		_apply_weather_visual(weather)
 		active_weather.clear()
 		rainbow_turns = 1
 		last_settlement = "彩虹清除了极端天气"
 	else:
+		if active_weather.has(weather): return false
 		if weather == "旱季":
 			active_weather.erase("雨季")
 			active_weather.erase("台风")
 		elif weather == "雨季" or weather == "台风":
 			active_weather.erase("旱季")
+		_apply_weather_visual(weather)
 		active_weather[weather] = 3
 		last_settlement = "%s将持续3回合" % weather
 	return true
@@ -3226,7 +3234,43 @@ func _draw_ui():
 	ui_ctrl.draw_line(Vector2(ux + 4, vp.y - 55), Vector2(ux + 266, vp.y - 55), Color(1.0, 1.0, 1.0, 0.28), 1.0)
 	ui_ctrl.draw_string(font, Vector2(ux + 12, vp.y - 36), "滚轮缩放 · 中键平移 · R 重开", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, muted)
 	_draw_public_decks(font, ink, muted)
+	_draw_develop_preview_panel(vp, font, ink, muted)
 	_draw_bottom_hand(vp, font, ink, muted)
+
+func _draw_develop_preview_panel(vp: Vector2, font: Font, ink: Color, muted: Color):
+	if not card_armed and not dragging_card: return
+	if drag_card_index < 0 or drag_card_index >= current_hand.size(): return
+	var card: Dictionary = current_hand[drag_card_index]
+	if card["kind"] != "develop" and card["kind"] != "building_develop": return
+	var cells := []
+	var preview_terrains := []
+	if card["kind"] == "develop":
+		cells = _develop_card_cells(Vector2i.ZERO, int(card["level"]), piece_rotation)
+		preview_terrains = pending_develop.get("terrains", card.get("rolled_terrains", []))
+	else:
+		cells = [Vector2i.ZERO] if int(card["level"]) == 1 else [Vector2i.ZERO, DIRS[piece_rotation]]
+		for cell in cells: preview_terrains.append(T_BUILDING)
+	if cells.is_empty(): return
+	var min_cell: Vector2i = cells[0]; var max_cell: Vector2i = cells[0]
+	for cell in cells:
+		min_cell = Vector2i(mini(min_cell.x, cell.x), mini(min_cell.y, cell.y))
+		max_cell = Vector2i(maxi(max_cell.x, cell.x), maxi(max_cell.y, cell.y))
+	var cell_px := 30.0
+	var shape_size = Vector2(max_cell.x - min_cell.x + 1, max_cell.y - min_cell.y + 1)
+	var panel_w = maxf(132.0, shape_size.x * cell_px + 28.0)
+	var panel_h = shape_size.y * cell_px + 58.0
+	var panel = Rect2(vp.x - panel_w - 24.0, vp.y - panel_h - 184.0, panel_w, panel_h)
+	_draw_flat_card(panel, Color(0.11, 0.14, 0.13, 0.92), Color(0.03, 0.06, 0.05, 0.95))
+	_draw_fitted_text("地块预览 Q/E", Rect2(panel.position + Vector2(12, 10), Vector2(panel.size.x - 24, 18)), font, 12, Color("#e7eadc"))
+	var origin = panel.position + Vector2(14, 34)
+	var abbrev = ["草", "水", "林", "漠", "建", "山", "缺"]
+	for i in cells.size():
+		var local: Vector2i = cells[i] - min_cell
+		var terrain: int = preview_terrains[i] if i < preview_terrains.size() else T_GRASS
+		var rect = Rect2(origin + Vector2(local.x, local.y) * cell_px, Vector2(cell_px - 3, cell_px - 3))
+		ui_ctrl.draw_rect(rect, TERRAIN_TOP[terrain], true)
+		ui_ctrl.draw_rect(rect, TERRAIN_TOP[terrain].darkened(0.35), false, 1.5)
+		_draw_fitted_text(abbrev[terrain], Rect2(rect.position + Vector2(5, 5), rect.size - Vector2(10, 10)), font, 13, Color.WHITE)
 
 func _draw_top_info_bar(vp: Vector2, font: Font, ink: Color, muted: Color):
 	var bar_y = 8.0; var bar_h = 36.0
@@ -3336,10 +3380,11 @@ func _draw_card_symbol(card: Dictionary, center: Vector2, color: Color):
 			ui_ctrl.draw_circle(center + Vector2(18, 5), 12, color.lightened(0.45))
 
 func _draw_repeating_card_pattern(rect: Rect2, kind: String, color: Color):
-	for row in 5:
-		var center = rect.position + Vector2(16 + (row % 2) * 31, 43 + row * 22)
+	for row in 4:
+		var center = rect.position + Vector2(12 + (row % 2) * 25, 40 + row * 24)
 		for column in 2:
-			var p = center + Vector2(column * 55, -column * 13)
+			var p = center + Vector2(column * 42, -column * 10)
+			if not rect.grow(-8.0).has_point(p): continue
 			match kind:
 				"seed":
 					ui_ctrl.draw_line(p + Vector2(0, 6), p + Vector2(0, -3), color, 1.2)
@@ -3354,25 +3399,16 @@ func _draw_repeating_card_pattern(rect: Rect2, kind: String, color: Color):
 					ui_ctrl.draw_circle(p + Vector2(-4, 1), 4, color); ui_ctrl.draw_circle(p + Vector2(2, -2), 6, color); ui_ctrl.draw_circle(p + Vector2(7, 2), 4, color)
 
 func _draw_glass_card(rect: Rect2, fill: Color, line: Color = Color(1.0, 1.0, 1.0, 0.45), radius: float = 18.0):
-	radius = minf(radius, 6.0)
 	fill.a = 0.94
-	var shadow = StyleBoxFlat.new()
-	shadow.bg_color = fill.darkened(0.30)
-	shadow.corner_radius_top_left = int(radius); shadow.corner_radius_top_right = int(radius)
-	shadow.corner_radius_bottom_left = int(radius); shadow.corner_radius_bottom_right = int(radius)
-	ui_ctrl.draw_style_box(shadow, Rect2(rect.position + Vector2(0, 8), rect.size))
-	var frost = StyleBoxFlat.new()
-	frost.bg_color = fill
-	frost.border_color = line; frost.set_border_width_all(1)
-	frost.corner_radius_top_left = int(radius); frost.corner_radius_top_right = int(radius)
-	frost.corner_radius_bottom_left = int(radius); frost.corner_radius_bottom_right = int(radius)
-	ui_ctrl.draw_style_box(frost, rect)
-	var sheen = StyleBoxFlat.new()
-	sheen.bg_color = Color(1.0, 1.0, 1.0, 0.13)
-	sheen.corner_radius_top_left = int(radius); sheen.corner_radius_top_right = int(radius)
-	sheen.corner_radius_bottom_left = int(radius); sheen.corner_radius_bottom_right = int(radius)
-	ui_ctrl.draw_style_box(sheen, Rect2(rect.position + Vector2(1, 1), Vector2(rect.size.x - 2, rect.size.y * 0.45)))
-	ui_ctrl.draw_rect(Rect2(rect.position + Vector2(8, 6), Vector2(rect.size.x - 16, 1.2)), Color(1.0, 1.0, 1.0, 0.42))
+	_draw_flat_card(rect, fill, line)
+
+func _draw_flat_card(rect: Rect2, fill: Color, border: Color, shadow_offset: Vector2 = Vector2(3, 4)):
+	var shadow_color = Color(0, 0, 0, 0.24)
+	ui_ctrl.draw_rect(Rect2(rect.position + shadow_offset, rect.size), shadow_color, true)
+	ui_ctrl.draw_rect(Rect2(rect.position - Vector2(2, 2), rect.size + Vector2(4, 4)), border.darkened(0.18), true)
+	ui_ctrl.draw_rect(rect, fill, true)
+	ui_ctrl.draw_rect(rect, border, false, 1.5)
+	ui_ctrl.draw_rect(Rect2(rect.position + Vector2(3, 3), Vector2(rect.size.x - 6, 2)), Color(1, 1, 1, 0.18), true)
 
 func _draw_title(vp: Vector2, font: Font):
 	ui_ctrl.draw_texture_rect_region(TITLE_BACKGROUND, Rect2(Vector2.ZERO, vp), _cover_source_rect(TITLE_BACKGROUND, vp))
