@@ -316,9 +316,9 @@ func _setup_card_preview_viewport():
 	card_preview_viewport.add_child(world_env)
 
 func _setup_title_world():
-	# 标题场景：50×30地块，GGJ2026在中左下
-	var tw = 50; var th = 30
-	# 扩展网格
+	# 标题场景：只放少量装饰性高级地块 + 云
+	# 不需要大网格，用8×8足够放几个角落地块
+	var tw = 8; var th = 8
 	grid = []; roads = []; plants = []; plant_age = []; flowers = []
 	tile_nodes = []; plant_nodes = []; decor_nodes = []
 	for x in tw:
@@ -329,43 +329,22 @@ func _setup_title_world():
 			flowers[x].append([0, 0, 0, 0])
 			tile_nodes[x].append(null); plant_nodes[x].append(null); decor_nodes[x].append(null)
 	grid_origin = Vector2i.ZERO
-	# GGJ2026 文字坐标
-	var text_cells = _ggj2026_cells()
-	# 角落区域（3-4级地块）
-	var corner_forest := {}  # 左下角森林区
-	for x in 4:
-		for y in 4:
-			corner_forest[Vector2i(x, th - 1 - y)] = true
-	var corner_building := {}  # 右上角建筑区
-	for x in 3:
-		for y in 3:
-			corner_building[Vector2i(tw - 1 - x, y)] = true
-	# 遍历生成地块
-	for x in tw:
-		for y in th:
-			var pos = Vector2i(x, y)
-			if text_cells.has(pos):
-				_force_tile(pos, T_WATER, false, 0)
-			elif corner_forest.has(pos):
-				_force_tile(pos, T_FOREST, false, 0)
-			elif corner_building.has(pos):
-				_force_tile(pos, T_BUILDING, false, 0)
-			elif randf() < 0.12:
-				_force_tile(pos, T_GRASS, false, 0)
-			else:
-				_force_tile(pos, T_MOUNTAIN, false, 0)
-	# 建筑地块渲染建筑模型
-	for x in tw:
-		for y in th:
-			var pos = Vector2i(x, y)
-			if corner_building.has(pos) and grid[pos.x][pos.y] == T_BUILDING:
-				var root = tile_nodes[pos.x][pos.y]
-				if root: _tile_pavilion_surface(root, 0)
-	# 相机
-	var center_world = _world(Vector2i(tw / 2, th / 2))
-	title_cam_size = 20.0; title_cam_offset = Vector2.ZERO
-	camera.size = title_cam_size
-	camera.position = center_world + Vector3(0, 25, 0)
+	# 左下角放森林
+	_force_tile(Vector2i(0, 7), T_FOREST, false, 0)
+	_force_tile(Vector2i(1, 7), T_FOREST, false, 0)
+	_force_tile(Vector2i(0, 6), T_FOREST, false, 0)
+	_force_tile(Vector2i(1, 6), T_GRASS, false, 0)
+	# 右上角放建筑
+	_force_tile(Vector2i(7, 0), T_BUILDING, false, 0)
+	_force_tile(Vector2i(6, 0), T_BUILDING, false, 0)
+	_force_tile(Vector2i(7, 1), T_GRASS, false, 0)
+	# 渲染建筑模型
+	for pos in [Vector2i(7, 0), Vector2i(6, 0)]:
+		var root = tile_nodes[pos.x][pos.y]
+		if root: _tile_pavilion_surface(root, 0)
+	# 相机看向角落地块区域
+	camera.size = 8.0
+	camera.position = Vector3(5, 10, 5)
 	camera.rotation_degrees = Vector3(-42, 42, 0)
 
 func _setup_sky_world():
