@@ -226,63 +226,76 @@ ring.rotation_degrees.x = 90
 
 ## 8. 开发卡牌地块预览（右下角固定位置）
 
-**当前**：使用开发卡时，鼠标悬浮在地块上显示半透明预览。但预览跟随鼠标在棋盘上移动，不方便对比。
+**当前**：使用开发卡时，鼠标悬浮在棋盘上才显示预览形状，离开棋盘就看不到。
 
-**方案**：在屏幕**右下角固定位置**显示一个地块预览面板，展示开发卡使用后将生成的地块效果。
+**方案**：在屏幕**右下角固定位置**显示完整的卡牌地块形状预览，展示所有格子的地形类型（随机生成），并随Q/E旋转同步更新。
 
 ```gdscript
 # 右下角预览面板
-var preview_panel_root: Control  # UI层，固定在右下角
+# 在 _draw_ui() 中绘制
 
-func _update_develop_preview(card: Dictionary):
-    """使用开发卡时，在右下角显示随机生成的地块预览"""
-    # 清除旧预览
-    for child in preview_panel_root.get_children(): child.queue_free()
+func _draw_develop_preview_panel(vp: Vector2, font: Font):
+    """右下角绘制开发卡的完整地块形状预览"""
+    var card = _selected_card()
+    if card.is_empty() or card["kind"] != "develop": return
     
-    # 随机roll3-5个可能的地块结果，展示在右下角
-    var preview_count = 3
-    for i in preview_count:
-        var terr = _draw_terrain()  # 按概率随机生成地形
-        _spawn_mini_tile_preview(terr, i, preview_count)
-
-func _spawn_mini_tile_preview(terr: int, index: int, total: int):
-    """在右下角生成一个小地块预览"""
-    var panel_size = Vector2(80, 100)
-    var gap = 10
-    var start_x = vp.x - (panel_size.x + gap) * total - 20
-    var start_y = vp.y - panel_size.y - 20
+    # 获取当前旋转下的地块形状
+    var cells = _develop_card_cells(Vector2i.ZERO, int(card["level"]), piece_rotation)
+    if cells.is_empty(): return
     
-    var rect = Rect2(
-        Vector2(start_x + index * (panel_size.x + gap), start_y),
-        panel_size
-    )
+    # 随机roll每个格子的地形类型（展示可能的结果）
+    var terrains := []
+    for i in cells.size():
+        terrains.append(_draw_terrain())
     
-    # 绘制地形色块
-    ui_ctrl.draw_rect(rect, TERRAIN_TOP[terr], true, 8.0)
+    # 计算形状的包围盒
+    var min_cell = cells[0]; var max_cell = cells[0]
+    for cell in cells:
+        min_cell = Vector2i(mini(min_cell.x, cell.x), mini(min_cell.y, cell.y))
+        max_cell = Vector2i(maxi(max_cell.x, cell.x), maxi(max_cell.y, cell.y))
+    var shape_size = Vector2(max_cell.x - min_cell.x + 1, max_cell.y - min_cell.y + 1)
     
-    # 绘制地形名称
+    # 预览面板参数
+    var cell_px = 28.0  # 每个小格子像素大小
+    var panel_w = shape_size.x * cell_px + 20
+    var panel_h = shape_size.y * cell_px + 50
+    var panel_x = vp.x - panel_w - 20
+    var panel_y = vp.y - panel_h - 20
+    
+    # 绘制面板背景
+    _draw_glass_card(Rect2(panel_x, panel_y, panel_w, panel_h),
+        Color(0.1, 0.12, 0.15, 0.85), Color(1, 1, 1, 0.3))
+    
+    # 标题
     ui_ctrl.draw_string(font,
-        rect.position + Vector2(10, 30),
-        TERRAIN_NAMES[terr],
-        HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color.WHITE
-    )
+        Vector2(panel_x + 10, panel_y + 18),
+        "地块预览（Q/E旋转）",
+        HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color("#ccccaa"))
     
-    # 绘制容积/生长率
-    if _is_plant_terrain(terr):
-        var cap = [50, 0, 100, 10, 0][terr]
-        var rate = [0.3, 0.0, 0.5, 0.1, 0.0][terr]
-        ui_ctrl.draw_string(font,
-            rect.position + Vector2(10, 55),
-            "容积%d 生长%.1f" % [cap, rate],
-            HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color("#ccccaa")
+    # 绘制每个格子
+    var origin = Vector2(panel_x + 10, panel_y + 30)
+    for i in cells.size():
+        var local = cells[i] - min_cell
+        var cell_rect = Rect2(
+            origin + Vector2(local.x, local.y) * cell_px,
+            Vector2(cell_px - 2, cell_px - 2)
         )
-
-# 在 _draw_ui() 中调用：
-# if state == S.PLACE_DEVELOP and selected_card >= 0:
-#     _update_develop_preview(current_hand[selected_card])
+        # 地形色块
+        ui_ctrl.draw_rect(cell_rect, TERRAIN_TOP[terrains[i]], true, 4.0)
+        # 地形名称缩写
+        var abbrev = ["草", "水", "林", "沙", "建", "山", "缺"][terrains[i]]
+        ui_ctrl.draw_string(font,
+            cell_rect.position + Vector2(6, 20),
+            abbrev,
+            HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color.WHITE)
 ```
 
-**效果**：使用开发卡时，右下角显示3个随机可能的地块预览（按概率生成），让玩家了解可能的结果。建筑开发卡则直接显示建筑地块预览。
+**效果**：
+- 右下角固定显示卡牌的完整形状（如L形、T形、2×2等）
+- 每个格子显示随机生成的地形颜色和名称缩写
+- 按Q/E旋转时，预览形状同步旋转
+- 使用建筑开发卡时，直接显示"建"字
+- 面板在不使用卡牌时自动隐藏
 
 ---
 
