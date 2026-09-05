@@ -17,6 +17,8 @@ const TOTAL_ROUNDS_PER_PLAYER := 10
 const STARTING_SEED_CARDS := 5
 const CARDS_DRAWN_PER_TURN := 3
 const MARKET_SIZE := 3
+const HONGSHAN_DECOR_CHANCE := 0.10
+var hongshan_decor_rolls: Dictionary = {}
 const DIRS := [Vector2i.UP, Vector2i.RIGHT, Vector2i.DOWN, Vector2i.LEFT]
 
 # ---- Terrain palette (Dorfromantik soft) ----
@@ -367,6 +369,7 @@ func _spawn_sky_motes():
 #  GRID
 # ================================================================
 func _init_grid():
+	hongshan_decor_rolls.clear()
 	for c in grid_root.get_children(): c.queue_free()
 	for c in edge_root.get_children(): c.queue_free()
 	for c in plant_root.get_children(): c.queue_free()
@@ -971,6 +974,7 @@ func _spawn_tile(pos: Vector2i, terr: int, animate: bool, road_mask: int = 0):
 	# --- Decorations ---
 	_spawn_decor(terr, root, road_mask)
 	if road_mask != 0 and not _is_developable(terr) and terr != T_BUILDING: _spawn_road(root, road_mask)
+	_spawn_hongshan_accent(root, pos, terr, road_mask)
 
 	if animate:
 		root.scale = Vector3(0.01, 0.01, 0.01)
@@ -1545,6 +1549,42 @@ func _tile_hongshan_tech_surface(root: Node3D, data: Dictionary):
 func _building_box(root: Node3D, size: Vector3, position: Vector3, material: Material):
 	var mesh_instance = MeshInstance3D.new(); var mesh = BoxMesh.new(); mesh.size = size
 	mesh_instance.mesh = mesh; mesh_instance.material_override = material; mesh_instance.position = position; root.add_child(mesh_instance)
+
+func _spawn_hongshan_accent(root: Node3D, pos: Vector2i, terr: int, road_mask: int, roll: bool = true):
+	if terr != T_GRASS and terr != T_FOREST and (road_mask == 0 or _is_developable(terr) or terr == T_BUILDING): return
+	var category := "road" if road_mask != 0 else ("forest" if terr == T_FOREST else "grass")
+	var key := "%s|%s" % [str(_logical_cell(pos)), category]
+	if not hongshan_decor_rolls.has(key):
+		if not roll: return
+		var appears := randf() < HONGSHAN_DECOR_CHANCE
+		hongshan_decor_rolls[key] = appears
+		if appears:
+			var names := {"grass": "大学之城书卷雕塑", "forest": "洪山竹影", "road": "洪山绿道指路牌"}
+			var message := "发现洪山风物：%s" % str(names[category])
+			_record_action(message, "reward")
+			_show_center_notice(message, "reward")
+	if not bool(hongshan_decor_rolls[key]): return
+	# Corner footprint stays outside road corridors and the flower placement area.
+	var accent := Node3D.new()
+	accent.position = Vector3(0.435, 0.16, 0.435)
+	root.add_child(accent)
+	var stone := _soft_material(Color("#a7aaa0"))
+	var red := _soft_material(Color("#a94e45"))
+	var green := _soft_material(Color("#397a3d"))
+	_building_box(accent, Vector3(0.11, 0.018, 0.11), Vector3(0, 0.009, 0), stone)
+	if category == "grass":
+		for layer in range(3):
+			_building_box(accent, Vector3(0.075, 0.021, 0.065), Vector3(0, 0.03 + layer * 0.026, 0), red if layer % 2 == 0 else stone)
+	elif category == "forest":
+		for stalk in range(3):
+			var h := 0.13 + stalk * 0.024
+			var x := (stalk - 1) * 0.03
+			_building_box(accent, Vector3(0.012, h, 0.012), Vector3(x, h * 0.5 + 0.018, 0), green)
+			_building_box(accent, Vector3(0.04, 0.012, 0.03), Vector3(x, h * 0.7, 0), green)
+	else:
+		_building_box(accent, Vector3(0.018, 0.16, 0.018), Vector3(0, 0.098, 0), stone)
+		_building_box(accent, Vector3(0.09, 0.035, 0.018), Vector3(0, 0.16, 0), green)
+		_building_box(accent, Vector3(0.045, 0.008, 0.021), Vector3(0, 0.16, 0), stone)
 
 # ================================================================
 #  DECORATIONS
@@ -3813,6 +3853,7 @@ func _rebuild_selected_tile_preview(pos: Vector2i):
 			else: _tile_pavilion_surface(root, 0)
 	_spawn_decor(terrain, root, roads[pos.x][pos.y])
 	if roads[pos.x][pos.y] != 0 and terrain != T_BUILDING: _spawn_road(root, roads[pos.x][pos.y])
+	_spawn_hongshan_accent(root, pos, terrain, roads[pos.x][pos.y], false)
 	card_preview_camera.size = 2.28 if terrain == T_BUILDING else 2.08
 	var target = Vector3(0, 0.25, 0); card_preview_camera.look_at_from_position(target + Vector3(3.2, 3.4, 4.2), target)
 	if special_buildings.get(_logical_cell(pos), {}).get("kind", "") == "hongshan_tech":

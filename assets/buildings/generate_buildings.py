@@ -33,7 +33,7 @@ class Drawing:
         x, y, z = self.rotate(p)
         return math.cos(PITCH) * (math.sin(YAW) * x + math.cos(YAW) * z) + math.sin(PITCH) * y
 
-    def poly(self, points, color, stroke='#929bad', width=.65):
+    def poly(self, points, color, stroke='none', width=0):
         coords = ' '.join('%.2f,%.2f' % self.point(p) for p in points)
         return f'<polygon points="{coords}" fill="{color}" stroke="{stroke}" stroke-width="{width}" stroke-linejoin="round"/>'
 
@@ -49,13 +49,18 @@ class Drawing:
         def p(u, v):
             return (a[0]+dx*u, bottom+height*v, a[1]+dz*u)
         extra = ''
+        # Two flat wall tones match the board's solid-color meshes and directional light.
+        if normal[0] > 0:
+            rgb = tuple(int(color[i:i+2],16) for i in (1,3,5))
+            color = '#%02x%02x%02x' % tuple(int(c*.78) for c in rgb)
         if cols and rows:
+            cols, rows = min(cols, 5), min(rows, 8)
             for r in range(rows):
                 for c in range(cols):
                     u, v = (c+.17)/cols, (r+.17)/rows
                     w, h = .66/cols, .66/rows
                     extra += self.poly([p(u,v),p(u+w,v),p(u+w,v+h),p(u,v+h)],
-                                       ['#7799bd','#8eadd0','#6f8eac'][(r+c)%3], '#d8e0eb', .65)
+                                       '#527c89' if normal[0] > 0 else '#7197a0', 'none', 0)
         if label and math.hypot(dx,dz) > .25:
             # Map readable lettering to the actual wall plane, including its slope.
             l, r = p(.06,.17), p(.94,.17)
@@ -66,7 +71,7 @@ class Drawing:
             extra += f'<g transform="matrix({length/180:.5f} {(y1-y0)/180:.5f} 0 1 {x0:.2f} {y0:.2f})"><rect y="-18" width="180" height="25" fill="#f4f5fb" stroke="#9aa5bb"/><text x="90" y="0" text-anchor="middle" fill="#4d5c94" font-family="Microsoft YaHei, sans-serif" font-size="17">{escape(label)}</text></g>'
         self.add([p(0,0),p(1,0),p(1,1),p(0,1)], color, extra)
 
-    def box(self, x,z,w,d,y,h, wall='#e1e6ef', roof='#f5f5fa', cols=0,rows=0,label=''):
+    def box(self, x,z,w,d,y,h, wall='#b8c0b9', roof='#d4d9cf', cols=0,rows=0,label=''):
         pts = [(x,z),(x+w,z),(x+w,z+d),(x,z+d)]
         for i in range(4):
             self.face(pts[i],pts[(i+1)%4],y,h,wall,cols,rows,label)
@@ -88,14 +93,7 @@ class Drawing:
         self.faces.append((self.depth((x,.34,z)),parts))
 
     def render(self, kind):
-        self.box(-1.12,-.64,2.24,1.28,-.07,.12,'#c8c7dc','#edeef6')
-        # Projected paving lines stay parallel to the same two axes as the buildings.
-        for i in range(12):
-            x=-1.1+i*.2
-            self.add([(x,.052,-.62),(x+.003,.052,-.62),(x+.003,.052,.62),(x,.052,.62)],'#d5d9e5')
-        for i in range(7):
-            z=-.6+i*.2
-            self.add([(-1.1,.053,z),(1.1,.053,z),(1.1,.053,z+.003),(-1.1,.053,z+.003)],'#d5d9e5')
+        self.box(-1.12,-.64,2.24,1.28,-.07,.12,'#737c70','#a8b29a')
         if kind=='hongshan':
             self.box(-.79,-.36,.69,.69,.06,1.74,cols=10,rows=23)
             self.box(-.81,-.38,.73,.73,1.80,.045)
