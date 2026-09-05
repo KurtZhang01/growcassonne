@@ -628,6 +628,7 @@ for x in _grid_width():
 | P0 | #15 可放置地块白色呼吸光效+Q/E更新 | 中 |
 | P0 | #16 卡牌使用条件规则文档化 | 低 |
 | P0 | #17 卡牌暗纹裁剪+排列修正 | 低 |
+| P0 | #18 UI布局优化+顶部系统信息栏 | 中 |
 | P1 | #4 闭合道路奖励播种卡 | 中 |
 | P1 | #7 彩虹位置偏移到地块缝隙 | 低 |
 | P1 | #9 手牌卡牌视觉重设计 | 高 |
@@ -865,3 +866,124 @@ func _bottom_card_rect(index: int, count: int, vp: Vector2) -> Rect2:
 1. `min_step = 32.0` — 保证卡牌之间至少有32px间距，不完全重叠
 2. 卡牌尺寸从112×158缩小到100×145 — 给排列更多空间
 3. `start_x` 加 `maxf(20.0, ...)` — 防止左侧溢出
+
+---
+
+## 18. UI布局优化 + 顶部系统信息栏
+
+### 问题1：右侧UI排版混乱
+
+当前 `_draw_ui` 中右侧面板各区块位置用硬编码偏移（`sy+70`, `sy+92`, `sy+243`等），字体大小不统一（12-22混用），间距不一致。
+
+**方案**：统一字号体系 + 规范间距：
+
+```
+标题字号: 18
+副标题: 14
+正文: 12-13
+辅助: 10-11
+
+区块间距: 16px
+行间距: 22px
+面板内边距: 12px
+```
+
+### 问题2：缺少顶部系统信息栏
+
+玩家需要随时看到各类地块的**实际生长率**（受天气影响）和**升级/降级概率翻倍状态**。
+
+**方案**：在屏幕顶部（跨越整个窗口宽度）添加一个系统信息栏：
+
+```gdscript
+func _draw_top_info_bar(vp: Vector2, font: Font, ink: Color, muted: Color):
+    var bar_y = 8.0
+    var bar_h = 36.0
+    _draw_flat_card(Rect2(8, bar_y, vp.x - 16, bar_h),
+        Color(0.08, 0.10, 0.12, 0.82), Color(0.3, 0.35, 0.3, 0.6))
+
+    var x = 20.0
+    var terrain_colors = [
+        Color("#5fae55"),  # 草地
+        Color("#3f94bd"),  # 水域
+        Color("#2f7048"),  # 森林
+        Color("#c8944e"),  # 荒漠
+    ]
+    var terrain_names_short = ["草", "水", "林", "漠"]
+    var caps = [50, 0, 100, 10]
+    var base_rates = [0.3, 0.0, 0.5, 0.1]
+
+    for i in 4:
+        var rate = base_rates[i]
+        # 天气影响
+        if _has_extreme_weather(): rate *= 0.5
+        if rainbow_turns > 0: rate *= 2.0
+
+        # 色块
+        ui_ctrl.draw_rect(Rect2(x, bar_y + 8, 14, 14), terrain_colors[i], 0, true, 3.0)
+        # 名称 + 生长率
+        var text = "%s %.1f" % [terrain_names_short[i], rate]
+        ui_ctrl.draw_string(font, Vector2(x + 18, bar_y + 20), text,
+            HORIZONTAL_ALIGNMENT_LEFT, 60, 12, Color("#d0d8d4"))
+        x += 82.0
+
+    # 分隔线
+    ui_ctrl.draw_line(Vector2(x, bar_y + 6), Vector2(x, bar_y + bar_h - 6),
+        Color(1, 1, 1, 0.15), 1.0)
+    x += 12.0
+
+    # 升级/降级翻倍状态
+    var upgrade_text = "升级"
+    var downgrade_text = "降级"
+    var up_color = Color("#88aa88", 0.6)
+    var down_color = Color("#aa8888", 0.6)
+
+    if active_weather.has("雨季"):
+        upgrade_text = "升级×2"
+        up_color = Color("#60dd80")
+    if active_weather.has("旱季"):
+        downgrade_text = "降级×2"
+        down_color = Color("#dd6060")
+    if rainbow_turns > 0:
+        upgrade_text = "升级×2"
+        up_color = Color("#60dd80")
+
+    ui_ctrl.draw_string(font, Vector2(x, bar_y + 15), upgrade_text,
+        HORIZONTAL_ALIGNMENT_LEFT, 60, 12, up_color)
+    ui_ctrl.draw_string(font, Vector2(x, bar_y + 30), downgrade_text,
+        HORIZONTAL_ALIGNMENT_LEFT, 60, 12, down_color)
+    x += 72.0
+
+    # 当前天气（紧凑显示）
+    if not active_weather.is_empty() or rainbow_turns > 0:
+        ui_ctrl.draw_line(Vector2(x, bar_y + 6), Vector2(x, bar_y + bar_h - 6),
+            Color(1, 1, 1, 0.15), 1.0)
+        x += 12.0
+        var wt = ""
+        for w in active_weather.keys(): wt += "%s%d " % [w, active_weather[w]]
+        if rainbow_turns > 0: wt += "彩虹 "
+        ui_ctrl.draw_string(font, Vector2(x, bar_y + 22), wt.strip_edges(),
+            HORIZONTAL_ALIGNMENT_LEFT, 200, 12, Color("#d4c080"))
+```
+
+### 在 `_draw_ui()` 中调用
+
+```gdscript
+func _draw_ui():
+    # ... 现有逻辑 ...
+    if state == S.TITLE: _draw_title(vp, font); return
+    if state == S.GAME_OVER: _draw_gameover(vp, font); return
+
+    _draw_top_info_bar(vp, font, ink, muted)  # 新增：顶部信息栏
+
+    # 右侧UI的 uy 从30改为50（为顶部栏留空间）
+    var ux = maxf(vp.x - 320.0, 20.0); var uy = 50.0
+    # ... 后续布局 ...
+```
+
+### 信息栏内容总结
+
+| 位置 | 内容 | 说明 |
+|------|------|------|
+| 最左 | 🟢草0.3 🔵水0.0 🟢林0.5 🟡漠0.1 | 各地形实际生长率（受天气影响实时变化） |
+| 中间 | 升级 / 降级 | 雨季时升级变绿×2，旱季时降级变红×2 |
+| 右侧 | 当前天气 | 台风3 沙尘暴2 等 |
