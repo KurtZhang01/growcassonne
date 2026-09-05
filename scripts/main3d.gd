@@ -2064,8 +2064,9 @@ func _generate_development_roads(cells: Array):
 	for cell in cells:
 		if _in_bounds(cell) and not _is_developable(grid[cell.x][cell.y]): eligible.append(cell)
 	if eligible.size() < 2 or randf() > 0.38: return
+	var max_len = randi_range(2, mini(4, eligible.size()))
 	var path := [eligible.pick_random()]
-	while path.size() < eligible.size():
+	while path.size() < max_len:
 		var options := []
 		for cell in eligible:
 			if path.has(cell): continue
