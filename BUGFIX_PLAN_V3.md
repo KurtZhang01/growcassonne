@@ -197,13 +197,104 @@ func _float_label(pos: Vector2i, text: String, color: Color):
 
 ---
 
+## 7. 彩虹位置偏移到地块缝隙中
+
+**当前**：彩虹中心在棋盘中心（地块中央），环形直接套在地块上。
+
+**方案**：彩虹中心偏移到地块与地块的缝隙交汇处（4格交汇点），而非地块中心。
+
+```gdscript
+# 棋盘中心在 grid[3][3] 和 grid[4][4] 的缝隙处
+# TILE_SPACING = 1.25，地块中心间距1.25
+# 缝隙位置 = 地块中心 + TILE_SPACING * 0.5
+
+# 计算棋盘中心的缝隙坐标
+var grid_center = Vector3(
+    (_grid_width() / 2.0) * TILE_SPACING,  # 缝隙X
+    0,
+    (_grid_height() / 2.0) * TILE_SPACING   # 缝隙Y
+)
+
+# 彩虹中心放在缝隙处
+ring.position = grid_center + Vector3(0, 2.0, 0)
+ring.rotation_degrees.x = 90
+```
+
+如果棋盘是8×8，中心缝隙在 grid[3][4] 和 grid[4][3] 之间（坐标约 [3.75, 0, 3.75]）。
+
+---
+
+## 8. 开发卡牌地块预览（右下角固定位置）
+
+**当前**：使用开发卡时，鼠标悬浮在地块上显示半透明预览。但预览跟随鼠标在棋盘上移动，不方便对比。
+
+**方案**：在屏幕**右下角固定位置**显示一个地块预览面板，展示开发卡使用后将生成的地块效果。
+
+```gdscript
+# 右下角预览面板
+var preview_panel_root: Control  # UI层，固定在右下角
+
+func _update_develop_preview(card: Dictionary):
+    """使用开发卡时，在右下角显示随机生成的地块预览"""
+    # 清除旧预览
+    for child in preview_panel_root.get_children(): child.queue_free()
+    
+    # 随机roll3-5个可能的地块结果，展示在右下角
+    var preview_count = 3
+    for i in preview_count:
+        var terr = _draw_terrain()  # 按概率随机生成地形
+        _spawn_mini_tile_preview(terr, i, preview_count)
+
+func _spawn_mini_tile_preview(terr: int, index: int, total: int):
+    """在右下角生成一个小地块预览"""
+    var panel_size = Vector2(80, 100)
+    var gap = 10
+    var start_x = vp.x - (panel_size.x + gap) * total - 20
+    var start_y = vp.y - panel_size.y - 20
+    
+    var rect = Rect2(
+        Vector2(start_x + index * (panel_size.x + gap), start_y),
+        panel_size
+    )
+    
+    # 绘制地形色块
+    ui_ctrl.draw_rect(rect, TERRAIN_TOP[terr], true, 8.0)
+    
+    # 绘制地形名称
+    ui_ctrl.draw_string(font,
+        rect.position + Vector2(10, 30),
+        TERRAIN_NAMES[terr],
+        HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color.WHITE
+    )
+    
+    # 绘制容积/生长率
+    if _is_plant_terrain(terr):
+        var cap = [50, 0, 100, 10, 0][terr]
+        var rate = [0.3, 0.0, 0.5, 0.1, 0.0][terr]
+        ui_ctrl.draw_string(font,
+            rect.position + Vector2(10, 55),
+            "容积%d 生长%.1f" % [cap, rate],
+            HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color("#ccccaa")
+        )
+
+# 在 _draw_ui() 中调用：
+# if state == S.PLACE_DEVELOP and selected_card >= 0:
+#     _update_develop_preview(current_hand[selected_card])
+```
+
+**效果**：使用开发卡时，右下角显示3个随机可能的地块预览（按概率生成），让玩家了解可能的结果。建筑开发卡则直接显示建筑地块预览。
+
+---
+
 ## 实施优先级
 
 | 优先级 | 问题 | 复杂度 |
 |--------|------|--------|
 | P0 | #3 天气覆盖全屏+跟随相机 | 低 |
 | P0 | #2 雨滴变大 | 低 |
-| P0 | #1 彩虹下半部分消失 | 低 |
+| P0 | #1 彩虹下半部分消失 + 位置偏移到缝隙 | 低 |
 | P0 | #5 信息面板字体加大+扩散信息 | 中 |
 | P0 | #6 结算字幕字体+颜色+时长 | 低 |
+| P0 | #8 开发卡地块预览（右下角） | 中 |
 | P1 | #4 闭合道路奖励播种卡 | 中 |
+| P1 | #7 彩虹位置偏移到地块缝隙 | 低 |
