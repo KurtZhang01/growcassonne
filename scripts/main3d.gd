@@ -825,6 +825,7 @@ func _spawn_tile(pos: Vector2i, terr: int, animate: bool, road_mask: int = 0):
 	grid_root.add_child(root); tile_nodes[pos.x][pos.y] = root
 	if terr != T_GAP:
 		_spawn_island_base(root, terr)
+		_spawn_merge_fills(root, terr, pos)
 
 	# --- Top surface with terrain-specific shape ---
 	match terr:
@@ -888,10 +889,6 @@ func _spawn_edge_trim(root: Node3D, terr: int, pos: Vector2i):
 		trim.set_meta("edge_trim", true)
 		root.add_child(trim)
 
-func _refresh_neighbor_trims(pos: Vector2i):
-	_rebuild_edge_trim(pos)
-	for direction in DIRS: _rebuild_edge_trim(pos + direction)
-
 func _rebuild_edge_trim(pos: Vector2i):
 	if not _in_bounds(pos) or grid[pos.x][pos.y] < 0 or grid[pos.x][pos.y] == T_GAP: return
 	var root = tile_nodes[pos.x][pos.y]
@@ -899,6 +896,107 @@ func _rebuild_edge_trim(pos: Vector2i):
 	for child in root.get_children():
 		if child.has_meta("edge_trim"): child.free()
 	_spawn_edge_trim(root, grid[pos.x][pos.y], pos)
+
+func _get_merge_directions(pos: Vector2i, terr: int) -> Array:
+	var dirs := []
+	for dir in DIRS:
+		var n = pos + dir
+		if _in_bounds(n) and grid[n.x][n.y] == terr: dirs.append(dir)
+	return dirs
+
+func _spawn_merge_fills(root: Node3D, terr: int, pos: Vector2i):
+	var merge_dirs = _get_merge_directions(pos, terr)
+	if merge_dirs.is_empty(): return
+
+	# 地形表面填充（从表面边缘到缝隙中点 0.625）
+	var surface_color = TERRAIN_TOP[terr]
+	var surface_y = 0.13 if terr != T_WATER else 0.10
+	var surface_h = 0.06 if terr != T_WATER else 0.04
+	var surface_edge = 0.475 if terr != T_WATER else 0.46
+	var surface_fill_w = 0.625 - surface_edge  # 0.15 or 0.165
+
+	var surface_mat = StandardMaterial3D.new()
+	surface_mat.albedo_color = surface_color; surface_mat.roughness = 0.92
+	if terr == T_WATER:
+		surface_mat.albedo_color = Color(0.25, 0.58, 0.78, 0.65)
+		surface_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		surface_mat.emission_enabled = true; surface_mat.emission = Color(0.15, 0.35, 0.6)
+		surface_mat.emission_energy_multiplier = 0.2
+
+	for dir in merge_dirs:
+		var is_h = dir.x != 0
+		# 地形表面填充
+		var sf = MeshInstance3D.new(); var sfm = BoxMesh.new()
+		sfm.size = Vector3(surface_fill_w if is_h else 0.95, surface_h, surface_fill_w if not is_h else 0.95)
+		sf.mesh = sfm; sf.material_override = surface_mat
+		sf.position = Vector3(dir.x * (surface_edge + surface_fill_w * 0.5), surface_y, dir.y * (surface_edge + surface_fill_w * 0.5))
+		sf.set_meta("merge_fill", true); root.add_child(sf)
+
+		# Top层填充（非可开发地块）
+		if not _is_developable(terr):
+			var top_fill_w = 0.625 - 0.53  # 0.095
+			var tf = MeshInstance3D.new(); var tfm = BoxMesh.new()
+			tfm.size = Vector3(top_fill_w if is_h else 1.06, 0.13, top_fill_w if not is_h else 1.06)
+			tf.mesh = tfm
+			var top_mat = StandardMaterial3D.new(); top_mat.albedo_color = TERRAIN_MID[terr]; top_mat.roughness = 0.94
+			tf.material_override = top_mat
+			tf.position = Vector3(dir.x * (0.53 + top_fill_w * 0.5), 0.025, dir.y * (0.53 + top_fill_w * 0.5))
+			tf.set_meta("merge_fill", true); root.add_child(tf)
+
+		# Cap填充（非水域、非可开发地块）
+		if terr != T_WATER and not _is_developable(terr):
+			var cap_fill_w = 0.625 - 0.515  # 0.11
+			var cf = MeshInstance3D.new(); var cfm = BoxMesh.new()
+			cfm.size = Vector3(cap_fill_w if is_h else 1.03, 0.06, cap_fill_w if not is_h else 1.03)
+			cf.mesh = cfm; cf.material_override = edge_materials[terr]
+			cf.position = Vector3(dir.x * (0.515 + cap_fill_w * 0.5), 0.12, dir.y * (0.515 + cap_fill_w * 0.5))
+			cf.set_meta("merge_fill", true); root.add_child(cf)
+
+	# 角部填充（两个方向都合并时）
+	for i in merge_dirs.size():
+		for j in range(i + 1, merge_dirs.size()):
+			var d1 = merge_dirs[i]; var d2 = merge_dirs[j]
+			if d1.x != 0 and d2.x != 0: continue  # 同轴不处理
+			if d1.y != 0 and d2.y != 0: continue
+			# 角部地形表面填充
+			var corner_sf = MeshInstance3D.new(); var corner_sfm = BoxMesh.new()
+			corner_sfm.size = Vector3(surface_fill_w, surface_h, surface_fill_w)
+			corner_sf.mesh = corner_sfm; corner_sf.material_override = surface_mat
+			corner_sf.position = Vector3(d1.x * (surface_edge + surface_fill_w * 0.5), surface_y, d2.y * (surface_edge + surface_fill_w * 0.5))
+			corner_sf.set_meta("merge_fill", true); root.add_child(corner_sf)
+			# 角部Top层填充
+			if not _is_developable(terr):
+				var top_fill_w = 0.625 - 0.53
+				var corner_tf = MeshInstance3D.new(); var corner_tfm = BoxMesh.new()
+				corner_tfm.size = Vector3(top_fill_w, 0.13, top_fill_w)
+				corner_tf.mesh = corner_tfm
+				var top_mat = StandardMaterial3D.new(); top_mat.albedo_color = TERRAIN_MID[terr]; top_mat.roughness = 0.94
+				corner_tf.material_override = top_mat
+				corner_tf.position = Vector3(d1.x * (0.53 + top_fill_w * 0.5), 0.025, d2.y * (0.53 + top_fill_w * 0.5))
+				corner_tf.set_meta("merge_fill", true); root.add_child(corner_tf)
+			# 角部Cap填充
+			if terr != T_WATER and not _is_developable(terr):
+				var cap_fill_w = 0.625 - 0.515
+				var corner_cf = MeshInstance3D.new(); var corner_cfm = BoxMesh.new()
+				corner_cfm.size = Vector3(cap_fill_w, 0.06, cap_fill_w)
+				corner_cf.mesh = corner_cfm; corner_cf.material_override = edge_materials[terr]
+				corner_cf.position = Vector3(d1.x * (0.515 + cap_fill_w * 0.5), 0.12, d2.y * (0.515 + cap_fill_w * 0.5))
+				corner_cf.set_meta("merge_fill", true); root.add_child(corner_cf)
+
+func _rebuild_merge_fills(pos: Vector2i):
+	if not _in_bounds(pos) or grid[pos.x][pos.y] < 0 or grid[pos.x][pos.y] == T_GAP: return
+	var root = tile_nodes[pos.x][pos.y]
+	if not is_instance_valid(root): return
+	for child in root.get_children():
+		if child.has_meta("merge_fill"): child.free()
+	_spawn_merge_fills(root, grid[pos.x][pos.y], pos)
+
+func _refresh_neighbor_trims(pos: Vector2i):
+	_rebuild_edge_trim(pos)
+	_rebuild_merge_fills(pos)
+	for direction in DIRS:
+		_rebuild_edge_trim(pos + direction)
+		_rebuild_merge_fills(pos + direction)
 
 func _feature_position(road_mask: int, extent: float = 0.34) -> Vector2:
 	for attempt in 12:
