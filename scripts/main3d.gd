@@ -2343,6 +2343,8 @@ func _apply_weather_visual(weather: String):
 			ring.material_override = material
 			ring.position = gap_center + Vector3(0, 2.5, 0)
 			ring.rotation_degrees.x = 90
+			ring.set_meta("rainbow", true)
+			ring.set_meta("rainbow_base_pos", ring.position)
 			weather_fx_root.add_child(ring)
 
 func _spawn_weather_rain(center: Vector3, count: int, storm: bool):
@@ -2805,6 +2807,15 @@ func _process(delta):
 	if flash_timer > 0: flash_timer = max(0, flash_timer - delta * 2.5)
 	_animate_sky_world(delta)
 	_animate_tile_ambience(delta)
+	# 天气动效跟随摄像机（彩虹除外）
+	if weather_fx_root.has_meta("weather_center"):
+		var wc: Vector3 = weather_fx_root.get_meta("weather_center")
+		var offset = Vector3(cam_offset.x - wc.x, 0, cam_offset.y - wc.z)
+		weather_fx_root.position = offset
+		# 彩虹节点反向移动，保持在原位
+		for child in weather_fx_root.get_children():
+			if child.has_meta("rainbow"):
+				child.position = child.get_meta("rainbow_base_pos") - offset
 	if state != S.TITLE and scores.size() == player_count:
 		if ranking_order.size() != player_count:
 			ranking_order.clear()
