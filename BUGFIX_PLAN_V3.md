@@ -628,3 +628,105 @@ for x in _grid_width():
 | P1 | #4 闭合道路奖励播种卡 | 中 |
 | P1 | #7 彩虹位置偏移到地块缝隙 | 低 |
 | P1 | #9 手牌卡牌视觉重设计 | 高 |
+
+---
+
+## 15. 选中卡牌后可放置地块白色呼吸发光
+
+### 现象
+选中卡牌后，不知道哪些地块可以放置。需要在可放置的地块上显示白色呼吸光效。
+
+### 方案
+
+**选中卡牌时**：遍历所有地块，找出所有可放置位置，对每个可放置地块的3D模型叠加白色半透明呼吸光效。
+
+**Q/E旋转时**：重新计算可放置位置，更新呼吸光效。
+
+**取消选中/出牌后**：清除所有呼吸光效。
+
+```gdscript
+# 状态
+var placement_highlights := []  # 存储当前呼吸光效节点
+
+func _update_placement_highlights():
+    """清除旧光效，为当前选中卡牌的所有可放置位置生成白色呼吸光效"""
+    _clear_placement_highlights()
+    var card = _selected_card()
+    if card.is_empty(): return
+
+    # 遍历所有地块，找出可放置位置
+    for x in _grid_width():
+        for y in _grid_height():
+            var pos = Vector2i(x, y)
+            if _can_play_selected_card_at(pos):
+                _spawn_tile_breathing_glow(pos)
+
+func _can_play_selected_card_at(pos: Vector2i) -> bool:
+    """检查当前选中的卡牌能否在pos处使用（复用已有逻辑）"""
+    var card = _selected_card()
+    if card.is_empty(): return false
+    match card["kind"]:
+        "seed":
+            return _can_seed(pos)
+        "develop":
+            return _can_develop_cells(_develop_card_cells(pos, int(card["level"]), piece_rotation))
+        "building_develop":
+            var cells = [pos] if int(card["level"]) == 1 else [pos, pos + DIRS[piece_rotation]]
+            for cell in cells:
+                if not _in_bounds(cell) or grid[cell.x][cell.y] != T_GAP: return false
+            return true
+        "road":
+            # 道路卡需要拖拽路径，暂不做全图高亮
+            return false
+    return false
+
+func _spawn_tile_breathing_glow(pos: Vector2i):
+    """在地块模型上叠加白色半透明呼吸光效"""
+    var glow = MeshInstance3D.new()
+    var gm = BoxMesh.new(); gm.size = Vector3(1.06, 0.06, 1.06)
+    glow.mesh = gm
+    var mat = StandardMaterial3D.new()
+    mat.albedo_color = Color(1, 1, 1, 0.15)
+    mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+    mat.emission_enabled = true; mat.emission = Color.WHITE
+    mat.emission_energy_multiplier = 0.3
+    mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+    mat.no_depth_test = true
+    glow.material_override = mat
+    glow.position = _world(pos) + Vector3(0, 0.16, 0)
+    glow.set_meta("placement_glow", true)
+    grid_root.add_child(glow)
+    placement_highlights.append(glow)
+
+    # 呼吸脉冲动画（共用同一个mat引用）
+    var tw = create_tween().set_loops()
+    tw.tween_property(mat, "albedo_color:a", 0.30, 0.8).set_trans(Tween.TRANS_SINE)
+    tw.tween_property(mat, "albedo_color:a", 0.10, 0.8).set_trans(Tween.TRANS_SINE)
+    var tw2 = create_tween().set_loops()
+    tw2.tween_property(mat, "emission_energy_multiplier", 0.6, 0.8).set_trans(Tween.TRANS_SINE)
+    tw2.tween_property(mat, "emission_energy_multiplier", 0.15, 0.8).set_trans(Tween.TRANS_SINE)
+
+func _clear_placement_highlights():
+    """清除所有呼吸光效"""
+    for glow in placement_highlights:
+        if is_instance_valid(glow): glow.queue_free()
+    placement_highlights.clear()
+```
+
+### 接入点
+
+1. **选中卡牌时**（`_select_card` / 点击手牌）：调用 `_update_placement_highlights()`
+2. **Q/E旋转时**（`piece_rotation` 改变后）：调用 `_update_placement_highlights()` 重新计算
+3. **取消选中/出牌后**（`_cancel_armed_card` / 打出卡牌后）：调用 `_clear_placement_highlights()`
+
+```gdscript
+# Q/E旋转接入（已有逻辑，追加调用）：
+elif state == S.PLAY_CARDS and event.keycode == KEY_Q:
+    piece_rotation = posmod(piece_rotation - 1, 4)
+    _update_placement_highlights()  # 新增
+    ui_ctrl.queue_redraw()
+elif state == S.PLAY_CARDS and event.keycode == KEY_E:
+    piece_rotation = posmod(piece_rotation + 1, 4)
+    _update_placement_highlights()  # 新增
+    ui_ctrl.queue_redraw()
+```
