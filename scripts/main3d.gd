@@ -108,7 +108,7 @@ var hover_mesh: MeshInstance3D; var hover_material: StandardMaterial3D; var ui_c
 var sky_root: Node3D; var drifting_clouds := []; var sky_motes := []
 var falling_leaves := []; var animated_grass_patches := []
 var tile_select_root: Node3D; var selected_tile := Vector2i(-1, -1)
-var aura_root: Node3D
+var aura_root: Node3D; var settle_fx_root: Node3D; var weather_fx_root: Node3D
 
 func _ready():
 	_setup_scene()
@@ -165,6 +165,8 @@ func _setup_scene():
 	piece_preview_root = Node3D.new(); add_child(piece_preview_root)
 	tile_select_root = Node3D.new(); tile_select_root.name = "TileSelection"; add_child(tile_select_root)
 	aura_root = Node3D.new(); aura_root.name = "BuildingAuras"; add_child(aura_root)
+	settle_fx_root = Node3D.new(); settle_fx_root.name = "SettlementEffects"; add_child(settle_fx_root)
+	weather_fx_root = Node3D.new(); weather_fx_root.name = "WeatherEffects"; add_child(weather_fx_root)
 
 	# Pre-create edge materials
 	for i in TERRAIN_TOP.size():
@@ -591,12 +593,13 @@ func _refresh_building_auras():
 					var target = Vector2i(x + dx, y + dy)
 					if _in_bounds(target) and _is_plant_terrain(grid[target.x][target.y]): boosted[target] = true
 	for pos in boosted:
+		_spawn_aura_particles(pos)
 		for side in DIRS.size():
 			var neighbor: Vector2i = pos + DIRS[side]
 			if boosted.has(neighbor): continue
 			var border = MeshInstance3D.new(); var mesh = BoxMesh.new()
 			var horizontal = side == 0 or side == 2
-			mesh.size = Vector3(1.04 if horizontal else 0.024, 0.09, 0.024 if horizontal else 1.04)
+			mesh.size = Vector3(1.04 if horizontal else 0.024, 0.20, 0.024 if horizontal else 1.04)
 			border.mesh = mesh
 			var material = StandardMaterial3D.new()
 			material.albedo_color = Color(0.96, 0.76, 0.25, 0.24)
@@ -605,11 +608,24 @@ func _refresh_building_auras():
 			material.emission_energy_multiplier = 0.45
 			material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 			border.material_override = material
-			border.position = _world(pos) + Vector3(DIRS[side].x * 0.515, 0.22, DIRS[side].y * 0.515)
+			border.position = _world(pos) + Vector3(DIRS[side].x * 0.515, 0.40, DIRS[side].y * 0.515)
 			aura_root.add_child(border)
 			var tween = create_tween().set_loops()
 			tween.tween_property(material, "emission_energy_multiplier", 0.85, 1.2).set_trans(Tween.TRANS_SINE)
 			tween.tween_property(material, "emission_energy_multiplier", 0.25, 1.2).set_trans(Tween.TRANS_SINE)
+
+func _spawn_aura_particles(pos: Vector2i):
+	for particle_index in 3:
+		var mote = MeshInstance3D.new(); var mesh = SphereMesh.new()
+		mesh.radius = 0.014; mesh.height = 0.028; mesh.radial_segments = 6; mesh.rings = 3
+		mote.mesh = mesh
+		var material = _soft_material(Color(1.0, 0.82, 0.32, 0.68), 0.9)
+		mote.material_override = material
+		mote.position = _world(pos) + Vector3(randf_range(-0.36, 0.36), 0.30 + particle_index * 0.08, randf_range(-0.36, 0.36))
+		aura_root.add_child(mote)
+		var start_y = mote.position.y; var tween = create_tween().set_loops()
+		tween.tween_property(mote, "position:y", start_y + 0.38, 1.5 + particle_index * 0.25).set_trans(Tween.TRANS_SINE)
+		tween.tween_property(mote, "position:y", start_y, 1.1).set_trans(Tween.TRANS_SINE)
 
 func _trim_flowers_to_capacity(pos: Vector2i):
 	var cap = _tile_capacity(pos)
@@ -709,9 +725,11 @@ func _road_pair_key(a: Vector2i, b: Vector2i) -> String:
 
 func _update_road_bridges(pos: Vector2i):
 	if grid[pos.x][pos.y] < 0: return
+	if grid[pos.x][pos.y] == T_BUILDING: return
 	for dir in DIRS:
 		var neighbor = pos + dir
 		if not _in_bounds(neighbor): continue
+		if grid[neighbor.x][neighbor.y] == T_BUILDING: continue
 		if grid[neighbor.x][neighbor.y] < 0 or not _roads_connect(pos, neighbor): continue
 		var key = _road_pair_key(pos, neighbor); var exists = false
 		for child in edge_root.get_children():
@@ -725,7 +743,7 @@ func _update_road_bridges(pos: Vector2i):
 		bridge_material.emission_enabled = true; bridge_material.emission = Color("#8be5d1")
 		bridge_material.emission_energy_multiplier = 2.2
 		bridge.mesh = mesh; bridge.material_override = bridge_material
-		bridge.position = (_world(pos) + _world(neighbor)) * 0.5 + Vector3(0, 0.285, 0)
+		bridge.position = (_world(pos) + _world(neighbor)) * 0.5 + Vector3(0, 0.178, 0)
 		bridge.set_meta("road_key", key); edge_root.add_child(bridge)
 		var flash = create_tween()
 		flash.tween_property(bridge_material, "emission_energy_multiplier", 0.08, 0.9).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_QUAD)
@@ -862,7 +880,7 @@ func _spawn_tile(pos: Vector2i, terr: int, animate: bool, road_mask: int = 0):
 
 	# --- Decorations ---
 	_spawn_decor(terr, root, road_mask)
-	if road_mask != 0 and not _is_developable(terr): _spawn_road(root, road_mask)
+	if road_mask != 0 and not _is_developable(terr) and terr != T_BUILDING: _spawn_road(root, road_mask)
 
 	if animate:
 		root.scale = Vector3(0.01, 0.01, 0.01)
@@ -896,9 +914,9 @@ func _spawn_edge_trim(root: Node3D, terr: int, pos: Vector2i):
 		if _in_bounds(neighbor) and grid[neighbor.x][neighbor.y] == terr: continue
 		var trim = MeshInstance3D.new(); var mesh = BoxMesh.new()
 		var horizontal = side == 0 or side == 2
-		mesh.size = Vector3(1.07 if horizontal else 0.035, 0.018, 0.035 if horizontal else 1.07)
+		mesh.size = Vector3(1.10 if horizontal else 0.04, 0.18, 0.04 if horizontal else 1.10)
 		trim.mesh = mesh; trim.material_override = trim_material
-		trim.position = Vector3(DIRS[side].x * 0.515, 0.172, DIRS[side].y * 0.515)
+		trim.position = Vector3(DIRS[side].x * 0.53, 0.09, DIRS[side].y * 0.53)
 		trim.set_meta("edge_trim", true)
 		root.add_child(trim)
 
@@ -951,20 +969,20 @@ func _spawn_road(root: Node3D, road_mask: int):
 		var under = MeshInstance3D.new(); var under_mesh = BoxMesh.new()
 		under_mesh.size = Vector3(length if is_horizontal else 0.24, 0.026, 0.24 if is_horizontal else length)
 		under.mesh = under_mesh; under.material_override = under_material
-		under.position = offset + Vector3(0, 0.265, 0); root.add_child(under)
+		under.position = offset + Vector3(0, 0.165, 0); root.add_child(under)
 		var road = MeshInstance3D.new(); var road_mesh = BoxMesh.new()
 		road_mesh.size = Vector3(length if is_horizontal else 0.20, 0.022, 0.20 if is_horizontal else length)
 		road.mesh = road_mesh; road.material_override = road_material
-		road.position = offset + Vector3(0, 0.285, 0); root.add_child(road)
+		road.position = offset + Vector3(0, 0.178, 0); root.add_child(road)
 
 	var hub_under = MeshInstance3D.new(); var hub_under_mesh = CylinderMesh.new()
 	hub_under_mesh.top_radius = 0.16; hub_under_mesh.bottom_radius = 0.16; hub_under_mesh.height = 0.026
 	hub_under.mesh = hub_under_mesh; hub_under.material_override = under_material
-	hub_under.position.y = 0.265; root.add_child(hub_under)
+	hub_under.position.y = 0.165; root.add_child(hub_under)
 	var hub = MeshInstance3D.new(); var hub_mesh = CylinderMesh.new()
 	hub_mesh.top_radius = 0.115; hub_mesh.bottom_radius = 0.115; hub_mesh.height = 0.03
 	hub.mesh = hub_mesh; hub.material_override = road_material
-	hub.position.y = 0.285; root.add_child(hub)
+	hub.position.y = 0.178; root.add_child(hub)
 
 # ---- Grass: gentle rolling hills ----
 func _tile_grass_surface(root: Node3D, road_mask: int):
@@ -1327,44 +1345,45 @@ func _tile_hongshan_tech_surface(root: Node3D, data: Dictionary):
 	var direction: Vector2i = DIRS[direction_index]
 	var toward_joint = Vector3(direction.x, 0, direction.y) * (1.0 if part == 0 else -1.0)
 	var along_x = direction.x != 0
-	var stone = _soft_material(Color("#f0f1ed")); var stone_dark = _soft_material(Color("#c9cfcd"))
-	var glass = _soft_material(Color("#76aebd"), 0.14); glass.metallic = 0.25; glass.roughness = 0.18
-	var glass_light = _soft_material(Color("#a8d4dc"), 0.12); glass_light.metallic = 0.18; glass_light.roughness = 0.16
-	var frame = _soft_material(Color("#fafbf7")); var green = _soft_material(Color("#527d54"))
-
-	# A continuous two-tile podium and plaza establish the building as one complex.
-	_building_box(root, Vector3(1.02, 0.055, 1.02), Vector3(0, 0.15, 0), stone)
-	var podium_size = Vector3(1.18 if along_x else 0.76, 0.20, 0.76 if along_x else 1.18)
-	_building_box(root, podium_size, toward_joint * 0.12 + Vector3(0, 0.27, 0), stone_dark)
-	_building_box(root, Vector3(1.20 if along_x else 0.18, 0.10, 0.18 if along_x else 1.20), toward_joint * 0.46 + Vector3(0, 0.36, 0), glass_light)
-
-	# Twin offset tower slabs echo the real complex's glass-and-aluminium facade.
 	var lateral = Vector3(-direction.y, 0, direction.x)
-	var tower_offset = toward_joint * 0.17 + lateral * (-0.10 if part == 0 else 0.10)
-	var tower_size = Vector3(0.48 if along_x else 0.66, 1.08 + part * 0.12, 0.66 if along_x else 0.48)
-	_building_box(root, tower_size + Vector3(0.055, 0.035, 0.055), tower_offset + Vector3(0, 0.86 + part * 0.06, 0), frame)
-	_building_box(root, tower_size, tower_offset + Vector3(0, 0.86 + part * 0.06, 0), glass)
+	var white = _soft_material(Color("#f5f6f3")); var shadow = _soft_material(Color("#b8c0c0"))
+	var glass = _soft_material(Color("#76b8c8"), 0.10); glass.metallic = 0.32; glass.roughness = 0.14
+	var dark_glass = _soft_material(Color("#397b91"), 0.16); dark_glass.metallic = 0.38; dark_glass.roughness = 0.12
+	var green = _soft_material(Color("#477b53"))
 
-	# Pale vertical fins and horizontal floor bands make the curtain wall readable at game distance.
-	for band in 7:
-		var band_y = 0.46 + band * 0.135
-		var band_size = Vector3(tower_size.x + 0.018, 0.018, tower_size.z + 0.018)
-		_building_box(root, band_size, tower_offset + Vector3(0, band_y, 0), frame)
-	for fin_index in [-1, 0, 1]:
-		var fin_shift = lateral * fin_index * 0.16
-		var fin_size = Vector3(0.022 if along_x else tower_size.x + 0.025, tower_size.y + 0.035, tower_size.z + 0.025 if along_x else 0.022)
-		_building_box(root, fin_size, tower_offset + fin_shift + Vector3(0, 0.86 + part * 0.06, 0), frame)
-	for facade_side in [-1, 1]:
-		var facade_offset = lateral * facade_side * (tower_size.z * 0.5 + 0.008) if along_x else Vector3(direction.x, 0, direction.y) * facade_side * (tower_size.x * 0.5 + 0.008)
-		var facade_size = Vector3(tower_size.x * 0.90 if along_x else 0.018, tower_size.y * 0.90, 0.018 if along_x else tower_size.z * 0.90)
-		_building_box(root, facade_size, tower_offset + facade_offset + Vector3(0, 0.86 + part * 0.06, 0), glass_light)
+	# One continuous civic plinth and glazed link visually bind both occupied tiles.
+	_building_box(root, Vector3(1.02, 0.055, 1.02), Vector3(0, 0.15, 0), white)
+	_building_box(root, Vector3(1.16 if along_x else 0.78, 0.16, 0.78 if along_x else 1.16), toward_joint * 0.14 + Vector3(0, 0.25, 0), shadow)
+	_building_box(root, Vector3(1.18 if along_x else 0.25, 0.18, 0.25 if along_x else 1.18), toward_joint * 0.47 + Vector3(0, 0.36, 0), glass)
 
-	# Roof crown, entrance canopy and small landscaped planters.
-	_building_box(root, Vector3(tower_size.x * 0.72, 0.08, tower_size.z * 0.72), tower_offset + Vector3(0, 1.44 + part * 0.12, 0), frame)
-	_building_box(root, Vector3(0.32 if along_x else 0.62, 0.035, 0.62 if along_x else 0.32), -toward_joint * 0.27 + Vector3(0, 0.34, 0), glass_light)
+	# Stepped white twin towers frame a recessed curtain-wall core.
+	var tower_offset = toward_joint * 0.08 + lateral * (-0.07 if part == 0 else 0.07)
+	var storeys = 7 + part
+	for floor_index in storeys:
+		var setback = float(floor_index) * 0.018
+		var width = 0.70 - setback; var depth = 0.54 - setback * 0.55
+		var floor_size = Vector3(width if along_x else depth, 0.115, depth if along_x else width)
+		var floor_center = tower_offset + Vector3(0, 0.44 + floor_index * 0.118, 0)
+		_building_box(root, floor_size, floor_center, glass if floor_index % 2 == 0 else dark_glass)
+		_building_box(root, Vector3(floor_size.x + 0.035, 0.018, floor_size.z + 0.035), floor_center + Vector3(0, 0.057, 0), white)
+	# Strong white corner piers and a central spine give the silhouette structure.
+	var tower_height = storeys * 0.118
+	for side in [-1, 1]:
+		var pier_shift = lateral * side * 0.30
+		var pier_size = Vector3(0.045 if along_x else 0.56, tower_height, 0.56 if along_x else 0.045)
+		_building_box(root, pier_size, tower_offset + pier_shift + Vector3(0, 0.44 + tower_height * 0.5 - 0.06, 0), white)
+	var spine_size = Vector3(0.055 if along_x else 0.58, tower_height, 0.58 if along_x else 0.055)
+	_building_box(root, spine_size, tower_offset + Vector3(0, 0.44 + tower_height * 0.5 - 0.06, 0), white)
+	# A shallow floating crown finishes each tower without a bulky box-shaped roof.
+	var crown_size = Vector3(0.58 if along_x else 0.44, 0.055, 0.44 if along_x else 0.58)
+	_building_box(root, crown_size, tower_offset + Vector3(0, 0.45 + tower_height, 0), white)
+	_building_box(root, crown_size * Vector3(0.72, 0.65, 0.72), tower_offset + Vector3(0, 0.50 + tower_height, 0), glass)
+
+	# Entrance canopy and restrained landscaping keep the ground plane readable.
+	_building_box(root, Vector3(0.42 if along_x else 0.68, 0.035, 0.68 if along_x else 0.42), -toward_joint * 0.30 + Vector3(0, 0.34, 0), white)
 	for planter_side in [-1, 1]:
-		var planter_pos = lateral * planter_side * 0.36 - toward_joint * 0.30
-		_building_box(root, Vector3(0.18, 0.07, 0.18), planter_pos + Vector3(0, 0.20, 0), stone_dark)
+		var planter_pos = lateral * planter_side * 0.38 - toward_joint * 0.30
+		_building_box(root, Vector3(0.17, 0.06, 0.17), planter_pos + Vector3(0, 0.20, 0), shadow)
 		var shrub = MeshInstance3D.new(); var shrub_mesh = SphereMesh.new(); shrub_mesh.radius = 0.09; shrub_mesh.height = 0.12; shrub_mesh.radial_segments = 7; shrub_mesh.rings = 4
 		shrub.mesh = shrub_mesh; shrub.material_override = green; shrub.position = planter_pos + Vector3(0, 0.29, 0); shrub.scale = Vector3(1.2, 0.72, 1.0); root.add_child(shrub)
 
@@ -1597,6 +1616,20 @@ func _create_flower_instance(pos: Vector2i, owner: int, flower_root: Node3D) -> 
 	flower.scale = Vector3.ZERO
 	create_tween().tween_property(flower, "scale", target_scale, 0.38).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_BACK)
 	return flower
+
+func _displace_flowers_for_road(pos: Vector2i):
+	var flower_root = plant_nodes[pos.x][pos.y]
+	if not is_instance_valid(flower_root): return
+	var road_mask: int = roads[pos.x][pos.y]
+	for flower in flower_root.get_children():
+		if not flower.has_meta("flower_owner"): continue
+		var current = Vector2(flower.position.x, flower.position.z)
+		if _position_clear_of_road(current, road_mask): continue
+		var candidate := current
+		for attempt in 24:
+			candidate = Vector2(randf_range(-0.39, 0.39), randf_range(-0.39, 0.39))
+			if _position_clear_of_road(candidate, road_mask): break
+		create_tween().tween_property(flower, "position", Vector3(candidate.x, flower.position.y, candidate.y), 0.24).set_trans(Tween.TRANS_SINE)
 
 func _add_flower_petal(root: Node3D, material: Material, y: float, angle: float, size: Vector3):
 	var petal = MeshInstance3D.new(); var mesh = SphereMesh.new(); mesh.radius = 0.03; mesh.height = 0.045; mesh.radial_segments = 5; mesh.rings = 3
@@ -1918,6 +1951,9 @@ func _release_hand_drag(pointer: Vector2, cell: Vector2i):
 		_cancel_armed_card(); return
 	card_armed = true
 	var card: Dictionary = current_hand[drag_card_index]
+	if not _card_has_valid_target(card):
+		last_settlement = "当前卡牌没有可用位置"
+		_cancel_armed_card(); return
 	if card["kind"] == "weather": _finish_card_drag(cell)
 	else: _update_card_drag_preview(cell)
 	ui_ctrl.queue_redraw()
@@ -1927,6 +1963,40 @@ func _cancel_armed_card():
 	road_drag_cells.clear(); pending_develop.clear(); develop_preview_cells.clear()
 	for child in piece_preview_root.get_children(): child.free()
 	piece_preview_root.visible = false; ui_ctrl.queue_redraw()
+
+func _card_has_valid_target(card: Dictionary) -> bool:
+	if card["kind"] == "weather": return true
+	if card["kind"] == "road":
+		for x in _grid_width():
+			for y in _grid_height():
+				var pos = Vector2i(x, y)
+				if grid[x][y] < 0 or _is_developable(grid[x][y]): continue
+				for direction in DIRS:
+					var neighbor = pos + direction
+					if _in_bounds(neighbor) and grid[neighbor.x][neighbor.y] >= 0 and not _is_developable(grid[neighbor.x][neighbor.y]): return true
+		return false
+	if card["kind"] == "seed":
+		for x in _grid_width():
+			for y in _grid_height():
+				var pos = Vector2i(x, y)
+				if _is_plant_terrain(grid[x][y]) and _flower_total(pos) < _tile_capacity(pos): return true
+		return false
+	var saved_rotation := piece_rotation
+	for rotation in 4:
+		piece_rotation = rotation
+		for x in _grid_width():
+			for y in _grid_height():
+				var pos = Vector2i(x, y)
+				if card["kind"] == "develop" and _can_develop_cells(_develop_card_cells(pos, int(card["level"]), rotation)):
+					piece_rotation = saved_rotation; return true
+				if card["kind"] == "building_develop":
+					var cells = [pos] if int(card["level"]) == 1 else [pos, pos + DIRS[rotation]]
+					var valid := true
+					for target in cells:
+						if not _in_bounds(target) or grid[target.x][target.y] != T_GAP: valid = false; break
+					if valid: piece_rotation = saved_rotation; return true
+	piece_rotation = saved_rotation
+	return false
 
 func _extend_road_drag(cell: Vector2i):
 	if not _in_bounds(cell) or _is_developable(grid[cell.x][cell.y]) or grid[cell.x][cell.y] < 0: return
@@ -2144,9 +2214,12 @@ func _connect_road(a: Vector2i, b: Vector2i):
 	roads[b.x][b.y] |= 1 << ((dir_index + 2) % 4)
 	_redraw_tile(a)
 	_redraw_tile(b)
+	_displace_flowers_for_road(a)
+	_displace_flowers_for_road(b)
 
 func _apply_weather_card(card: Dictionary) -> bool:
 	var weather: String = card["weather"]
+	_apply_weather_visual(weather)
 	if weather == "彩虹":
 		active_weather.clear()
 		rainbow_turns = 1
@@ -2156,15 +2229,97 @@ func _apply_weather_card(card: Dictionary) -> bool:
 		last_settlement = "%s将持续3回合" % weather
 	return true
 
+func _apply_weather_visual(weather: String):
+	for child in weather_fx_root.get_children(): child.free()
+	var center = _world(Vector2i(_grid_width() / 2, _grid_height() / 2))
+	if weather == "台风" or weather == "雨季":
+		_spawn_weather_rain(center, 42 if weather == "台风" else 26, weather == "台风")
+	elif weather == "沙尘暴":
+		_spawn_weather_drift(center, Color(0.88, 0.70, 0.34, 0.55), 48)
+	elif weather == "旱季":
+		var sun = MeshInstance3D.new(); var mesh = SphereMesh.new()
+		mesh.radius = 0.75; mesh.height = 1.5; mesh.radial_segments = 12; mesh.rings = 6; sun.mesh = mesh
+		var material = _soft_material(Color(1.0, 0.84, 0.26, 0.12), 1.3); sun.material_override = material
+		sun.position = center + Vector3(-2.8, 4.5, -2.8); weather_fx_root.add_child(sun)
+		var tween = create_tween().set_loops()
+		tween.tween_property(sun, "scale", Vector3.ONE * 1.14, 1.8).set_trans(Tween.TRANS_SINE)
+		tween.tween_property(sun, "scale", Vector3.ONE, 1.8).set_trans(Tween.TRANS_SINE)
+	else:
+		var rainbow_colors = [Color("#e85b56"), Color("#e99b45"), Color("#ead45d"), Color("#68b978"), Color("#5fb8c7"), Color("#5b78c9"), Color("#a46ab9")]
+		for index in rainbow_colors.size():
+			var band = MeshInstance3D.new(); var mesh = TorusMesh.new()
+			mesh.inner_radius = 1.65 + index * 0.075; mesh.outer_radius = mesh.inner_radius + 0.045
+			mesh.rings = 18; mesh.ring_segments = 28; band.mesh = mesh
+			var material = _soft_material(Color(rainbow_colors[index], 0.24), 0.35); band.material_override = material
+			band.position = center + Vector3(0, 3.0, 0); band.rotation_degrees.x = 90
+			weather_fx_root.add_child(band)
+
+func _spawn_weather_rain(center: Vector3, count: int, storm: bool):
+	if storm:
+		for cloud_index in 4:
+			var cloud = MeshInstance3D.new(); var cloud_mesh = SphereMesh.new()
+			cloud_mesh.radius = 1.2; cloud_mesh.height = 0.65; cloud_mesh.radial_segments = 10; cloud_mesh.rings = 5
+			cloud.mesh = cloud_mesh; cloud.material_override = _soft_material(Color(0.22, 0.27, 0.30, 0.28))
+			cloud.position = center + Vector3(-3.0 + cloud_index * 2.0, 3.4 + cloud_index % 2 * 0.25, -1.5 + cloud_index % 3)
+			weather_fx_root.add_child(cloud)
+			create_tween().set_loops().tween_property(cloud, "position:x", cloud.position.x + 1.2, 3.4).set_trans(Tween.TRANS_SINE)
+	var rain_material = _soft_material(Color(0.55, 0.72, 0.88, 0.42))
+	for drop_index in count:
+		var drop = MeshInstance3D.new(); var mesh = CylinderMesh.new()
+		mesh.top_radius = 0.004; mesh.bottom_radius = 0.004; mesh.height = 0.09; mesh.radial_segments = 4
+		drop.mesh = mesh; drop.material_override = rain_material
+		drop.position = center + Vector3(randf_range(-5.0, 5.0), randf_range(0.5, 3.4), randf_range(-5.0, 5.0))
+		weather_fx_root.add_child(drop)
+		var top_y = drop.position.y; var tween = create_tween().set_loops()
+		tween.tween_property(drop, "position:y", 0.0, randf_range(0.45, 0.75))
+		tween.tween_property(drop, "position:y", top_y, 0.01)
+
+func _spawn_weather_drift(center: Vector3, color: Color, count: int):
+	var material = _soft_material(color, 0.08)
+	for grain_index in count:
+		var grain = MeshInstance3D.new(); var mesh = SphereMesh.new()
+		mesh.radius = 0.012; mesh.height = 0.024; mesh.radial_segments = 5; mesh.rings = 3
+		grain.mesh = mesh; grain.material_override = material
+		grain.position = center + Vector3(randf_range(-5.0, 5.0), randf_range(0.2, 2.2), randf_range(-5.0, 5.0))
+		weather_fx_root.add_child(grain)
+		var start_x = grain.position.x; var tween = create_tween().set_loops()
+		tween.tween_property(grain, "position:x", start_x + 7.0, randf_range(1.8, 3.2))
+		tween.tween_property(grain, "position:x", start_x, 0.01)
+
 func _settle_turn():
+	var grid_snapshot = grid.duplicate(true)
+	var flower_snapshot = flowers.duplicate(true)
 	_apply_weather_tile_changes()
 	_apply_neighbor_terrain_changes()
 	_grow_flowers()
 	_spread_flowers()
+	_emit_settlement_labels(grid_snapshot, flower_snapshot)
 	_tick_weather()
 	_refresh_all_plants()
 	_refresh_building_auras()
 	_calc_all_scores()
+
+func _emit_settlement_labels(grid_snapshot: Array, flower_snapshot: Array):
+	for x in _grid_width():
+		for y in _grid_height():
+			var pos = Vector2i(x, y)
+			for player_id in player_count:
+				var gain: int = flowers[x][y][player_id] - flower_snapshot[x][y][player_id]
+				if gain > 0: _float_settlement_label(pos, "+%d" % gain, PLAYER_COLORS[player_id])
+			var old_terrain: int = grid_snapshot[x][y]
+			if old_terrain >= 0 and old_terrain != grid[x][y]:
+				_float_settlement_label(pos, "%s > %s" % [TERRAIN_NAMES[old_terrain], TERRAIN_NAMES[grid[x][y]]], Color("#e8c840"))
+
+func _float_settlement_label(pos: Vector2i, label_text: String, color: Color):
+	var label = Label3D.new(); label.text = label_text; label.font_size = 15; label.pixel_size = 0.006
+	label.modulate = color; label.outline_size = 6; label.outline_modulate = Color(0.04, 0.06, 0.05, 0.82)
+	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED; label.no_depth_test = true
+	label.position = _world(pos) + Vector3(randf_range(-0.14, 0.14), 0.54, 0)
+	settle_fx_root.add_child(label)
+	var tween = create_tween().set_parallel(true)
+	tween.tween_property(label, "position:y", label.position.y + 0.62, 2.0).set_trans(Tween.TRANS_SINE)
+	tween.tween_property(label, "modulate:a", 0.0, 0.8).set_delay(1.1)
+	tween.chain().tween_callback(label.queue_free)
 
 func _tick_weather():
 	var expired := []
@@ -2173,6 +2328,8 @@ func _tick_weather():
 		if active_weather[weather] <= 0: expired.append(weather)
 	for weather in expired: active_weather.erase(weather)
 	if rainbow_turns > 0: rainbow_turns -= 1
+	if active_weather.is_empty() and rainbow_turns <= 0:
+		for child in weather_fx_root.get_children(): child.free()
 
 func _in_bounds(pos: Vector2i) -> bool:
 	return pos.x >= 0 and pos.x < _grid_width() and pos.y >= 0 and pos.y < _grid_height()
@@ -2489,15 +2646,15 @@ func _update_card_drag_preview(cell: Vector2i):
 	else: return
 	piece_preview_root.visible = true
 	for i in preview_cells.size():
-		var root = Node3D.new(); root.position = _world(preview_cells[i]) + Vector3(0, 0.48, 0)
+		var root = Node3D.new(); root.position = _world(preview_cells[i]) + Vector3(0, 0.08, 0)
 		piece_preview_root.add_child(root)
-		var mesh_instance = MeshInstance3D.new(); var box = BoxMesh.new(); box.size = Vector3(1.03, 0.07, 1.03)
-		mesh_instance.mesh = box
-		var material = StandardMaterial3D.new(); var color = TERRAIN_TOP[preview_terrains[i]] if i < preview_terrains.size() else Color.WHITE
-		color = color.lerp(Color("#65d894") if valid else Color("#e34b43"), 0.30); color.a = 0.70
-		material.albedo_color = color; material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-		material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED; material.no_depth_test = true
-		mesh_instance.mesh = box; mesh_instance.material_override = material; root.add_child(mesh_instance)
+		var terrain: int = preview_terrains[i] if i < preview_terrains.size() else T_GRASS
+		_spawn_preview_tile_model(root, terrain, card, i)
+		var overlay = MeshInstance3D.new(); var box = BoxMesh.new(); box.size = Vector3(1.04, 0.025, 1.04)
+		overlay.mesh = box
+		var material = _soft_material(Color(0.24, 0.90, 0.52, 0.24) if valid else Color(0.92, 0.22, 0.20, 0.28))
+		material.no_depth_test = true; overlay.material_override = material; overlay.position.y = 0.20
+		root.add_child(overlay)
 		if card["kind"] == "develop":
 			var preview_roads: Array = pending_develop.get("roads", [])
 			if i < preview_roads.size():
@@ -2510,6 +2667,30 @@ func _update_card_drag_preview(cell: Vector2i):
 				var back_dir = _direction_index(previous - preview_cells[i]); mask |= 1 << back_dir
 			if i + 1 < preview_cells.size(): mask |= 1 << _direction_index(preview_cells[i + 1] - preview_cells[i])
 			if mask != 0: _spawn_road(root, mask)
+
+func _spawn_preview_tile_model(root: Node3D, terrain: int, card: Dictionary, index: int):
+	_spawn_island_base(root, terrain)
+	match terrain:
+		T_GRASS: _tile_grass_surface(root, 0)
+		T_WATER: _tile_water_surface(root, 0)
+		T_FOREST: _tile_forest_surface(root, 0)
+		T_DESERT: _tile_desert_surface(root, 0)
+		T_BUILDING:
+			if int(card.get("level", 1)) == 2:
+				_tile_hongshan_tech_surface(root, {"part": index, "direction": piece_rotation})
+			else: _tile_pavilion_surface(root, 0)
+		_: pass
+	_make_preview_translucent(root)
+
+func _make_preview_translucent(node: Node):
+	for child in node.get_children():
+		if child is MeshInstance3D and child.material_override is StandardMaterial3D:
+			var source: StandardMaterial3D = child.material_override
+			var material: StandardMaterial3D = source.duplicate()
+			material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+			material.albedo_color.a = minf(material.albedo_color.a, 0.46)
+			material.no_depth_test = true; child.material_override = material
+		_make_preview_translucent(child)
 
 # ================================================================
 #  LOOP
@@ -2700,6 +2881,7 @@ func _input(event):
 
 	if event is InputEventKey and event.pressed:
 		if event.keycode == KEY_R: get_tree().reload_current_scene()
+		elif event.keycode == KEY_ESCAPE and (card_armed or road_drawing or dragging_card): _cancel_armed_card()
 		elif state == S.PLAY_CARDS and event.keycode >= KEY_1 and event.keycode <= KEY_9:
 			selected_card = clampi(hand_page * 8 + event.keycode - KEY_1, 0, maxi(current_hand.size() - 1, 0)); ui_ctrl.queue_redraw()
 		elif state == S.PLAY_CARDS and event.keycode == KEY_Z:
