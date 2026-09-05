@@ -106,6 +106,7 @@ const UI_TOP_HEIGHT := 54.0
 const UI_RAIL_HEIGHT := 188.0
 const UI_SIDE_TOP := 82.0
 const UI_SIDE_BOTTOM := 228.0
+const RULE_TICKER_TEXT := "道路封闭时，沿线有花朵的玩家各获得1张1级播种卡    |    水域使3x3范围内植物地块的正升级概率翻倍    |    建筑使3x3范围内植物地块容积翻倍    |    有道路的植物地块可以生长，但不会向外扩散    |    成功开发地块或建造建筑后获得1张1级播种卡    |    森林、草地、荒漠的基础容积分别为100、50、10    |    山体只能使用开发卡，缺口只能使用建筑开发卡    |    "
 
 # Nodes
 var camera: Camera3D; var grid_root: Node3D; var plant_root: Node3D
@@ -130,6 +131,8 @@ var card_preview_viewport: SubViewport; var card_preview_root: Node3D; var card_
 var card_preview_signature := ""
 var ui_glass_root: Control; var ui_glass_panels := []
 var ui_preview_mode := "card"; var ui_preview_index := 0
+var rule_ticker_clip: Control; var rule_ticker_label: Label
+var rule_ticker_text_width := 1.0; var rule_ticker_font_size := -1
 
 func _ready():
 	_setup_scene()
@@ -235,7 +238,17 @@ func _setup_scene():
 	ui_ctrl = Control.new(); ui_ctrl.set_anchors_preset(Control.PRESET_FULL_RECT)
 	ui_ctrl.mouse_filter = Control.MOUSE_FILTER_IGNORE; canvas.add_child(ui_ctrl)
 	ui_ctrl.connect("draw", _draw_ui)
+	_setup_rule_ticker(canvas)
 	_setup_card_preview_viewport()
+
+func _setup_rule_ticker(canvas: CanvasLayer):
+	rule_ticker_clip = Control.new(); rule_ticker_clip.clip_contents = true
+	rule_ticker_clip.mouse_filter = Control.MOUSE_FILTER_IGNORE; canvas.add_child(rule_ticker_clip)
+	rule_ticker_label = Label.new(); rule_ticker_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	rule_ticker_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	rule_ticker_label.add_theme_color_override("font_color", Color("#354b46"))
+	rule_ticker_label.text = RULE_TICKER_TEXT + RULE_TICKER_TEXT
+	rule_ticker_clip.add_child(rule_ticker_label)
 
 func _setup_card_preview_viewport():
 	card_preview_viewport = SubViewport.new()
@@ -3139,6 +3152,15 @@ func _top_weather_rect(vp: Vector2) -> Rect2:
 	var bar = _ui_top_rect(vp)
 	return Rect2(bar.end.x - 205.0, bar.position.y + 7.0, 187.0, bar.size.y - 14.0)
 
+func _top_terrain_rect(index: int, vp: Vector2) -> Rect2:
+	var bar = _ui_top_rect(vp)
+	return Rect2(bar.position.x + 241.0 + index * 79.0, bar.position.y + 5.0, 76.0, bar.size.y - 10.0)
+
+func _top_rule_ticker_rect(vp: Vector2) -> Rect2:
+	var terrain_end = _top_terrain_rect(4, vp).end.x
+	var weather_start = _top_weather_rect(vp).position.x
+	return Rect2(terrain_end + 10.0, _ui_top_rect(vp).position.y + 9.0, maxf(48.0, weather_start - terrain_end - 20.0), UI_TOP_HEIGHT - 18.0)
+
 func _ui_left_rect(vp: Vector2) -> Rect2:
 	return Rect2(UI_MARGIN, UI_SIDE_TOP, _ui_left_width(vp), maxf(120.0, vp.y - UI_SIDE_TOP - UI_SIDE_BOTTOM))
 
@@ -3170,6 +3192,22 @@ func _layout_glass_panels(vp: Vector2, interface_scale: float):
 		panel.position = rects[index].position * interface_scale
 		panel.size = rects[index].size * interface_scale
 		panel.visible = state != S.TITLE and state != S.GAME_OVER
+	_layout_rule_ticker(vp, interface_scale)
+
+func _layout_rule_ticker(vp: Vector2, interface_scale: float):
+	if not is_instance_valid(rule_ticker_clip) or not is_instance_valid(rule_ticker_label): return
+	rule_ticker_clip.visible = state != S.TITLE and state != S.GAME_OVER
+	if not rule_ticker_clip.visible: return
+	var rect = _top_rule_ticker_rect(vp)
+	rule_ticker_clip.position = rect.position * interface_scale
+	rule_ticker_clip.size = rect.size * interface_scale
+	var font_size = maxi(8, roundi(11.0 * interface_scale))
+	if font_size != rule_ticker_font_size:
+		rule_ticker_font_size = font_size
+		rule_ticker_label.add_theme_font_size_override("font_size", font_size)
+		rule_ticker_text_width = ThemeDB.fallback_font.get_string_size(RULE_TICKER_TEXT, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
+	rule_ticker_label.size = Vector2(rule_ticker_text_width * 2.0, rect.size.y * interface_scale)
+	rule_ticker_label.position = Vector2(-fmod(pulse * 32.0 * interface_scale, maxf(rule_ticker_text_width, 1.0)), 0.0)
 
 func _input(event):
 	if state == S.TITLE:
@@ -3286,7 +3324,10 @@ func _input(event):
 			_cancel_armed_card(); return
 		if event.button_index == MOUSE_BUTTON_LEFT:
 			if _top_weather_rect(ui_view).has_point(ui_pointer):
-				ui_preview_mode = "deck"; ui_preview_index = 2; ui_ctrl.queue_redraw(); return
+				ui_preview_mode = "weather"; ui_preview_index = 0; ui_ctrl.queue_redraw(); return
+			for terrain_index in 5:
+				if _top_terrain_rect(terrain_index, ui_view).has_point(ui_pointer):
+					ui_preview_mode = "terrain"; ui_preview_index = terrain_index; ui_ctrl.queue_redraw(); return
 			for deck_index in 3:
 				if _deck_rect(deck_index, ui_view).has_point(ui_pointer):
 					ui_preview_mode = "deck"; ui_preview_index = deck_index
@@ -3404,6 +3445,18 @@ func _draw_context_preview_panel(vp: Vector2, font: Font, ink: Color, muted: Col
 		status = "移动鼠标预览落点 · Esc或右键取消"
 		var breath_alpha = 0.30 + sin(pulse * 3.2) * 0.16
 		ui_ctrl.draw_rect(stage.grow(4.0), Color(0.28, 0.72, 0.55, breath_alpha), false, 2.5)
+	elif ui_preview_mode == "weather":
+		title = "当前环境"; name = _current_weather_label()
+		_draw_weather_state_preview(stage, font, ink, muted)
+		meta = _current_weather_meta()
+		status = "天气效果在回合结束时按规则结算"
+	elif ui_preview_mode == "terrain":
+		var terrain_type = clampi(ui_preview_index, T_GRASS, T_BUILDING)
+		title = "地块图鉴"; name = TERRAIN_NAMES[terrain_type]
+		_rebuild_terrain_type_preview(terrain_type)
+		_draw_preview_texture(card_preview_viewport.get_texture(), stage)
+		meta = _terrain_type_meta(terrain_type)
+		status = _terrain_type_status(terrain_type)
 	elif ui_preview_mode == "deck":
 		title = "牌库概率"; name = ["开发卡堆", "道路卡堆", "天气卡堆"][clampi(ui_preview_index, 0, 2)]
 		_draw_deck_probability_preview(ui_preview_index, stage, font, ink, muted)
@@ -3434,6 +3487,45 @@ func _draw_context_preview_panel(vp: Vector2, font: Font, ink: Color, muted: Col
 	var status_y = minf(panel.end.y - 31.0, meta_y + mini(meta.size(), 4) * 20.0 + 8.0)
 	ui_ctrl.draw_line(Vector2(inner.position.x, status_y - 8), Vector2(inner.end.x, status_y - 8), Color(0.20, 0.30, 0.26, 0.18), 1.0)
 	_draw_fitted_text(status, Rect2(inner.position.x, status_y, inner.size.x, 20), font, 11, Color("#367052"))
+
+func _current_weather_label() -> String:
+	var names := []
+	for weather in active_weather.keys(): names.append(str(weather))
+	if rainbow_turns > 0: names.append("彩虹")
+	return "晴朗" if names.is_empty() else " + ".join(names)
+
+func _draw_weather_state_preview(rect: Rect2, font: Font, ink: Color, muted: Color):
+	ui_ctrl.draw_rect(rect, Color(0.36, 0.68, 0.84, 0.07), true)
+	var rows := []
+	if active_weather.has("台风"): rows.append(["台风", "每个水域使相邻一格可能变为水域", Color("#568eb0")])
+	if active_weather.has("沙尘暴"): rows.append(["沙尘暴", "每个荒漠使相邻一格可能变为荒漠", Color("#b8894c")])
+	if active_weather.has("雨季"): rows.append(["雨季", "所有植物地块升级概率 x2", Color("#65a9d8")])
+	if active_weather.has("旱季"): rows.append(["旱季", "降级概率 x2；水域可能变为草地", Color("#d39a48")])
+	if _has_extreme_weather(): rows.append(["极端天气", "所有花朵生长率 x0.5", Color("#d7685b")])
+	if rainbow_turns > 0: rows.append(["彩虹", "生长率与扩散总概率 x2", Color("#7faa72")])
+	if rows.is_empty():
+		rows = [["晴朗", "地块与花朵按基础概率正常结算", Color("#65a9d8")], ["地块变化", "只计算相邻水域、森林与荒漠影响", Color("#75a06e")]]
+	var row_height = minf(41.0, rect.size.y / maxf(float(rows.size()), 1.0))
+	for row_index in rows.size():
+		var row: Array = rows[row_index]; var y = rect.position.y + row_index * row_height + 4.0
+		ui_ctrl.draw_circle(Vector2(rect.position.x + 6.0, y + 7.0), 4.0, row[2])
+		_draw_fitted_text(str(row[0]), Rect2(rect.position.x + 16.0, y, rect.size.x - 20.0, 17.0), font, 10, ink)
+		_draw_fitted_text(str(row[1]), Rect2(rect.position.x + 16.0, y + 18.0, rect.size.x - 20.0, 17.0), font, 10, muted)
+
+func _current_weather_meta() -> Array:
+	var tile_change = "无天气变化"
+	if active_weather.has("台风"): tile_change = "相邻地块可能变水域"
+	if active_weather.has("沙尘暴"): tile_change = "相邻地块可能变荒漠" if tile_change == "无天气变化" else "水域/荒漠向外扩张"
+	if active_weather.has("旱季"): tile_change = "每个水域30%变草地"
+	var turns := []
+	for weather in active_weather.keys(): turns.append("%s:%d" % [weather, active_weather[weather]])
+	if rainbow_turns > 0: turns.append("彩虹:%d" % rainbow_turns)
+	return [
+		["剩余回合", "无" if turns.is_empty() else "  ".join(turns)],
+		["升级概率", "x2" if active_weather.has("雨季") else "基础值"],
+		["降级概率", "x2" if active_weather.has("旱季") else "基础值"],
+		["地块变化", tile_change],
+	]
 
 func _draw_deck_probability_preview(deck_index: int, rect: Rect2, font: Font, ink: Color, muted: Color):
 	var rows: Array
@@ -3540,6 +3632,24 @@ func _tile_preview_status(pos: Vector2i) -> String:
 	if terrain == T_MOUNTAIN: return "可使用山体开发卡"
 	return "建筑会提升相邻植物地块容量"
 
+func _terrain_type_meta(terrain: int) -> Array:
+	match terrain:
+		T_GRASS: return [["类型", "植物地块"], ["花朵容积", "50"], ["生长率", "30%"], ["变化", "可升森林/降荒漠"]]
+		T_WATER: return [["类型", "增益地块"], ["相邻影响", "升级概率 +20%"], ["3x3增益", "正升级概率 x2"], ["旱季", "每回合30%变草地"]]
+		T_FOREST: return [["类型", "植物地块"], ["花朵容积", "100"], ["生长率", "50%"], ["变化", "最高级，可降为草地"]]
+		T_DESERT: return [["类型", "植物地块"], ["花朵容积", "10"], ["生长率", "10%"], ["相邻影响", "升级概率 -10%"]]
+		T_BUILDING: return [["类型", "增益地块"], ["3x3增益", "植物容积 x2"], ["道路", "不可修建"], ["结算", "不会改变类型"]]
+	return []
+
+func _terrain_type_status(terrain: int) -> String:
+	match terrain:
+		T_GRASS: return "可播种和修路；相邻影响决定升级或降级"
+		T_WATER: return "不能播种；可修路；多个水域的翻倍不叠加"
+		T_FOREST: return "可播种和修路；植物地块中的最高等级"
+		T_DESERT: return "可播种和修路；降级时保持荒漠"
+		T_BUILDING: return "不能播种和修路；提升周围植物地块容积"
+	return ""
+
 func _road_mask_text(mask: int) -> String:
 	if mask == 0: return "无"
 	var names := []
@@ -3567,6 +3677,23 @@ func _rebuild_selected_tile_preview(pos: Vector2i):
 			else: _tile_pavilion_surface(root, 0)
 	_spawn_decor(terrain, root, roads[pos.x][pos.y])
 	if roads[pos.x][pos.y] != 0 and terrain != T_BUILDING: _spawn_road(root, roads[pos.x][pos.y])
+	card_preview_camera.size = 2.28 if terrain == T_BUILDING else 2.08
+	var target = Vector3(0, 0.25, 0); card_preview_camera.look_at_from_position(target + Vector3(3.2, 3.4, 4.2), target)
+
+func _rebuild_terrain_type_preview(terrain: int):
+	var signature = "terrain_type|%d" % terrain
+	if signature == card_preview_signature: return
+	card_preview_signature = signature
+	for child in card_preview_root.get_children(): child.free()
+	var root = Node3D.new(); card_preview_root.add_child(root)
+	_spawn_island_base(root, terrain)
+	match terrain:
+		T_GRASS: _tile_grass_surface(root, 0)
+		T_WATER: _tile_water_surface(root, 0)
+		T_FOREST: _tile_forest_surface(root, 0)
+		T_DESERT: _tile_desert_surface(root, 0)
+		T_BUILDING: _tile_pavilion_surface(root, 0)
+	_spawn_decor(terrain, root, 0)
 	card_preview_camera.size = 2.28 if terrain == T_BUILDING else 2.08
 	var target = Vector3(0, 0.25, 0); card_preview_camera.look_at_from_position(target + Vector3(3.2, 3.4, 4.2), target)
 
@@ -3627,6 +3754,10 @@ func _draw_top_info_bar(vp: Vector2, font: Font, ink: Color, muted: Color):
 		_draw_top_terrain_model(Vector2(x + 13.0, center_y - 1.0), terrain_types[i])
 		_draw_fitted_text("%s %d" % [TERRAIN_NAMES[terrain_types[i]], terrain_counts[i]], Rect2(x + 28.0, center_y - 9.0, 54.0, 20.0), font, 10, muted)
 		x += 79.0
+	var ticker_rect = _top_rule_ticker_rect(vp)
+	ui_ctrl.draw_rect(ticker_rect, Color(0.12, 0.18, 0.17, 0.06), true)
+	ui_ctrl.draw_line(Vector2(ticker_rect.position.x, ticker_rect.position.y + 4.0), Vector2(ticker_rect.position.x, ticker_rect.end.y - 4.0), Color(0.18, 0.28, 0.25, 0.20), 1.0)
+	ui_ctrl.draw_line(Vector2(ticker_rect.end.x, ticker_rect.position.y + 4.0), Vector2(ticker_rect.end.x, ticker_rect.end.y - 4.0), Color(0.18, 0.28, 0.25, 0.20), 1.0)
 	var weather_text = "天气 晴朗"
 	if not active_weather.is_empty() or rainbow_turns > 0:
 		weather_text = "天气 "
