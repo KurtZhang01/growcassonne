@@ -1,6 +1,5 @@
 extends Node3D
 
-const DYNAMIC_SKY_SHADER: Shader = preload("res://shaders/dynamic_sky.gdshader")
 const WATER_TILE_SHADER: Shader = preload("res://shaders/water_tile.gdshader")
 const UI_FROSTED_GLASS_SHADER: Shader = preload("res://shaders/ui_frosted_glass.gdshader")
 
@@ -162,10 +161,17 @@ func _setup_scene():
 
 	var env = WorldEnvironment.new()
 	var e = Environment.new()
-	var sky_material = ShaderMaterial.new(); sky_material.shader = DYNAMIC_SKY_SHADER
+	var sky_material = ProceduralSkyMaterial.new()
+	sky_material.sky_top_color = Color("#8fd0f2")
+	sky_material.sky_horizon_color = Color("#f5fbff")
+	sky_material.sky_curve = 0.22
+	sky_material.ground_horizon_color = Color("#f8fcff")
+	sky_material.ground_bottom_color = Color("#ffffff")
+	sky_material.ground_curve = 0.12
 	var sky = Sky.new(); sky.sky_material = sky_material
-	sky.process_mode = Sky.PROCESS_MODE_REALTIME; sky.radiance_size = Sky.RADIANCE_SIZE_128
+	sky.process_mode = Sky.PROCESS_MODE_QUALITY; sky.radiance_size = Sky.RADIANCE_SIZE_128
 	e.background_mode = Environment.BG_SKY; e.sky = sky
+	e.background_color = Color("#f8fcff")
 	e.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	e.ambient_light_color = Color("#a7d6c4")
 	e.ambient_light_energy = 0.60
