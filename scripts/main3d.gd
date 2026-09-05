@@ -852,7 +852,9 @@ func _spawn_tile(pos: Vector2i, terr: int, animate: bool, road_mask: int = 0):
 
 func _spawn_island_base(root: Node3D, terr: int):
 	# The continuous cap covers both seams and four-cell junctions.
-	_building_box(root, Vector3(1.03, 0.06, 1.03), Vector3(0, 0.12, 0), edge_materials[terr])
+	# 水域不加cap，避免遮挡水面和涟漪装饰
+	if terr != T_WATER:
+		_building_box(root, Vector3(1.03, 0.06, 1.03), Vector3(0, 0.12, 0), edge_materials[terr])
 	var layers = [
 		[Vector3(1.06, 0.13, 1.06), 0.025, TERRAIN_MID[terr]],
 		[Vector3(0.88, 0.12, 0.88), -0.095, TERRAIN_BOT[terr]],
@@ -879,9 +881,10 @@ func _spawn_edge_trim(root: Node3D, terr: int, pos: Vector2i):
 		if _in_bounds(neighbor) and grid[neighbor.x][neighbor.y] == terr: continue
 		var trim = MeshInstance3D.new(); var mesh = BoxMesh.new()
 		var horizontal = side == 0 or side == 2
-		mesh.size = Vector3(1.09 if horizontal else 0.03, 0.14, 0.03 if horizontal else 1.09)
+		# 延伸到底座下层，覆盖完整侧面
+		mesh.size = Vector3(1.10 if horizontal else 0.04, 0.22, 0.04 if horizontal else 1.10)
 		trim.mesh = mesh; trim.material_override = trim_material
-		trim.position = Vector3(DIRS[side].x * 0.53, 0.10, DIRS[side].y * 0.53)
+		trim.position = Vector3(DIRS[side].x * 0.53, 0.06, DIRS[side].y * 0.53)
 		trim.set_meta("edge_trim", true)
 		root.add_child(trim)
 
@@ -2448,7 +2451,7 @@ func _spread_flowers():
 				for pid in player_count:
 					var amount: int = flowers[n.x][n.y][pid]
 					if amount > 0:
-						add_for_tile[pid] += floori(float(amount * amount) / float(neighbor_capacity) * prob)
+						add_for_tile[pid] += floori(float(amount * amount) / float(neighbor_capacity) * prob * 0.3)
 			additions.append([pos, add_for_tile])
 	for entry in additions:
 		var pos: Vector2i = entry[0]
