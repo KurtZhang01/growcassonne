@@ -117,6 +117,10 @@ var road_drag_cells := []; var road_drag_level := 0
 var hovered_cell := Vector2i(-1, -1); var pulse := 0.0
 var flash_timer := 0.0; var flash_color := Color.WHITE
 var title_hovered_player := -1
+var title_cam_size := 20.0
+var title_cam_offset := Vector2.ZERO
+var title_panning := false; var title_pan_start := Vector2.ZERO
+var title_pan_cam_start := Vector2.ZERO
 
 # Camera zoom/pan
 var cam_zoom := 1.0; var cam_zoom_target := 1.0
@@ -363,7 +367,9 @@ func _setup_title_world():
 	add_child(sub_label)
 	# 相机：拉高拉远，看到整个50×20网格
 	var center_world = _world(Vector2i(tw / 2, th / 2))
-	camera.size = 20.0
+	title_cam_size = 20.0
+	title_cam_offset = Vector2.ZERO
+	camera.size = title_cam_size
 	camera.position = center_world + Vector3(0, 25, 0)
 	camera.rotation_degrees = Vector3(-42, 42, 0)
 
@@ -3152,8 +3158,12 @@ func _process(delta):
 	var play_aspect = maxf(viewport_size.x / maxf(viewport_size.y, 1.0), 0.35)
 	var camera_fit = maxf(1.0, 1.05 / play_aspect)
 
-	# 标题状态下不覆盖相机设置
+	# 标题状态：应用缩放和平移
 	if state == S.TITLE:
+		camera.size = title_cam_size
+		var base = _world(Vector2i(_grid_width() / 2, _grid_height() / 2))
+		camera.position = base + Vector3(title_cam_offset.x * 5, 25, title_cam_offset.y * 5)
+		camera.rotation_degrees = Vector3(-42, 42, 0)
 		ui_ctrl.queue_redraw()
 		return
 
@@ -3293,6 +3303,28 @@ func _input(event):
 			elif event.keycode == KEY_2: player_count = 2; state = S.PLAY_CARDS; _start_game()
 			elif event.keycode == KEY_3: player_count = 3; state = S.PLAY_CARDS; _start_game()
 			elif event.keycode == KEY_4: player_count = 4; state = S.PLAY_CARDS; _start_game()
+			elif event.keycode == KEY_C: title_cam_size = 20.0; title_cam_offset = Vector2.ZERO
+		# 标题页缩放
+		if event is InputEventMouseButton:
+			if event.button_index == MOUSE_BUTTON_WHEEL_UP:
+				title_cam_size = clampf(title_cam_size - 1.0, 8.0, 60.0); ui_ctrl.queue_redraw(); return
+			elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
+				title_cam_size = clampf(title_cam_size + 1.0, 8.0, 60.0); ui_ctrl.queue_redraw(); return
+			elif event.button_index == MOUSE_BUTTON_MIDDLE:
+				if event.pressed:
+					title_panning = true; title_pan_start = event.position
+					title_pan_cam_start = title_cam_offset
+				else:
+					title_panning = false
+				return
+		if event is InputEventMagnifyGesture:
+			title_cam_size = clampf(title_cam_size - event.factor * 2.0, 8.0, 60.0); ui_ctrl.queue_redraw(); return
+		if event is InputEventPanGesture:
+			title_cam_offset += Vector2(event.delta.x, event.delta.y) * 0.02; ui_ctrl.queue_redraw(); return
+		if event is InputEventMouseMotion and title_panning:
+			var delta = (event.position - title_pan_start) * 0.01
+			title_cam_offset = title_pan_cam_start + Vector2(-delta.x, -delta.y)
+			ui_ctrl.queue_redraw(); return
 		if event is InputEventMouseMotion:
 			var vp = get_viewport().get_visible_rect().size / _ui_scale(get_viewport().get_visible_rect().size)
 			var pointer = _ui_point(event.position)
@@ -4328,6 +4360,14 @@ func _draw_title(vp: Vector2, font: Font):
 
 	# 底部说明
 	_draw_centered_outlined_text("武汉洪山区主题 · GROW Theme", Vector2(vp.x * 0.5, vp.y * 0.92), font, 14, Color(1, 1, 1, 0.40), Color(0, 0, 0, 0.25), 3)
+
+	# 右上角相机调试信息
+	var debug_x = vp.x - 220.0; var debug_y = 12.0
+	ui_ctrl.draw_rect(Rect2(debug_x - 6, debug_y - 4, 214, 76), Color(0, 0, 0, 0.55), 0, true, 4.0)
+	ui_ctrl.draw_string(font, Vector2(debug_x, debug_y + 14), "size: %.1f" % title_cam_size, HORIZONTAL_ALIGNMENT_LEFT, 200, 13, Color("#80ff80"))
+	ui_ctrl.draw_string(font, Vector2(debug_x, debug_y + 30), "offset: %.2f, %.2f" % [title_cam_offset.x, title_cam_offset.y], HORIZONTAL_ALIGNMENT_LEFT, 200, 13, Color("#80ff80"))
+	ui_ctrl.draw_string(font, Vector2(debug_x, debug_y + 46), "scroll=zoom  mid-drag=pan", HORIZONTAL_ALIGNMENT_LEFT, 200, 11, Color("#808080"))
+	ui_ctrl.draw_string(font, Vector2(debug_x, debug_y + 60), "C=reset  2/3/4=start", HORIZONTAL_ALIGNMENT_LEFT, 200, 11, Color("#808080"))
 
 func _draw_centered_outlined_text(value: String, center: Vector2, font: Font, size: int, color: Color, outline: Color, outline_size: int):
 	var text_size = font.get_string_size(value, HORIZONTAL_ALIGNMENT_LEFT, -1, size)
