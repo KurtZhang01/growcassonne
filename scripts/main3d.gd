@@ -1515,44 +1515,71 @@ func _tile_hongshan_tech_surface(root: Node3D, data: Dictionary):
 	var toward_joint = Vector3(direction.x, 0, direction.y) * (1.0 if part == 0 else -1.0)
 	var along_x = direction.x != 0
 	var lateral = Vector3(-direction.y, 0, direction.x)
-	var white = _soft_material(Color("#f5f6f3")); var shadow = _soft_material(Color("#b8c0c0"))
-	var glass = _soft_material(Color("#76b8c8"), 0.10); glass.metallic = 0.32; glass.roughness = 0.14
-	var dark_glass = _soft_material(Color("#397b91"), 0.16); dark_glass.metallic = 0.38; dark_glass.roughness = 0.12
-	var green = _soft_material(Color("#477b53"))
+	var frame = _soft_material(Color("#d8dedc"))
+	var concrete = _soft_material(Color("#b5bfbd"))
+	var glass = _soft_material(Color("#557b89"), 0.035); glass.metallic = 0.28; glass.roughness = 0.22
+	var inset_glass = _soft_material(Color("#365865"), 0.045); inset_glass.metallic = 0.32; inset_glass.roughness = 0.18
+	var green = _soft_material(Color("#3f704d"))
 
-	# One continuous civic plinth and glazed link visually bind both occupied tiles.
-	_building_box(root, Vector3(1.02, 0.055, 1.02), Vector3(0, 0.15, 0), white)
-	_building_box(root, Vector3(1.16 if along_x else 0.78, 0.16, 0.78 if along_x else 1.16), toward_joint * 0.14 + Vector3(0, 0.25, 0), shadow)
-	_building_box(root, Vector3(1.18 if along_x else 0.25, 0.18, 0.25 if along_x else 1.18), toward_joint * 0.47 + Vector3(0, 0.36, 0), glass)
+	# The two occupied tiles share a slightly overlapping plaza and glazed joint.
+	_building_box(root, Vector3(1.025, 0.05, 1.025), Vector3(0, 0.145, 0), concrete)
+	var joint_size = Vector3(0.30 if along_x else 0.58, 0.23, 0.58 if along_x else 0.30)
+	_building_box(root, joint_size, toward_joint * 0.46 + Vector3(0, 0.285, 0), inset_glass)
 
-	# Stepped white twin towers frame a recessed curtain-wall core.
-	var tower_offset = toward_joint * 0.08 + lateral * (-0.07 if part == 0 else 0.07)
-	var storeys = 7 + part
-	for floor_index in storeys:
-		var setback = float(floor_index) * 0.018
-		var width = 0.70 - setback; var depth = 0.54 - setback * 0.55
-		var floor_size = Vector3(width if along_x else depth, 0.115, depth if along_x else width)
-		var floor_center = tower_offset + Vector3(0, 0.44 + floor_index * 0.118, 0)
-		_building_box(root, floor_size, floor_center, glass if floor_index % 2 == 0 else dark_glass)
-		_building_box(root, Vector3(floor_size.x + 0.035, 0.018, floor_size.z + 0.035), floor_center + Vector3(0, 0.057, 0), white)
-	# Strong white corner piers and a central spine give the silhouette structure.
-	var tower_height = storeys * 0.118
-	for side in [-1, 1]:
-		for column in [-1, 0, 1]:
-			var pier_shift: Vector3 = lateral * side * 0.27 + Vector3(direction.x, 0, direction.y) * column * 0.27
-			_building_box(root, Vector3(0.025, tower_height, 0.025), tower_offset + pier_shift + Vector3(0, 0.44 + tower_height * 0.5 - 0.06, 0), white)
-	# A shallow floating crown finishes each tower without a bulky box-shaped roof.
-	var crown_size = Vector3(0.58 if along_x else 0.44, 0.055, 0.44 if along_x else 0.58)
-	_building_box(root, crown_size, tower_offset + Vector3(0, 0.45 + tower_height, 0), white)
-	_building_box(root, crown_size * Vector3(0.72, 0.65, 0.72), tower_offset + Vector3(0, 0.50 + tower_height, 0), glass)
+	if part == 0:
+		# The reference building is a single, upright glass slab rather than twin towers.
+		var tower_center = toward_joint * 0.06 + Vector3(0, 0.91, 0)
+		var tower_size = Vector3(0.60 if along_x else 0.68, 1.42, 0.68 if along_x else 0.60)
+		_building_box(root, tower_size, tower_center, glass)
+		_hongshan_facade_grid(root, tower_center, tower_size, frame, 13, 5)
 
-	# Entrance canopy and restrained landscaping keep the ground plane readable.
-	_building_box(root, Vector3(0.42 if along_x else 0.68, 0.035, 0.68 if along_x else 0.42), -toward_joint * 0.30 + Vector3(0, 0.34, 0), white)
+		# A broad pale crown and recessed mechanical cap match the photograph's roofline.
+		var crown_size = Vector3(tower_size.x + 0.055, 0.075, tower_size.z + 0.055)
+		_building_box(root, crown_size, tower_center + Vector3(0, tower_size.y * 0.5 + 0.025, 0), frame)
+		_building_box(root, Vector3(tower_size.x * 0.78, 0.075, tower_size.z * 0.78), tower_center + Vector3(0, tower_size.y * 0.5 + 0.095, 0), concrete)
+
+		# The entrance is kept low so it reads separately from the curtain wall.
+		var canopy_size = Vector3(0.28 if along_x else 0.50, 0.035, 0.50 if along_x else 0.28)
+		_building_box(root, canopy_size, -toward_joint * 0.34 + Vector3(0, 0.27, 0), frame)
+	else:
+		# The second tile carries the attached low-rise office podium from the reference.
+		var podium_center = toward_joint * 0.14 + lateral * 0.04 + Vector3(0, 0.37, 0)
+		var podium_size = Vector3(0.82 if along_x else 0.72, 0.44, 0.72 if along_x else 0.82)
+		_building_box(root, podium_size, podium_center, glass)
+		_hongshan_facade_grid(root, podium_center, podium_size, frame, 3, 4)
+		_building_box(root, Vector3(podium_size.x + 0.045, 0.045, podium_size.z + 0.045), podium_center + Vector3(0, podium_size.y * 0.5 + 0.015, 0), frame)
+
+		# A recessed end bay breaks up the long wall and gives the wing a clear entrance.
+		var end_bay_size = Vector3(0.18 if along_x else 0.46, 0.28, 0.46 if along_x else 0.18)
+		_building_box(root, end_bay_size, -toward_joint * 0.34 + Vector3(0, 0.29, 0), inset_glass)
+		_building_box(root, Vector3(0.30 if along_x else 0.52, 0.03, 0.52 if along_x else 0.30), -toward_joint * 0.39 + Vector3(0, 0.45, 0), frame)
+
+	# Small asymmetrical planters echo the landscaped forecourt without hiding the massing.
 	for planter_side in [-1, 1]:
-		var planter_pos = lateral * planter_side * 0.38 - toward_joint * 0.30
-		_building_box(root, Vector3(0.17, 0.06, 0.17), planter_pos + Vector3(0, 0.20, 0), shadow)
-		var shrub = MeshInstance3D.new(); var shrub_mesh = SphereMesh.new(); shrub_mesh.radius = 0.09; shrub_mesh.height = 0.12; shrub_mesh.radial_segments = 7; shrub_mesh.rings = 4
-		shrub.mesh = shrub_mesh; shrub.material_override = green; shrub.position = planter_pos + Vector3(0, 0.29, 0); shrub.scale = Vector3(1.2, 0.72, 1.0); root.add_child(shrub)
+		var planter_pos = lateral * planter_side * 0.38 - toward_joint * 0.31
+		_building_box(root, Vector3(0.16, 0.045, 0.16), planter_pos + Vector3(0, 0.19, 0), concrete)
+		var shrub = MeshInstance3D.new(); var shrub_mesh = SphereMesh.new(); shrub_mesh.radius = 0.08; shrub_mesh.height = 0.11; shrub_mesh.radial_segments = 7; shrub_mesh.rings = 4
+		shrub.mesh = shrub_mesh; shrub.material_override = green; shrub.position = planter_pos + Vector3(0, 0.265, 0); shrub.scale = Vector3(1.25, 0.68, 0.95); root.add_child(shrub)
+
+func _hongshan_facade_grid(root: Node3D, center: Vector3, size: Vector3, material: Material, floor_count: int, mullion_count: int):
+	# Thin projecting bands keep the glass visible while reading clearly at board scale.
+	for floor_index in range(1, floor_count + 1):
+		var band_y = center.y - size.y * 0.5 + size.y * float(floor_index) / float(floor_count + 1)
+		_building_box(root, Vector3(size.x + 0.025, 0.014, size.z + 0.025), Vector3(center.x, band_y, center.z), material)
+
+	var strip_height = size.y - 0.035
+	for strip_index in range(1, mullion_count + 1):
+		var x_offset = -size.x * 0.5 + size.x * float(strip_index) / float(mullion_count + 1)
+		var z_offset = -size.z * 0.5 + size.z * float(strip_index) / float(mullion_count + 1)
+		_building_box(root, Vector3(0.014, strip_height, 0.018), center + Vector3(x_offset, 0, size.z * 0.5 + 0.006), material)
+		_building_box(root, Vector3(0.014, strip_height, 0.018), center + Vector3(x_offset, 0, -size.z * 0.5 - 0.006), material)
+		_building_box(root, Vector3(0.018, strip_height, 0.014), center + Vector3(size.x * 0.5 + 0.006, 0, z_offset), material)
+		_building_box(root, Vector3(0.018, strip_height, 0.014), center + Vector3(-size.x * 0.5 - 0.006, 0, z_offset), material)
+
+	# Four continuous corner posts make the tower silhouette crisp from every camera angle.
+	for x_side in [-1.0, 1.0]:
+		for z_side in [-1.0, 1.0]:
+			_building_box(root, Vector3(0.026, size.y + 0.025, 0.026), center + Vector3(x_side * size.x * 0.5, 0, z_side * size.z * 0.5), material)
 
 func _building_box(root: Node3D, size: Vector3, position: Vector3, material: Material):
 	var mesh_instance = MeshInstance3D.new(); var mesh = BoxMesh.new(); mesh.size = size
