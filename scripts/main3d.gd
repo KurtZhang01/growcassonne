@@ -881,10 +881,11 @@ func _spawn_edge_trim(root: Node3D, terr: int, pos: Vector2i):
 		if _in_bounds(neighbor) and grid[neighbor.x][neighbor.y] == terr: continue
 		var trim = MeshInstance3D.new(); var mesh = BoxMesh.new()
 		var horizontal = side == 0 or side == 2
-		# 延伸到底座下层，覆盖完整侧面
-		mesh.size = Vector3(1.10 if horizontal else 0.04, 0.22, 0.04 if horizontal else 1.10)
+		# 嵌入底座：宽度1.08覆盖底座侧面，高度0.30覆盖整个浮岛
+		mesh.size = Vector3(1.08 if horizontal else 0.05, 0.30, 0.05 if horizontal else 1.08)
 		trim.mesh = mesh; trim.material_override = trim_material
-		trim.position = Vector3(DIRS[side].x * 0.53, 0.06, DIRS[side].y * 0.53)
+		# 向内偏移0.02，让边框嵌入底座而非悬浮
+		trim.position = Vector3(DIRS[side].x * 0.51, 0.04, DIRS[side].y * 0.51)
 		trim.set_meta("edge_trim", true)
 		root.add_child(trim)
 
@@ -954,9 +955,9 @@ func _spawn_road(root: Node3D, road_mask: int):
 
 # ---- Grass: gentle rolling hills ----
 func _tile_grass_surface(root: Node3D, road_mask: int):
-	# Main flat top
+	# Main flat top — extend to tile edge so adjacent grass tiles connect seamlessly
 	var top = MeshInstance3D.new()
-	var tm = BoxMesh.new(); tm.size = Vector3(0.95, 0.06, 0.95)
+	var tm = BoxMesh.new(); tm.size = Vector3(1.06, 0.05, 1.06)
 	top.mesh = tm
 	var mat = StandardMaterial3D.new(); mat.albedo_color = TERRAIN_TOP[0]; mat.roughness = 0.92
 	top.material_override = mat; top.position.y = 0.13
@@ -991,12 +992,12 @@ func _tile_grass_surface(root: Node3D, road_mask: int):
 
 # ---- Water: depressed pool with ripple rings ----
 func _tile_water_surface(root: Node3D, road_mask: int):
-	# Water surface (slightly lower)
+	# Water surface — extend to tile edge so adjacent water tiles connect seamlessly
 	var top = MeshInstance3D.new()
-	var tm = BoxMesh.new(); tm.size = Vector3(0.92, 0.04, 0.92)
+	var tm = BoxMesh.new(); tm.size = Vector3(1.06, 0.04, 1.06)
 	top.mesh = tm
 	var mat = ShaderMaterial.new(); mat.shader = WATER_TILE_SHADER
-	top.material_override = mat; top.position.y = 0.10
+	top.material_override = mat; top.position.y = 0.07
 	root.add_child(top)
 
 	# A submerged center creates depth beneath the animated surface.
@@ -1005,7 +1006,7 @@ func _tile_water_surface(root: Node3D, road_mask: int):
 	depth.mesh = dm
 	var dmat = StandardMaterial3D.new()
 	dmat.albedo_color = TERRAIN_BOT[1].lerp(TERRAIN_MID[1], 0.5)
-	depth.material_override = dmat; depth.position.y = 0.09
+	depth.material_override = dmat; depth.position.y = 0.06
 	root.add_child(depth)
 
 	# Offset ripple rings keep neighboring water tiles from looking cloned.
@@ -1021,7 +1022,7 @@ func _tile_water_surface(root: Node3D, road_mask: int):
 		rmat.emission_energy_multiplier = 0.3
 		ripple.material_override = rmat
 		var ripple_pos = _feature_position(road_mask, 0.25)
-		ripple.position = Vector3(ripple_pos.x, 0.13, ripple_pos.y)
+		ripple.position = Vector3(ripple_pos.x, 0.09, ripple_pos.y)
 		root.add_child(ripple)
 		var ripple_tween = ripple.create_tween().set_loops()
 		ripple_tween.tween_property(ripple, "scale", Vector3(1.10, 1.10, 1.10), randf_range(1.8, 2.8)).set_trans(Tween.TRANS_SINE)
@@ -1038,18 +1039,18 @@ func _tile_water_surface(root: Node3D, road_mask: int):
 	smat.emission_energy_multiplier = 0.4
 	spec.material_override = smat
 	var spec_pos = _feature_position(road_mask, 0.28)
-	spec.position = Vector3(spec_pos.x, 0.14, spec_pos.y)
+	spec.position = Vector3(spec_pos.x, 0.10, spec_pos.y)
 	spec.rotation_degrees.y = randf_range(0, 360)
 	root.add_child(spec)
 
 # ---- Forest: raised terrain with visible tree trunks ----
 func _tile_forest_surface(root: Node3D, road_mask: int):
-	# Raised forest floor remains square so connected tiles read as one biome.
+	# Raised forest floor — extend to tile edge so adjacent forest tiles connect seamlessly
 	var top = MeshInstance3D.new()
-	var tm = BoxMesh.new(); tm.size = Vector3(0.95, 0.075, 0.95)
+	var tm = BoxMesh.new(); tm.size = Vector3(1.06, 0.06, 1.06)
 	top.mesh = tm
 	var mat = StandardMaterial3D.new(); mat.albedo_color = TERRAIN_MID[2]
-	mat.roughness = 1.0; top.material_override = mat; top.position.y = 0.138
+	mat.roughness = 1.0; top.material_override = mat; top.position.y = 0.12
 	root.add_child(top)
 
 	var mmat2 = StandardMaterial3D.new()
@@ -1057,7 +1058,7 @@ func _tile_forest_surface(root: Node3D, road_mask: int):
 	if road_mask == 0:
 		var moss = MeshInstance3D.new(); var moss_mesh = CylinderMesh.new()
 		moss_mesh.top_radius = 0.31; moss_mesh.bottom_radius = 0.34; moss_mesh.height = 0.025; moss_mesh.radial_segments = 14
-		moss.mesh = moss_mesh; moss.material_override = mmat2; moss.position.y = 0.19
+		moss.mesh = moss_mesh; moss.material_override = mmat2; moss.position.y = 0.16
 		root.add_child(moss)
 	else:
 		for patch_index in 3:
@@ -1086,9 +1087,9 @@ func _tile_forest_surface(root: Node3D, road_mask: int):
 
 # ---- Desert: flat with dune ridges ----
 func _tile_desert_surface(root: Node3D, road_mask: int):
-	# Flat sand surface
+	# Flat sand surface — extend to tile edge so adjacent desert tiles connect seamlessly
 	var top = MeshInstance3D.new()
-	var tm = BoxMesh.new(); tm.size = Vector3(0.95, 0.05, 0.95)
+	var tm = BoxMesh.new(); tm.size = Vector3(1.06, 0.04, 1.06)
 	top.mesh = tm
 	var mat = StandardMaterial3D.new(); mat.albedo_color = TERRAIN_TOP[3]; mat.roughness = 1.0
 	top.material_override = mat; top.position.y = 0.13
@@ -1411,14 +1412,14 @@ func _decor_grass(p: Node3D, road_mask: int):
 			blade.rotation_degrees.y = randf_range(-25.0, 25.0); p.add_child(blade)
 
 func _decor_water(p: Node3D, road_mask: int):
-	# Lily pad
+	# Lily pad — sits on water surface (y≈0.09)
 	var pad = MeshInstance3D.new()
 	var pm2 = CylinderMesh.new(); pm2.top_radius = randf_range(0.08, 0.13); pm2.bottom_radius = pm2.top_radius; pm2.height = 0.012
 	pad.mesh = pm2
 	var pmat2 = StandardMaterial3D.new(); pmat2.albedo_color = Color(0.22, 0.65, 0.28)
 	pad.material_override = pmat2
 	var feature_pos = _feature_position(road_mask, 0.28)
-	pad.position = Vector3(feature_pos.x, 0.12, feature_pos.y)
+	pad.position = Vector3(feature_pos.x, 0.09, feature_pos.y)
 	p.add_child(pad)
 	# Tiny lotus
 	if randf() < 0.5:
@@ -1436,7 +1437,7 @@ func _decor_water(p: Node3D, road_mask: int):
 		var reed = MeshInstance3D.new(); var reed_mesh = CylinderMesh.new()
 		reed_mesh.top_radius = 0.006; reed_mesh.bottom_radius = 0.009; reed_mesh.height = randf_range(0.10, 0.17); reed_mesh.radial_segments = 6
 		reed.mesh = reed_mesh; reed.material_override = reed_material
-		reed.position = Vector3(reed_pos.x + (reed_index - 1) * 0.026, 0.12 + reed_mesh.height * 0.5, reed_pos.y + abs(reed_index - 1) * 0.012)
+		reed.position = Vector3(reed_pos.x + (reed_index - 1) * 0.026, 0.09 + reed_mesh.height * 0.5, reed_pos.y + abs(reed_index - 1) * 0.012)
 		reed.rotation_degrees.z = (reed_index - 1) * 5.0; p.add_child(reed)
 
 func _decor_forest(p: Node3D, road_mask: int):
