@@ -2244,22 +2244,21 @@ func _apply_weather_visual(weather: String):
 		tween.tween_property(sun, "scale", Vector3.ONE * 1.14, 1.8).set_trans(Tween.TRANS_SINE)
 		tween.tween_property(sun, "scale", Vector3.ONE, 1.8).set_trans(Tween.TRANS_SINE)
 	else:
+		# 彩虹：3D环形，不随视角移动或变形
 		var rainbow_colors = [Color("#e85b56"), Color("#e99b45"), Color("#ead45d"), Color("#68b978"), Color("#5fb8c7"), Color("#5b78c9"), Color("#a46ab9")]
 		for index in rainbow_colors.size():
-			var band = MeshInstance3D.new(); var mesh = ImmediateMesh.new()
-			var radius: float = 3.0 + index * 0.12
-			mesh.surface_begin(Mesh.PRIMITIVE_TRIANGLES)
-			for segment in 48:
-				var a: float = PI * segment / 48.0
-				var b: float = PI * (segment + 1) / 48.0
-				var p = Vector3(cos(a), sin(a), 0)
-				var q = Vector3(cos(b), sin(b), 0)
-				for vertex in [p * radius, q * radius, p * (radius + 0.11), q * radius, q * (radius + 0.11), p * (radius + 0.11)]: mesh.surface_add_vertex(vertex)
-			mesh.surface_end(); band.mesh = mesh
-			var material = _soft_material(Color(rainbow_colors[index], 0.55), 0.35)
-			material.cull_mode = BaseMaterial3D.CULL_DISABLED; band.material_override = material
-			band.position = center + Vector3(0, 1.0, -2.0)
-			weather_fx_root.add_child(band)
+			var ring = MeshInstance3D.new()
+			var tm = TorusMesh.new()
+			tm.inner_radius = 2.9 + index * 0.12
+			tm.outer_radius = tm.inner_radius + 0.08
+			tm.rings = 32; tm.ring_segments = 12
+			ring.mesh = tm
+			var material = _soft_material(Color(rainbow_colors[index], 0.45), 0.35)
+			material.cull_mode = BaseMaterial3D.CULL_DISABLED
+			ring.material_override = material
+			ring.position = center + Vector3(0, 0.8, 0)
+			ring.rotation_degrees.x = 90
+			weather_fx_root.add_child(ring)
 
 func _spawn_weather_rain(center: Vector3, count: int, storm: bool):
 	if storm:
@@ -2720,9 +2719,6 @@ func _process(delta):
 	if flash_timer > 0: flash_timer = max(0, flash_timer - delta * 2.5)
 	_animate_sky_world(delta)
 	_animate_tile_ambience(delta)
-	if weather_fx_root.has_meta("weather_center"):
-		var weather_center: Vector3 = weather_fx_root.get_meta("weather_center")
-		weather_fx_root.position = Vector3(cam_offset.x - weather_center.x, 0, cam_offset.y - weather_center.z)
 	if state != S.TITLE and scores.size() == player_count:
 		if ranking_order.size() != player_count:
 			ranking_order.clear()
