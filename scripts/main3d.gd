@@ -2073,6 +2073,8 @@ func _generate_development_roads(cells: Array):
 				if abs(cell.x - placed.x) + abs(cell.y - placed.y) == 1: options.append([placed, cell]); break
 		if options.is_empty(): break
 		var edge = options.pick_random(); _connect_road(edge[0], edge[1]); path.append(edge[1])
+	for cell in cells: _update_road_bridges(cell)
+	_refresh_road_effects()
 
 func _can_play_selected_card(pos: Vector2i) -> bool:
 	if not _in_bounds(pos): return false
@@ -2315,6 +2317,7 @@ func _settle_turn():
 	_tick_weather()
 	_refresh_all_plants()
 	_refresh_building_auras()
+	_refresh_road_effects()
 	_calc_all_scores()
 	_record_action("结算 %d朵 (%+d)" % [scores[current_player], scores[current_player] - old_score])
 
