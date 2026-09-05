@@ -47,7 +47,7 @@
 
 ### 3.1 规格
 - 网格：**12列 × 10行**
-- 视角：**平行俯视**（Orthographic，rotation = (-90, 0, 0)），无透视
+- 视角：**80度倾角俯视**（Orthographic，rotation = (-80, 0, 0)），无透视
 - 不可缩放、不可平移
 - 地块间距：TILE_SPACING = 1.25（与游戏内一致）
 
@@ -55,8 +55,8 @@
 ```gdscript
 title_camera.projection = Camera3D.PROJECTION_ORTHOGONAL
 title_camera.size = 16.0  # 覆盖整个网格
-title_camera.position = Vector3(7.5, 20, 6.25)  # 网格中心上方
-title_camera.rotation_degrees = Vector3(-90, 0, 0)  # 正俯视
+title_camera.position = Vector3(7.5, 18, 6.25)  # 网格中心上方
+title_camera.rotation_degrees = Vector3(-80, 0, 0)  # 80度倾角俯视
 ```
 
 ### 3.3 地块生成
@@ -121,8 +121,8 @@ func _setup_title_scene():
     title_camera = Camera3D.new()
     title_camera.projection = Camera3D.PROJECTION_ORTHOGONAL
     title_camera.size = 16.0
-    title_camera.position = Vector3(7.5, 20, 6.25)
-    title_camera.rotation_degrees = Vector3(-90, 0, 0)
+    title_camera.position = Vector3(7.5, 18, 6.25)
+    title_camera.rotation_degrees = Vector3(-80, 0, 0)
     title_root.add_child(title_camera)
     _generate_title_mountains()
 
