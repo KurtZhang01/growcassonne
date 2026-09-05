@@ -3471,16 +3471,10 @@ func _draw_card_context_stage(card: Dictionary, rect: Rect2, font: Font, ink: Co
 func _draw_preview_texture(texture: Texture2D, rect: Rect2):
 	var texture_size = Vector2(texture.get_size())
 	if texture_size.x <= 0.0 or texture_size.y <= 0.0: return
-	var destination_aspect = rect.size.x / maxf(rect.size.y, 1.0)
-	var texture_aspect = texture_size.x / texture_size.y
-	var source = Rect2(Vector2.ZERO, texture_size)
-	if texture_aspect > destination_aspect:
-		source.size.x = texture_size.y * destination_aspect
-		source.position.x = (texture_size.x - source.size.x) * 0.5
-	else:
-		source.size.y = texture_size.x / destination_aspect
-		source.position.y = (texture_size.y - source.size.y) * 0.5
-	ui_ctrl.draw_texture_rect_region(rect, texture, source)
+	var fit_scale = minf(rect.size.x / texture_size.x, rect.size.y / texture_size.y)
+	var fitted_size = texture_size * fit_scale
+	var fitted_rect = Rect2(rect.get_center() - fitted_size * 0.5, fitted_size)
+	ui_ctrl.draw_texture_rect(texture, fitted_rect, false)
 
 func _card_preview_title(card: Dictionary) -> String:
 	match card["kind"]:
