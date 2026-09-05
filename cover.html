@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>花满洪山 - 游戏封面</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+    width: 1280px; height: 720px;
+    overflow: hidden;
+    font-family: "Microsoft YaHei", "PingFang SC", "Noto Sans SC", sans-serif;
+    background: #0a1f1a;
+    position: relative;
+}
+
+/* 底层：深色渐变背景 */
+.bg {
+    position: absolute; inset: 0;
+    background: radial-gradient(ellipse at 50% 70%, #1a4a3a 0%, #0d2b22 40%, #061410 100%);
+}
+
+/* 等距地块网格（装饰性背景） */
+.grid-bg {
+    position: absolute; inset: 0;
+    opacity: 0.12;
+    background:
+        linear-gradient(45deg, transparent 48%, #2a6a5a 48%, #2a6a5a 52%, transparent 52%),
+        linear-gradient(-45deg, transparent 48%, #2a6a5a 48%, #2a6a5a 52%, transparent 52%);
+    background-size: 60px 60px;
+}
+
+/* 花朵粒子层 */
+.flowers {
+    position: absolute; inset: 0;
+    pointer-events: none;
+}
+.flower {
+    position: absolute;
+    border-radius: 50%;
+    animation: float-up linear infinite;
+    opacity: 0;
+}
+@keyframes float-up {
+    0% { transform: translateY(0) scale(0.5); opacity: 0; }
+    15% { opacity: 0.7; }
+    85% { opacity: 0.5; }
+    100% { transform: translateY(-600px) scale(1.2); opacity: 0; }
+}
+
+/* 中央光晕 */
+.glow {
+    position: absolute;
+    left: 50%; top: 50%;
+    transform: translate(-50%, -50%);
+    width: 600px; height: 400px;
+    background: radial-gradient(ellipse, rgba(80, 200, 140, 0.15) 0%, transparent 70%);
+    pointer-events: none;
+}
+
+/* 标题区 */
+.title-area {
+    position: absolute;
+    left: 50%; top: 38%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+    z-index: 10;
+}
+.title-area h1 {
+    font-size: 88px;
+    font-weight: 900;
+    letter-spacing: 22px;
+    color: transparent;
+    background: linear-gradient(180deg, #fff8e0 0%, #f0d890 40%, #d4a850 80%, #b88020 100%);
+    -webkit-background-clip: text; background-clip: text;
+    -webkit-text-stroke: 2px rgba(20, 50, 35, 0.4);
+    filter: drop-shadow(0 4px 12px rgba(0,0,0,0.5));
+    line-height: 1.1;
+}
+.title-area h2 {
+    font-size: 20px;
+    font-weight: 300;
+    letter-spacing: 12px;
+    color: #a0d8b8;
+    margin-top: 8px;
+    text-shadow: 0 2px 8px rgba(0,0,0,0.4);
+}
+.title-area .tagline {
+    font-size: 15px;
+    color: rgba(160, 216, 184, 0.6);
+    margin-top: 18px;
+    letter-spacing: 3px;
+}
+
+/* 底部信息 */
+.footer {
+    position: absolute;
+    bottom: 32px; left: 50%;
+    transform: translateX(-50%);
+    text-align: center;
+    z-index: 10;
+}
+.footer .ggj {
+    font-size: 14px;
+    letter-spacing: 6px;
+    color: rgba(160, 216, 184, 0.35);
+    margin-bottom: 6px;
+}
+.footer .grow {
+    font-size: 12px;
+    letter-spacing: 3px;
+    color: rgba(160, 216, 184, 0.2);
+}
+
+/* 装饰性花朵图标 */
+.deco {
+    position: absolute;
+    z-index: 5;
+    opacity: 0.6;
+}
+.deco-flower {
+    width: 20px; height: 20px;
+    border-radius: 50%;
+    position: relative;
+}
+.deco-flower::before, .deco-flower::after {
+    content: '';
+    position: absolute;
+    border-radius: 50%;
+}
+.deco-flower::before {
+    width: 8px; height: 8px;
+    background: rgba(255,255,255,0.4);
+    top: 6px; left: 6px;
+}
+</style>
+</head>
+<body>
+
+<div class="bg"></div>
+<div class="grid-bg"></div>
+<div class="glow"></div>
+
+<!-- 花朵粒子 -->
+<div class="flowers" id="flowers"></div>
+
+<!-- 标题 -->
+<div class="title-area">
+    <h1>花 满 洪 山</h1>
+    <h2>HONGSHAN IN BLOOM</h2>
+    <div class="tagline">枯潮之后 · 重建漂浮生态</div>
+</div>
+
+<!-- 底部 -->
+<div class="footer">
+    <div class="ggj">GGJ 2026 · GROW THEME</div>
+    <div class="grow">2-4 Players · Tile & Card Game</div>
+</div>
+
+<script>
+// 生成花朵粒子
+const container = document.getElementById('flowers');
+const colors = ['#ff6b8a', '#ffb347', '#60d0a0', '#70b0ff', '#d0a0ff', '#ff7eb3', '#7ec8e3'];
+for (let i = 0; i < 35; i++) {
+    const el = document.createElement('div');
+    el.className = 'flower';
+    const size = 4 + Math.random() * 8;
+    el.style.width = size + 'px';
+    el.style.height = size + 'px';
+    el.style.background = colors[Math.floor(Math.random() * colors.length)];
+    el.style.left = (5 + Math.random() * 90) + '%';
+    el.style.top = (60 + Math.random() * 40) + '%';
+    el.style.animationDuration = (4 + Math.random() * 6) + 's';
+    el.style.animationDelay = (Math.random() * 8) + 's';
+    container.appendChild(el);
+}
+</script>
+</body>
+</html>
