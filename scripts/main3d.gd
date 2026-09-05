@@ -227,7 +227,8 @@ func _setup_scene():
 	for panel_index in 4:
 		var panel = ColorRect.new(); panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		var glass_material = ShaderMaterial.new(); glass_material.shader = UI_FROSTED_GLASS_SHADER
-		glass_material.set_shader_parameter("tint_color", Color(0.96, 0.96, 0.93, 0.42 if panel_index == 0 else (0.44 if panel_index == 3 else 0.40)))
+		var tint_strength = 0.40 if panel_index == 0 else (0.43 if panel_index == 3 else 0.42)
+		glass_material.set_shader_parameter("tint_color", Color(0.76, 0.80, 0.78, tint_strength))
 		glass_material.set_shader_parameter("blur_lod", 3.2 if panel_index < 3 else 3.4)
 		glass_material.set_shader_parameter("blur_radius", 10.0 if panel_index == 0 else 12.0)
 		panel.material = glass_material; ui_glass_root.add_child(panel); ui_glass_panels.append(panel)
@@ -3753,7 +3754,9 @@ func _draw_public_decks(vp: Vector2, font: Font, ink: Color, muted: Color):
 		if hovered_deck_index == i and state == S.DRAW_CARDS: rect.position.y -= 4.0
 		for layer in range(2, 0, -1):
 			ui_ctrl.draw_rect(Rect2(rect.position + Vector2(-layer * 3.0, -layer * 3.0), rect.size), Color(1.0, 1.0, 0.98, 0.90), true)
-		_draw_card_component(cards[i], rect, font, ink, muted, ui_preview_mode == "deck" and ui_preview_index == i, 0.0, false)
+		# The top card uses the same white paper stock as the two visible cards below it.
+		ui_ctrl.draw_rect(rect, Color(1.0, 1.0, 0.98, 0.98), true)
+		_draw_card_component(cards[i], rect.grow(-3.0), font, ink, muted, ui_preview_mode == "deck" and ui_preview_index == i, 0.0, false)
 		if state != S.DRAW_CARDS: ui_ctrl.draw_rect(rect.grow(-4.0), Color(0.20, 0.24, 0.22, 0.16), true)
 		ui_ctrl.draw_string(font, Vector2(rect.position.x, rect.end.y + 18), ["开发", "道路", "天气"][i], HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, 10, ink if state == S.DRAW_CARDS else muted)
 
