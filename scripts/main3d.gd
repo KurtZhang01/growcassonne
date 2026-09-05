@@ -2407,25 +2407,36 @@ func _settle_turn():
 	_record_action("结算 %d朵 (%+d)" % [scores[current_player], scores[current_player] - old_score])
 
 func _emit_settlement_labels(grid_snapshot: Array, flower_snapshot: Array):
+	var delay := 0.0
 	for x in _grid_width():
 		for y in _grid_height():
 			var pos = Vector2i(x, y)
+			var changed := false
 			for player_id in player_count:
 				var gain: int = flowers[x][y][player_id] - flower_snapshot[x][y][player_id]
-				if gain > 0: _float_settlement_label(pos, "+%d" % gain, PLAYER_COLORS[player_id])
+				if gain > 0:
+					_float_settlement_label(pos, "+%d" % gain, PLAYER_COLORS[player_id], delay)
+					changed = true
 			var old_terrain: int = grid_snapshot[x][y]
 			if old_terrain >= 0 and old_terrain != grid[x][y]:
-				_float_settlement_label(pos, "%s > %s" % [TERRAIN_NAMES[old_terrain], TERRAIN_NAMES[grid[x][y]]], Color("#e8c840"))
+				_float_settlement_label(pos, "%s>%s" % [TERRAIN_NAMES[old_terrain].substr(0, 1), TERRAIN_NAMES[grid[x][y]].substr(0, 1)], Color("#e8c840"), delay)
+				changed = true
+			if changed: delay += 0.08
 
-func _float_settlement_label(pos: Vector2i, label_text: String, color: Color):
-	var label = Label3D.new(); label.text = label_text; label.font_size = 24; label.pixel_size = 0.007
-	label.modulate = color; label.outline_size = 6; label.outline_modulate = Color(0.04, 0.06, 0.05, 0.82)
+func _float_settlement_label(pos: Vector2i, label_text: String, color: Color, delay: float = 0.0):
+	var label = Label3D.new(); label.text = label_text; label.font_size = 28; label.pixel_size = 0.005
+	label.modulate = color; label.outline_size = 8; label.outline_modulate = Color(0.04, 0.06, 0.05, 0.85)
 	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED; label.no_depth_test = true
-	label.position = _world(pos) + Vector3(randf_range(-0.14, 0.14), 0.54, 0)
+	label.render_priority = 90
+	label.position = _world(pos) + Vector3(randf_range(-0.30, 0.30), 0.54 + randf_range(0, 0.12), 0)
+	label.modulate.a = 0.0  # 先隐藏
 	settle_fx_root.add_child(label)
-	var tween = create_tween().set_parallel(true)
-	tween.tween_property(label, "position:y", label.position.y + 0.62, 2.0).set_trans(Tween.TRANS_SINE)
-	tween.tween_property(label, "modulate:a", 0.0, 0.8).set_delay(1.1)
+	var tween = create_tween()
+	tween.tween_interval(delay)
+	tween.tween_property(label, "modulate:a", 1.0, 0.01)
+	tween.set_parallel(true)
+	tween.tween_property(label, "position:y", label.position.y + 0.80, 3.0).set_trans(Tween.TRANS_SINE)
+	tween.tween_property(label, "modulate:a", 0.0, 3.0).set_delay(1.5)
 	tween.chain().tween_callback(label.queue_free)
 
 func _tick_weather():
