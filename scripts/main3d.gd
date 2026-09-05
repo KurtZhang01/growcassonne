@@ -3177,7 +3177,9 @@ func _draw_ui():
 	var interface_scale = _ui_scale(screen_size)
 	ui_ctrl.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE * interface_scale)
 	var vp = screen_size / interface_scale
-	var ux = vp.x - 320.0; var uy = 30.0
+	var panel_width = clampf(vp.x - 40.0, 140.0, 270.0)
+	var ux = maxf(20.0, vp.x - panel_width - 20.0); var uy = 50.0
+	var content_width = maxf(1.0, panel_width - 24.0)
 	var glass = Color(0.96, 0.99, 0.96, 0.48)
 	var glass_strong = Color(1.00, 1.00, 0.98, 0.58)
 	var glass_soft = Color(0.86, 0.95, 0.92, 0.38)
@@ -3190,34 +3192,40 @@ func _draw_ui():
 
 	_draw_top_info_bar(vp, font, ink, muted)
 	var pcol = PLAYER_COLORS[current_player]
-	_draw_glass_card(Rect2(ux, uy, 270, 54), glass_strong, pcol.lightened(0.10))
+	_draw_glass_card(Rect2(ux, uy, panel_width, 54), glass_strong, pcol.lightened(0.10))
 	var st := "抽牌 %d / 3" % (3 - draws_remaining) if state == S.DRAW_CARDS else "出牌阶段"
 	ui_ctrl.draw_circle(Vector2(ux + 24, uy + 27), 8, pcol)
-	ui_ctrl.draw_string(font, Vector2(ux + 42, uy + 23), PLAYER_NAMES[current_player], HORIZONTAL_ALIGNMENT_LEFT, -1, 15, pcol.darkened(0.16))
-	ui_ctrl.draw_string(font, Vector2(ux + 128, uy + 23), st, HORIZONTAL_ALIGNMENT_LEFT, -1, 18, ink)
+	var header_text_width = maxf(1.0, content_width - 30.0)
+	var player_width = minf(78.0, header_text_width * 0.42)
+	_draw_fitted_text(PLAYER_NAMES[current_player], Rect2(ux + 42, uy + 13, player_width, 24), font, 15, pcol.darkened(0.16))
+	_draw_fitted_text(st, Rect2(ux + 48 + player_width, uy + 11, maxf(1.0, header_text_width - player_width - 6.0), 26), font, 18, ink)
 
 	var sy = uy + 70
-	_draw_glass_card(Rect2(ux, sy - 6, 270, 225), glass, glass_line)
-	ui_ctrl.draw_string(font, Vector2(ux + 12, sy + 2), "守育进度", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, muted)
-	ui_ctrl.draw_string(font, Vector2(ux + 12, sy + 27), "%d / %d" % [turns_played + 1, total_turns], HORIZONTAL_ALIGNMENT_LEFT, -1, 22, ink)
+	_draw_glass_card(Rect2(ux, sy - 6, panel_width, 225), glass, glass_line)
+	_draw_fitted_text("守育进度", Rect2(ux + 12, sy - 8, content_width, 18), font, 13, muted)
+	_draw_fitted_text("%d / %d" % [turns_played + 1, total_turns], Rect2(ux + 12, sy + 10, content_width, 26), font, 22, ink)
 	var bp = float(turns_played) / total_turns
-	ui_ctrl.draw_rect(Rect2(ux + 12, sy + 40, 246, 8), Color(1.0, 1.0, 1.0, 0.38), 0, true, 4.0)
-	ui_ctrl.draw_rect(Rect2(ux + 12, sy + 40, 246 * bp, 8), pcol, 0, true, 4.0)
+	ui_ctrl.draw_rect(Rect2(ux + 12, sy + 40, content_width, 8), Color(1.0, 1.0, 1.0, 0.38), 0, true, 4.0)
+	ui_ctrl.draw_rect(Rect2(ux + 12, sy + 40, content_width * bp, 8), pcol, 0, true, 4.0)
 
-	ui_ctrl.draw_string(font, Vector2(ux + 12, sy + 70), "播种卡", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, muted)
-	ui_ctrl.draw_string(font, Vector2(ux + 54, sy + 71), str(seeds[current_player]), HORIZONTAL_ALIGNMENT_LEFT, -1, 20, ink)
-	ui_ctrl.draw_string(font, Vector2(ux + 120, sy + 70), "花朵总数", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, muted)
+	var seed_column_width = minf(100.0, content_width * 0.42)
+	_draw_fitted_text("播种卡 %s" % str(seeds[current_player]), Rect2(ux + 12, sy + 57, seed_column_width, 22), font, 13, muted)
+	_draw_fitted_text("花朵总数", Rect2(ux + 18 + seed_column_width, sy + 57, maxf(1.0, content_width - seed_column_width - 6.0), 22), font, 13, muted)
+	var name_width = clampf(content_width * 0.24, 34.0, 60.0)
+	var score_width = clampf(content_width * 0.16, 24.0, 50.0)
+	var bar_width = maxf(8.0, content_width - name_width - score_width - 12.0)
 	for i in player_count:
 		var row_y: float = sy + 92 + float(ranking_y.get(i, i * 30.0))
 		var amount: float = float(ranking_values.get(i, scores[i]))
 		var maximum: float = maxf(float(scores.max()), 1.0)
-		ui_ctrl.draw_string(font, Vector2(ux + 12, row_y), PLAYER_NAMES[i], HORIZONTAL_ALIGNMENT_LEFT, 60, 12, PLAYER_COLORS[i])
-		ui_ctrl.draw_rect(Rect2(ux + 76, row_y - 10, 125, 10), Color(0.2, 0.3, 0.25, 0.12))
-		ui_ctrl.draw_rect(Rect2(ux + 76, row_y - 10, 125 * clampf(amount / maximum, 0.0, 1.0), 10), PLAYER_COLORS[i])
-		_draw_fitted_text(str(roundi(amount)), Rect2(ux + 207, row_y - 14, 50, 18), font, 13, ink)
+		_draw_fitted_text(PLAYER_NAMES[i], Rect2(ux + 12, row_y - 14, name_width, 18), font, 12, PLAYER_COLORS[i])
+		var bar_x = ux + 18 + name_width
+		ui_ctrl.draw_rect(Rect2(bar_x, row_y - 10, bar_width, 10), Color(0.2, 0.3, 0.25, 0.12))
+		ui_ctrl.draw_rect(Rect2(bar_x, row_y - 10, bar_width * clampf(amount / maximum, 0.0, 1.0), 10), PLAYER_COLORS[i])
+		_draw_fitted_text(str(roundi(amount)), Rect2(bar_x + bar_width + 6, row_y - 14, score_width, 18), font, 13, ink)
 
 	var wy = sy + 243
-	_draw_glass_card(Rect2(ux, wy - 8, 270, 62), glass_soft, glass_line)
+	_draw_glass_card(Rect2(ux, wy - 8, panel_width, 62), glass_soft, glass_line)
 	var weather_text := "天气："
 	if active_weather.is_empty() and rainbow_turns <= 0:
 		weather_text += "平稳"
@@ -3225,14 +3233,17 @@ func _draw_ui():
 		for weather in active_weather.keys():
 			weather_text += "%s%d " % [weather, active_weather[weather]]
 		if rainbow_turns > 0: weather_text += "彩虹 "
-	_draw_fitted_text(weather_text, Rect2(ux + 12, wy - 10, 246, 22), font, 13, ink)
-	_draw_fitted_text(last_settlement, Rect2(ux + 12, wy + 15, 246, 22), font, 12, muted)
-	ui_ctrl.draw_string(font, Vector2(ux + 12, wy + 82), "最近操作", HORIZONTAL_ALIGNMENT_LEFT, 246, 13, ink)
-	for index in action_history.size():
-		_draw_fitted_text(action_history[index], Rect2(ux + 12, wy + 92 + index * 24, 246, 22), font, 12, _player_text_color(action_history[index], muted))
+	_draw_fitted_text(weather_text, Rect2(ux + 12, wy - 10, content_width, 22), font, 13, ink)
+	_draw_fitted_text(last_settlement, Rect2(ux + 12, wy + 15, content_width, 22), font, 12, muted)
+	_draw_fitted_text("最近操作", Rect2(ux + 12, wy + 66, content_width, 20), font, 13, ink)
+	var history_top = wy + 92.0
+	var history_bottom = vp.y - 62.0
+	var visible_history_count = mini(action_history.size(), maxi(0, floori((history_bottom - history_top) / 24.0)))
+	for index in visible_history_count:
+		_draw_fitted_text(action_history[index], Rect2(ux + 12, history_top + index * 24, content_width, 22), font, 12, _player_text_color(action_history[index], muted))
 
-	ui_ctrl.draw_line(Vector2(ux + 4, vp.y - 55), Vector2(ux + 266, vp.y - 55), Color(1.0, 1.0, 1.0, 0.28), 1.0)
-	ui_ctrl.draw_string(font, Vector2(ux + 12, vp.y - 36), "滚轮缩放 · 中键平移 · R 重开", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, muted)
+	ui_ctrl.draw_line(Vector2(ux + 4, vp.y - 55), Vector2(ux + panel_width - 4, vp.y - 55), Color(1.0, 1.0, 1.0, 0.28), 1.0)
+	_draw_fitted_text("滚轮缩放 · 中键平移 · R 重开", Rect2(ux + 12, vp.y - 48, content_width, 22), font, 12, muted)
 	_draw_public_decks(font, ink, muted)
 	_draw_develop_preview_panel(vp, font, ink, muted)
 	_draw_bottom_hand(vp, font, ink, muted)
