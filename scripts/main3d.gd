@@ -3152,6 +3152,11 @@ func _process(delta):
 	var play_aspect = maxf(viewport_size.x / maxf(viewport_size.y, 1.0), 0.35)
 	var camera_fit = maxf(1.0, 1.05 / play_aspect)
 
+	# 标题状态下不覆盖相机设置
+	if state == S.TITLE:
+		ui_ctrl.queue_redraw()
+		return
+
 	# The world fills the viewport; interface panels float above it.
 	cam_zoom = lerp(cam_zoom, cam_zoom_target, delta * 10.0)
 	camera.size = CAM_BASE_SIZE * camera_fit / cam_zoom
