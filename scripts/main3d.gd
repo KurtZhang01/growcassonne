@@ -21,7 +21,7 @@ const TERRAIN_TOP := [
 	Color("#c8944e"),  # DESERT
 	Color("#c7352e"),  # PAVILION
 	Color("#737a75"),  # MOUNTAIN
-	Color(0.85, 0.95, 1.0, 0.20),  # GAP
+	Color("#8a8f8d"),  # GAP
 ]
 const TERRAIN_MID := [
 	Color("#40793a"),
@@ -30,7 +30,7 @@ const TERRAIN_MID := [
 	Color("#9f703a"),
 	Color("#8f2427"),
 	Color("#565d59"),
-	Color(0.62, 0.76, 0.80, 0.18),
+	Color("#676d6a"),
 ]
 const TERRAIN_BOT := [
 	Color("#29472c"),
@@ -39,7 +39,7 @@ const TERRAIN_BOT := [
 	Color("#69462d"),
 	Color("#5a1c21"),
 	Color("#3f4542"),
-	Color(0.36, 0.50, 0.54, 0.14),
+	Color("#454a48"),
 ]
 const TERRAIN_NAMES := ["草地", "水域", "森林", "荒漠", "建筑", "山体", "缺口"]
 const TERRAIN_CAPACITY := [50, 0, 100, 10, 0, 0, 0]
@@ -905,9 +905,8 @@ func _random_road_mask() -> int:
 func _spawn_tile(pos: Vector2i, terr: int, animate: bool, road_mask: int = 0):
 	var root = Node3D.new(); root.position = _world(pos)
 	grid_root.add_child(root); tile_nodes[pos.x][pos.y] = root
-	if terr != T_GAP:
-		_spawn_island_base(root, terr)
-		_spawn_merge_fills(root, terr, pos)
+	_spawn_island_base(root, terr)
+	_spawn_merge_fills(root, terr, pos)
 
 	# --- Top surface with terrain-specific shape ---
 	match terr:
@@ -922,8 +921,7 @@ func _spawn_tile(pos: Vector2i, terr: int, animate: bool, road_mask: int = 0):
 		5: _tile_mountain_surface(root)
 		6: _tile_gap_surface(root)
 
-	if terr != T_GAP:
-		_spawn_edge_trim(root, terr, pos)
+	_spawn_edge_trim(root, terr, pos)
 
 	# --- Decorations ---
 	_spawn_decor(terr, root, road_mask)
@@ -972,7 +970,7 @@ func _spawn_edge_trim(root: Node3D, terr: int, pos: Vector2i):
 		root.add_child(trim)
 
 func _rebuild_edge_trim(pos: Vector2i):
-	if not _in_bounds(pos) or grid[pos.x][pos.y] < 0 or grid[pos.x][pos.y] == T_GAP: return
+	if not _in_bounds(pos) or grid[pos.x][pos.y] < 0: return
 	var root = tile_nodes[pos.x][pos.y]
 	if not is_instance_valid(root): return
 	for child in root.get_children():
@@ -1048,7 +1046,7 @@ func _spawn_merge_fills(root: Node3D, terr: int, pos: Vector2i):
 			cf.set_meta("merge_fill", true); root.add_child(cf)
 
 func _rebuild_merge_fills(pos: Vector2i):
-	if not _in_bounds(pos) or grid[pos.x][pos.y] < 0 or grid[pos.x][pos.y] == T_GAP: return
+	if not _in_bounds(pos) or grid[pos.x][pos.y] < 0: return
 	var root = tile_nodes[pos.x][pos.y]
 	if not is_instance_valid(root): return
 	for child in root.get_children():
@@ -1304,30 +1302,22 @@ func _tile_mountain_surface(root: Node3D):
 			snow.position = rock.position + Vector3(0, rm.height * 0.48, 0); root.add_child(snow)
 
 func _tile_gap_surface(root: Node3D):
-	var gap_material = StandardMaterial3D.new()
-	gap_material.albedo_color = Color(0.95, 0.98, 1.0, 0.22)
-	gap_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	gap_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	var layers = [
-		[Vector3(1.06, 0.025, 1.06), 0.145],
-		[Vector3(0.88, 0.025, 0.88), 0.105],
-		[Vector3(0.56, 0.030, 0.56), 0.060],
-	]
-	for layer_data in layers:
-		var layer = MeshInstance3D.new(); var layer_mesh = BoxMesh.new()
-		layer_mesh.size = layer_data[0]; layer.mesh = layer_mesh
-		layer.material_override = gap_material; layer.position.y = layer_data[1]
-		root.add_child(layer)
+	var inset_material = StandardMaterial3D.new()
+	inset_material.albedo_color = TERRAIN_MID[T_GAP].darkened(0.08)
+	inset_material.roughness = 0.96
+	var inset = MeshInstance3D.new(); var inset_mesh = BoxMesh.new()
+	inset_mesh.size = Vector3(0.78, 0.025, 0.78); inset.mesh = inset_mesh
+	inset.material_override = inset_material; inset.position.y = 0.158
+	root.add_child(inset)
 	var ring_material = StandardMaterial3D.new()
-	ring_material.albedo_color = Color(0.95, 0.98, 1.0, 0.38)
-	ring_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	ring_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	ring_material.albedo_color = TERRAIN_TOP[T_GAP].lightened(0.12)
+	ring_material.roughness = 0.84
 	for side in 4:
 		var edge = MeshInstance3D.new(); var mesh = BoxMesh.new()
 		var horizontal = side == 0 or side == 2
-		mesh.size = Vector3(0.88 if horizontal else 0.025, 0.018, 0.025 if horizontal else 0.88)
+		mesh.size = Vector3(1.02 if horizontal else 0.045, 0.035, 0.045 if horizontal else 1.02)
 		edge.mesh = mesh; edge.material_override = ring_material
-		edge.position = Vector3(DIRS[side].x * 0.44, 0.16, DIRS[side].y * 0.44)
+		edge.position = Vector3(DIRS[side].x * 0.49, 0.17, DIRS[side].y * 0.49)
 		root.add_child(edge)
 
 func _clear_tile_selection():
@@ -3563,7 +3553,7 @@ func _rebuild_selected_tile_preview(pos: Vector2i):
 	card_preview_signature = signature
 	for child in card_preview_root.get_children(): child.free()
 	var terrain: int = grid[pos.x][pos.y]; var root = Node3D.new(); card_preview_root.add_child(root)
-	if terrain != T_GAP: _spawn_island_base(root, terrain)
+	_spawn_island_base(root, terrain)
 	match terrain:
 		T_GRASS: _tile_grass_surface(root, roads[pos.x][pos.y])
 		T_WATER: _tile_water_surface(root, roads[pos.x][pos.y])
@@ -3613,7 +3603,7 @@ func _rebuild_card_model_preview(card: Dictionary):
 	card_preview_camera.look_at_from_position(target + Vector3(3.2, 3.4, 4.2), target)
 
 func _spawn_exact_preview_tile(root: Node3D, terrain: int, card: Dictionary, index: int):
-	if terrain != T_GAP: _spawn_island_base(root, terrain)
+	_spawn_island_base(root, terrain)
 	match terrain:
 		T_GRASS: _tile_grass_surface(root, 0)
 		T_WATER: _tile_water_surface(root, 0)
