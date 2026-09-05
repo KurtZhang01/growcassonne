@@ -164,6 +164,7 @@ var flower_chart_glass: ColorRect
 
 func _ready():
 	_setup_scene()
+	_setup_title_world()
 	state = S.TITLE
 
 # ================================================================
@@ -308,6 +309,42 @@ func _setup_card_preview_viewport():
 	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
 	var world_env = WorldEnvironment.new(); world_env.environment = env
 	card_preview_viewport.add_child(world_env)
+
+func _setup_title_world():
+	# 创建标题场景的3D地块世界
+	_init_grid()
+	# GGJ2026 文字用水域拼，其余用山体/草地填充
+	var text_cells = _ggj2026_cells()
+	var building_cells = _title_building_cells()
+	var title_w = 18; var title_h = 14
+	var ox = -(title_w / 2); var oy = -(title_h / 2)
+	for lx in title_w:
+		for ly in title_h:
+			var gx = GRID_SIZE / 2 + ox + lx
+			var gy = GRID_SIZE / 2 + oy + ly
+			if gx < 0 or gx >= GRID_SIZE or gy < 0 or gy >= GRID_SIZE: continue
+			var pos = Vector2i(gx, gy)
+			if building_cells.has(Vector2i(lx, ly)):
+				_force_tile(pos, T_BUILDING, false, 0)
+			elif text_cells.has(Vector2i(lx, ly)):
+				_force_tile(pos, T_WATER, false, 0)
+			elif randf() < 0.2:
+				_force_tile(pos, T_GRASS, false, 0)
+			else:
+				_force_tile(pos, T_MOUNTAIN, false, 0)
+	# 建筑地块渲染建筑模型
+	for cell in building_cells:
+		var gx = GRID_SIZE / 2 + ox + cell.x
+		var gy = GRID_SIZE / 2 + oy + cell.y
+		var pos = Vector2i(gx, gy)
+		if _in_bounds(pos) and grid[pos.x][pos.y] == T_BUILDING:
+			var root = tile_nodes[pos.x][pos.y]
+			if root: _tile_pavilion_surface(root, 0)
+	# 调整相机看向棋盘中心
+	var center_world = _world(Vector2i(GRID_SIZE / 2, GRID_SIZE / 2))
+	camera.position = center_world + Vector3(8, 14, 10)
+	camera.rotation_degrees = Vector3(-42, 42, 0)
+	camera.size = 16
 
 func _setup_sky_world():
 	sky_root = Node3D.new(); sky_root.name = "LivingSky"; add_child(sky_root)
@@ -4254,20 +4291,19 @@ func _draw_repeating_card_pattern(rect: Rect2, kind: String, color: Color):
 					ui_ctrl.draw_circle(p + Vector2(4, 0.5), 2.5, pattern_color)
 
 func _draw_title(vp: Vector2, font: Font):
-	_draw_title_water_field(vp)
-	ui_ctrl.draw_rect(Rect2(0, 0, vp.x, vp.y), Color(0.05, 0.10, 0.09, 0.12), true)
+	# 3D地块世界已由 _setup_title_world() 创建，这里只画UI叠加层
+	ui_ctrl.draw_rect(Rect2(0, 0, vp.x, vp.y), Color(0.02, 0.06, 0.05, 0.15), true)
 
-	# 标题（上部）
-	_draw_centered_outlined_text("花 满 洪 山", Vector2(vp.x * 0.5, vp.y * 0.15), font, 72, Color("#fff8e8"), Color("#254940"), 8)
-	_draw_centered_outlined_text("H O N G S H A N   I N   B L O O M", Vector2(vp.x * 0.5, vp.y * 0.15 + 57), font, 18, Color("#f3cf8d"), Color("#254940"), 4)
+	# 标题（上部居中）
+	_draw_centered_outlined_text("花 满 洪 山", Vector2(vp.x * 0.5, vp.y * 0.13), font, 72, Color("#fff8e8"), Color("#254940"), 8)
+	_draw_centered_outlined_text("H O N G S H A N   I N   B L O O M", Vector2(vp.x * 0.5, vp.y * 0.13 + 57), font, 18, Color("#f3cf8d"), Color("#254940"), 4)
 
 	# 玩家选择（中下部）
 	for index in 3:
-		_draw_title_player_button(index, _title_player_button_rect(index + 1, vp), font)
+		_draw_title_player_button(index, _title_player_button_rect(index, vp), font)
 
 	# 底部说明
-	_draw_centered_outlined_text("武汉洪山区主题", Vector2(vp.x * 0.5, vp.y * 0.88), font, 15, Color(1, 1, 1, 0.45), Color(0, 0, 0, 0.3), 3)
-	_draw_centered_outlined_text("GGJ 2026 · GROW Theme", Vector2(vp.x * 0.5, vp.y * 0.92), font, 13, Color(1, 1, 1, 0.3), Color(0, 0, 0, 0.2), 2)
+	_draw_centered_outlined_text("武汉洪山区主题 · GROW Theme", Vector2(vp.x * 0.5, vp.y * 0.92), font, 14, Color(1, 1, 1, 0.40), Color(0, 0, 0, 0.25), 3)
 
 func _draw_centered_outlined_text(value: String, center: Vector2, font: Font, size: int, color: Color, outline: Color, outline_size: int):
 	var text_size = font.get_string_size(value, HORIZONTAL_ALIGNMENT_LEFT, -1, size)
