@@ -222,6 +222,14 @@ func _setup_card_preview_viewport():
 	card_preview_viewport.add_child(key_light)
 	var fill_light = DirectionalLight3D.new(); fill_light.rotation_degrees = Vector3(30, 150, 0); fill_light.light_energy = 0.45
 	card_preview_viewport.add_child(fill_light)
+	# 环境光 + 天空
+	var env = Environment.new()
+	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+	env.ambient_light_color = Color("#c8e0d4")
+	env.ambient_light_energy = 0.8
+	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
+	var world_env = WorldEnvironment.new(); world_env.environment = env
+	card_preview_viewport.add_child(world_env)
 
 func _setup_sky_world():
 	sky_root = Node3D.new(); sky_root.name = "LivingSky"; add_child(sky_root)
@@ -3409,16 +3417,35 @@ func _draw_top_info_bar(vp: Vector2, font: Font, ink: Color, muted: Color):
 		ui_ctrl.draw_string(font, Vector2(x, bar_y + 22), wt.strip_edges(), HORIZONTAL_ALIGNMENT_LEFT, 200, 12, Color("#d4c080"))
 
 func _draw_public_decks(font: Font, ink: Color, muted: Color):
-	var names = ["开发卡堆", "道路卡堆", "天气卡堆"]
-	var colors = [Color("#a9afb2"), Color("#e8c34f"), Color("#65a9d8")]
+	var names = ["开发卡", "道路卡", "天气卡"]
+	var accents = [Color("#c47a42"), Color("#ae8b55"), Color("#568eb0")]
+	var bases = [Color("#a9afb2"), Color("#e8c34f"), Color("#65a9d8")]
+	var fade_targets = [Color("#f0d0b0"), Color(1.0, 1.0, 0.97, 1.0), Color("#d0e4f4")]
 	for i in 3:
 		var rect = _deck_rect(i)
-		_draw_glass_card(Rect2(rect.position + Vector2(4, 5), rect.size), colors[i].darkened(0.22), Color(1, 1, 1, 0.35), 10.0)
-		_draw_glass_card(rect, colors[i], colors[i].darkened(0.28), 10.0)
+		var accent = accents[i]; var base = bases[i]; var fade = fade_targets[i]
+		# 投影
+		ui_ctrl.draw_rect(Rect2(rect.position + Vector2(4, 6), rect.size), Color(0, 0, 0, 0.20), true)
+		# 渐变底色（与手牌风格一致，从上到下变淡）
+		var inner = rect
+		var rows = 16
+		for row in rows:
+			var t = float(row) / float(rows - 1)
+			var band_color: Color
+			if t < 0.45:
+				band_color = accent.lerp(fade, t / 0.45)
+			else:
+				band_color = fade.lerp(Color(1.0, 1.0, 0.97, 1.0), (t - 0.45) / 0.55)
+			var band_y = inner.position.y + inner.size.y * t
+			var next_y = inner.position.y + inner.size.y * float(row + 1) / float(rows)
+			ui_ctrl.draw_rect(Rect2(inner.position.x, band_y, inner.size.x, next_y - band_y + 1.0), band_color, true)
+		# 底纹
 		var deck_kind = ["develop", "road", "weather"][i]
-		_draw_repeating_card_pattern(rect, deck_kind, colors[i].darkened(0.18))
-		ui_ctrl.draw_string(font, rect.position + Vector2(10, 24), names[i], HORIZONTAL_ALIGNMENT_LEFT, rect.size.x - 20, 13, ink)
-		ui_ctrl.draw_string(font, rect.position + Vector2(10, 118), "点击抽取", HORIZONTAL_ALIGNMENT_CENTER, rect.size.x - 20, 11, ink if state == S.DRAW_CARDS else muted)
+		_draw_repeating_card_pattern(inner, deck_kind, Color(1, 1, 1, 0.35))
+		# 卡堆名称（居中）
+		ui_ctrl.draw_string(font, rect.position + Vector2(0, rect.size.y * 0.42), names[i], HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, 15, Color(0.15, 0.15, 0.15, 0.85))
+		# 点击抽取（卡牌下方）
+		ui_ctrl.draw_string(font, rect.position + Vector2(0, rect.size.y + 6), "点击抽取", HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, 11, ink if state == S.DRAW_CARDS else muted)
 	if state == S.DRAW_CARDS:
 		ui_ctrl.draw_string(font, Vector2(26, 180), "本回合抽牌  %d / 3" % (3 - draws_remaining), HORIZONTAL_ALIGNMENT_LEFT, 320, 16, ink)
 
