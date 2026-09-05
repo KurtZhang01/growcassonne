@@ -627,6 +627,7 @@ for x in _grid_width():
 | P0 | #14 结算字幕分散+延迟 | 低 |
 | P0 | #15 可放置地块白色呼吸光效+Q/E更新 | 中 |
 | P0 | #16 卡牌使用条件规则文档化 | 低 |
+| P0 | #17 卡牌暗纹裁剪+排列修正 | 低 |
 | P1 | #4 闭合道路奖励播种卡 | 中 |
 | P1 | #7 彩虹位置偏移到地块缝隙 | 低 |
 | P1 | #9 手牌卡牌视觉重设计 | 高 |
@@ -803,3 +804,64 @@ func _can_play_selected_card_at(pos: Vector2i) -> bool:
 ```
 
 已有的 `_can_play_selected_card()` 已包含所有判断逻辑（播种满检测、开发卡山体检测、建筑缺口检测等），无需重复实现。
+
+---
+
+## 17. 卡牌暗纹溢出 + 排列不整齐
+
+### 问题1：暗纹超出卡牌边界
+
+**原因**：`_draw_repeating_card_pattern` 在固定位置绘制图案（line/circle），当卡牌尺寸较小或位置偏移时，图案可能绘制到卡牌rect之外。Godot的 `draw_line`/`draw_circle` 不会自动裁剪。
+
+**方案**：在绘制暗纹前设置裁剪区域：
+
+```gdscript
+func _draw_repeating_card_pattern(rect: Rect2, kind: String, color: Color):
+    # 裁剪到卡牌区域内
+    ui_ctrl.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+    # 使用 clip_rect 限制绘制区域（Godot 4 的 Control 没有原生 clip，
+    # 但可以通过手动检查坐标来避免越界）
+    
+    for row in 5:
+        var center = rect.position + Vector2(16 + (row % 2) * 31, 43 + row * 22)
+        for column in 2:
+            var p = center + Vector2(column * 55, -column * 13)
+            # 检查图案中心是否在卡牌范围内
+            if not rect.has_point(p): continue
+            # ... 原有绘制逻辑 ...
+```
+
+**更简洁的方案**：缩小暗纹的行数和偏移，确保所有图案都在rect内：
+
+```gdscript
+func _draw_repeating_card_pattern(rect: Rect2, kind: String, color: Color):
+    for row in 4:  # 5行→4行，避免底部溢出
+        var center = rect.position + Vector2(12 + (row % 2) * 25, 40 + row * 24)
+        for column in 2:
+            var p = center + Vector2(column * 42, -column * 10)  # 缩小偏移
+            # ... 绘制逻辑 ...
+```
+
+### 问题2：手牌排列不整齐
+
+**原因**：`_bottom_card_rect` 的step计算在卡牌多时过度压缩（step最小值无下限），导致卡牌完全重叠。
+
+**方案**：限制最小step，超出空间时居中排列并允许溢出滚动：
+
+```gdscript
+func _bottom_card_rect(index: int, count: int, vp: Vector2) -> Rect2:
+    var card_size = Vector2(100, 145)  # 略微缩小卡牌
+    var available = maxf(250.0, vp.x - UI_SIDEBAR_WIDTH - 50.0)
+    var min_step = 32.0  # 最小间距，保证卡牌不完全重叠
+    var step = maxf(min_step, minf(65.0, (available - card_size.x) / maxf(float(count - 1), 1.0)))
+    var total_width = card_size.x + step * maxf(float(count - 1), 0.0)
+    var start_x = maxf(20.0, (available - total_width) * 0.5 + 20.0)
+    var y = vp.y - 105.0
+    if index == hovered_card_index or index == selected_card: y -= 25.0
+    return Rect2(Vector2(start_x + index * step, y), card_size)
+```
+
+**关键改动**：
+1. `min_step = 32.0` — 保证卡牌之间至少有32px间距，不完全重叠
+2. 卡牌尺寸从112×158缩小到100×145 — 给排列更多空间
+3. `start_x` 加 `maxf(20.0, ...)` — 防止左侧溢出
