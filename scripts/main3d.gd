@@ -207,7 +207,7 @@ func _setup_scene():
 
 func _setup_card_preview_viewport():
 	card_preview_viewport = SubViewport.new()
-	card_preview_viewport.size = Vector2i(300, 190)
+	card_preview_viewport.size = Vector2i(640, 400)
 	card_preview_viewport.transparent_bg = true
 	card_preview_viewport.own_world_3d = true
 	card_preview_viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
@@ -3458,21 +3458,24 @@ func _draw_hand_card_face(card: Dictionary, rect: Rect2, font: Font, ink: Color,
 	# 3. 内容区域（边框内部）
 	var inner = Rect2(rect.position + Vector2(border_w, border_w), rect.size - Vector2(border_w * 2, border_w * 2))
 	ui_ctrl.draw_rect(inner, Color(1.0, 1.0, 0.98, 0.96), true)
-	# 4. 连续渐变：accent(顶) → base → 目标淡色(中下) → 白(底)
+	# 4. 连续渐变：accent(顶) → 目标淡色(中) → 白(底)
+	# 开发卡跳过灰色base，直接accent→皮肤色→白
 	var fade_target := Color(1.0, 1.0, 0.97, 1.0)  # 默认白色
+	var grad_start := accent
 	match card["kind"]:
-		"develop", "building_develop": fade_target = Color("#f0d0b0")  # 皮肤色
-		"weather": fade_target = Color("#d0e4f4")  # 淡蓝色
+		"develop", "building_develop":
+			fade_target = Color("#f0d0b0")  # 皮肤色
+			grad_start = accent.lerp(Color("#d4a070"), 0.3)  # 暖咖啡，不经过灰色
+		"weather":
+			fade_target = Color("#d0e4f4")  # 淡蓝色
 	var rows = 24
 	for row in rows:
 		var t = float(row) / float(rows - 1)
 		var band_color: Color
-		if t < 0.25:
-			band_color = accent.lerp(base, t / 0.25)
-		elif t < 0.50:
-			band_color = base.lerp(fade_target, (t - 0.25) / 0.25)
+		if t < 0.45:
+			band_color = grad_start.lerp(fade_target, t / 0.45)
 		else:
-			band_color = fade_target.lerp(Color(1.0, 1.0, 0.97, 1.0), (t - 0.50) / 0.50)
+			band_color = fade_target.lerp(Color(1.0, 1.0, 0.97, 1.0), (t - 0.45) / 0.55)
 		var band_y = inner.position.y + inner.size.y * t
 		var next_y = inner.position.y + inner.size.y * float(row + 1) / float(rows)
 		ui_ctrl.draw_rect(Rect2(inner.position.x, band_y, inner.size.x, next_y - band_y + 1.0), band_color, true)
@@ -3580,8 +3583,8 @@ func _draw_building_card_model(center: Vector2, level: int):
 func _draw_weather_card_forecast(center: Vector2, weather: String):
 	match weather:
 		"台风":
-			for ring in 3: ui_ctrl.draw_arc(center, 10.0 + ring * 7.0, -2.5 + ring * 0.28, 2.1 + ring * 0.18, 20, Color("#dcecf5"), 3.0)
-			for drop in 4: ui_ctrl.draw_line(center + Vector2(-24 + drop * 15, 24), center + Vector2(-30 + drop * 15, 36), Color("#73b9df"), 2.5)
+			for ring in 3: ui_ctrl.draw_arc(center, 10.0 + ring * 7.0, -2.5 + ring * 0.28, 2.1 + ring * 0.18, 20, Color.WHITE, 3.0)
+			for drop in 4: ui_ctrl.draw_line(center + Vector2(-24 + drop * 15, 24), center + Vector2(-30 + drop * 15, 36), Color.WHITE, 3.0)
 		"沙尘暴":
 			for line_index in 4:
 				var y = center.y - 19 + line_index * 13
