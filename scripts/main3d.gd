@@ -109,6 +109,10 @@ var sky_root: Node3D; var drifting_clouds := []; var sky_motes := []
 var falling_leaves := []; var animated_grass_patches := []
 var tile_select_root: Node3D; var selected_tile := Vector2i(-1, -1)
 var aura_root: Node3D; var settle_fx_root: Node3D; var weather_fx_root: Node3D
+var action_history: Array[String] = []
+var ranking_order: Array[int] = []
+var ranking_y: Dictionary = {}
+var ranking_values: Dictionary = {}
 
 func _ready():
 	_setup_scene()
@@ -599,7 +603,7 @@ func _refresh_building_auras():
 			if boosted.has(neighbor): continue
 			var border = MeshInstance3D.new(); var mesh = BoxMesh.new()
 			var horizontal = side == 0 or side == 2
-			mesh.size = Vector3(1.04 if horizontal else 0.024, 0.20, 0.024 if horizontal else 1.04)
+			mesh.size = Vector3(TILE_SPACING if horizontal else 0.045, 0.32, 0.045 if horizontal else TILE_SPACING)
 			border.mesh = mesh
 			var material = StandardMaterial3D.new()
 			material.albedo_color = Color(0.96, 0.76, 0.25, 0.24)
@@ -608,7 +612,7 @@ func _refresh_building_auras():
 			material.emission_energy_multiplier = 0.45
 			material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 			border.material_override = material
-			border.position = _world(pos) + Vector3(DIRS[side].x * 0.515, 0.40, DIRS[side].y * 0.515)
+			border.position = _world(pos) + Vector3(DIRS[side].x * TILE_SPACING * 0.5, 0.40, DIRS[side].y * TILE_SPACING * 0.5)
 			aura_root.add_child(border)
 			var tween = create_tween().set_loops()
 			tween.tween_property(material, "emission_energy_multiplier", 0.85, 1.2).set_trans(Tween.TRANS_SINE)
@@ -888,10 +892,12 @@ func _spawn_tile(pos: Vector2i, terr: int, animate: bool, road_mask: int = 0):
 		tw.tween_property(root, "scale", Vector3(1, 1, 1), 0.4).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_ELASTIC)
 
 func _spawn_island_base(root: Node3D, terr: int):
+	# The continuous cap covers both seams and four-cell junctions.
+	_building_box(root, Vector3(TILE_SPACING, 0.06, TILE_SPACING), Vector3(0, 0.12, 0), edge_materials[terr])
 	var layers = [
-		[Vector3(1.06, 0.13, 1.06), 0.025, TERRAIN_MID[terr]],
-		[Vector3(0.88, 0.12, 0.88), -0.095, TERRAIN_BOT[terr]],
-		[Vector3(0.56, 0.16, 0.56), -0.225, TERRAIN_BOT[terr].darkened(0.20)],
+		[Vector3(TILE_SPACING, 0.13, TILE_SPACING), 0.025, TERRAIN_MID[terr]],
+		[Vector3(TILE_SPACING, 0.12, TILE_SPACING), -0.095, TERRAIN_BOT[terr]],
+		[Vector3(TILE_SPACING, 0.16, TILE_SPACING), -0.225, TERRAIN_BOT[terr].darkened(0.20)],
 	]
 	for layer_data in layers:
 		var layer = MeshInstance3D.new(); var mesh = BoxMesh.new()
@@ -914,9 +920,9 @@ func _spawn_edge_trim(root: Node3D, terr: int, pos: Vector2i):
 		if _in_bounds(neighbor) and grid[neighbor.x][neighbor.y] == terr: continue
 		var trim = MeshInstance3D.new(); var mesh = BoxMesh.new()
 		var horizontal = side == 0 or side == 2
-		mesh.size = Vector3(1.10 if horizontal else 0.04, 0.18, 0.04 if horizontal else 1.10)
+		mesh.size = Vector3(TILE_SPACING if horizontal else 0.02, 0.18, 0.02 if horizontal else TILE_SPACING)
 		trim.mesh = mesh; trim.material_override = trim_material
-		trim.position = Vector3(DIRS[side].x * 0.53, 0.09, DIRS[side].y * 0.53)
+		trim.position = Vector3(DIRS[side].x * (TILE_SPACING * 0.5 - 0.01), 0.09, DIRS[side].y * (TILE_SPACING * 0.5 - 0.01))
 		trim.set_meta("edge_trim", true)
 		root.add_child(trim)
 
@@ -1369,11 +1375,9 @@ func _tile_hongshan_tech_surface(root: Node3D, data: Dictionary):
 	# Strong white corner piers and a central spine give the silhouette structure.
 	var tower_height = storeys * 0.118
 	for side in [-1, 1]:
-		var pier_shift = lateral * side * 0.30
-		var pier_size = Vector3(0.045 if along_x else 0.56, tower_height, 0.56 if along_x else 0.045)
-		_building_box(root, pier_size, tower_offset + pier_shift + Vector3(0, 0.44 + tower_height * 0.5 - 0.06, 0), white)
-	var spine_size = Vector3(0.055 if along_x else 0.58, tower_height, 0.58 if along_x else 0.055)
-	_building_box(root, spine_size, tower_offset + Vector3(0, 0.44 + tower_height * 0.5 - 0.06, 0), white)
+		for column in [-1, 0, 1]:
+			var pier_shift: Vector3 = lateral * side * 0.27 + Vector3(direction.x, 0, direction.y) * column * 0.27
+			_building_box(root, Vector3(0.025, tower_height, 0.025), tower_offset + pier_shift + Vector3(0, 0.44 + tower_height * 0.5 - 0.06, 0), white)
 	# A shallow floating crown finishes each tower without a bulky box-shaped roof.
 	var crown_size = Vector3(0.58 if along_x else 0.44, 0.055, 0.44 if along_x else 0.58)
 	_building_box(root, crown_size, tower_offset + Vector3(0, 0.45 + tower_height, 0), white)
@@ -1828,6 +1832,7 @@ func _take_card_from_deck(deck_index: int) -> bool:
 	if state != S.DRAW_CARDS or draws_remaining <= 0: return false
 	current_hand.append(_draw_card_from_deck(deck_index))
 	draws_remaining -= 1
+	_record_action("从%s卡堆抽牌，剩余%d次" % [["开发", "道路", "天气"][deck_index], draws_remaining])
 	_sort_current_hand()
 	if draws_remaining <= 0:
 		state = S.PLAY_CARDS
@@ -1847,6 +1852,7 @@ func _start_player_turn():
 	ui_ctrl.queue_redraw()
 
 func _start_game():
+	action_history.clear(); ranking_order.clear(); ranking_y.clear(); ranking_values.clear()
 	_init_grid()
 	current_player = randi() % player_count; turns_played = 0
 	total_turns = TOTAL_ROUNDS_PER_PLAYER * player_count
@@ -2026,6 +2032,7 @@ func _consume_dragged_card():
 func _finish_card_drag(cell: Vector2i):
 	if not card_armed and not road_drawing: return
 	var card: Dictionary = current_hand[drag_card_index]
+	var before_flowers: int = _flower_total(cell) if _in_bounds(cell) else 0
 	var ok := false
 	if card["kind"] == "road": ok = _apply_road_path(road_drag_cells)
 	elif card["kind"] == "weather": ok = _apply_weather_card(card)
@@ -2036,10 +2043,16 @@ func _finish_card_drag(cell: Vector2i):
 			ok = _add_flowers(cell, current_player, int(card["level"]) * 10)
 			if ok: seeds[current_player] = maxi(0, seeds[current_player] - 1)
 	if ok:
+		if card["kind"] == "seed": last_settlement = "播种增加%d朵" % (_flower_total(cell) - before_flowers)
+		_record_action(last_settlement)
 		_consume_dragged_card(); _calc_all_scores(); _cancel_armed_card()
 	else:
 		dragging_card = false; road_drawing = false; road_drag_cells.clear()
 		_update_card_drag_preview(cell); ui_ctrl.queue_redraw()
+
+func _record_action(message: String):
+	action_history.push_front("%s · %s" % [PLAYER_NAMES[current_player], message])
+	if action_history.size() > 4: action_history.resize(4)
 
 func _apply_pending_develop(anchor: Vector2i, card: Dictionary) -> bool:
 	var cells = _develop_card_cells(anchor, int(card["level"]), piece_rotation)
@@ -2232,12 +2245,16 @@ func _apply_weather_card(card: Dictionary) -> bool:
 
 func _apply_weather_visual(weather: String):
 	for child in weather_fx_root.get_children(): child.free()
+	weather_fx_root.position = Vector3.ZERO
 	var center = _world(Vector2i(_grid_width() / 2, _grid_height() / 2))
+	weather_fx_root.set_meta("weather_center", center)
 	if weather == "台风" or weather == "雨季":
 		_spawn_weather_rain(center, 42 if weather == "台风" else 26, weather == "台风")
 	elif weather == "沙尘暴":
-		_spawn_weather_drift(center, Color(0.88, 0.70, 0.34, 0.55), 48)
+		_spawn_weather_drift(center, Color(0.88, 0.70, 0.34, 0.78), 100)
+		_spawn_weather_bands(center, Color(0.76, 0.57, 0.25, 0.18))
 	elif weather == "旱季":
+		_spawn_weather_bands(center, Color(1.0, 0.78, 0.30, 0.12))
 		var sun = MeshInstance3D.new(); var mesh = SphereMesh.new()
 		mesh.radius = 0.75; mesh.height = 1.5; mesh.radial_segments = 12; mesh.rings = 6; sun.mesh = mesh
 		var material = _soft_material(Color(1.0, 0.84, 0.26, 0.12), 1.3); sun.material_override = material
@@ -2248,11 +2265,19 @@ func _apply_weather_visual(weather: String):
 	else:
 		var rainbow_colors = [Color("#e85b56"), Color("#e99b45"), Color("#ead45d"), Color("#68b978"), Color("#5fb8c7"), Color("#5b78c9"), Color("#a46ab9")]
 		for index in rainbow_colors.size():
-			var band = MeshInstance3D.new(); var mesh = TorusMesh.new()
-			mesh.inner_radius = 1.65 + index * 0.075; mesh.outer_radius = mesh.inner_radius + 0.045
-			mesh.rings = 18; mesh.ring_segments = 28; band.mesh = mesh
-			var material = _soft_material(Color(rainbow_colors[index], 0.24), 0.35); band.material_override = material
-			band.position = center + Vector3(0, 3.0, 0); band.rotation_degrees.x = 90
+			var band = MeshInstance3D.new(); var mesh = ImmediateMesh.new()
+			var radius: float = 3.0 + index * 0.12
+			mesh.surface_begin(Mesh.PRIMITIVE_TRIANGLES)
+			for segment in 48:
+				var a: float = PI * segment / 48.0
+				var b: float = PI * (segment + 1) / 48.0
+				var p = Vector3(cos(a), sin(a), 0)
+				var q = Vector3(cos(b), sin(b), 0)
+				for vertex in [p * radius, q * radius, p * (radius + 0.11), q * radius, q * (radius + 0.11), p * (radius + 0.11)]: mesh.surface_add_vertex(vertex)
+			mesh.surface_end(); band.mesh = mesh
+			var material = _soft_material(Color(rainbow_colors[index], 0.55), 0.35)
+			material.cull_mode = BaseMaterial3D.CULL_DISABLED; band.material_override = material
+			band.position = center + Vector3(0, 1.0, -2.0)
 			weather_fx_root.add_child(band)
 
 func _spawn_weather_rain(center: Vector3, count: int, storm: bool):
@@ -2279,7 +2304,7 @@ func _spawn_weather_drift(center: Vector3, color: Color, count: int):
 	var material = _soft_material(color, 0.08)
 	for grain_index in count:
 		var grain = MeshInstance3D.new(); var mesh = SphereMesh.new()
-		mesh.radius = 0.012; mesh.height = 0.024; mesh.radial_segments = 5; mesh.rings = 3
+		mesh.radius = 0.035; mesh.height = 0.05; mesh.radial_segments = 5; mesh.rings = 3
 		grain.mesh = mesh; grain.material_override = material
 		grain.position = center + Vector3(randf_range(-5.0, 5.0), randf_range(0.2, 2.2), randf_range(-5.0, 5.0))
 		weather_fx_root.add_child(grain)
@@ -2287,7 +2312,19 @@ func _spawn_weather_drift(center: Vector3, color: Color, count: int):
 		tween.tween_property(grain, "position:x", start_x + 7.0, randf_range(1.8, 3.2))
 		tween.tween_property(grain, "position:x", start_x, 0.01)
 
+func _spawn_weather_bands(center: Vector3, color: Color):
+	for index in 7:
+		var band = MeshInstance3D.new(); var mesh = BoxMesh.new()
+		mesh.size = Vector3(5.0, 0.06, 0.65); band.mesh = mesh
+		band.material_override = _soft_material(color)
+		band.position = center + Vector3(-4.0, 0.6 + index * 0.16, -4.0 + index * 1.3)
+		weather_fx_root.add_child(band)
+		var tween = band.create_tween().set_loops()
+		tween.tween_property(band, "position:x", center.x + 4.0, 4.0 + index * 0.2)
+		tween.tween_property(band, "position:x", center.x - 4.0, 0.01)
+
 func _settle_turn():
+	var old_score: int = scores[current_player]
 	var grid_snapshot = grid.duplicate(true)
 	var flower_snapshot = flowers.duplicate(true)
 	_apply_weather_tile_changes()
@@ -2299,6 +2336,7 @@ func _settle_turn():
 	_refresh_all_plants()
 	_refresh_building_auras()
 	_calc_all_scores()
+	_record_action("结算 %d朵 (%+d)" % [scores[current_player], scores[current_player] - old_score])
 
 func _emit_settlement_labels(grid_snapshot: Array, flower_snapshot: Array):
 	for x in _grid_width():
@@ -2701,6 +2739,23 @@ func _process(delta):
 	if flash_timer > 0: flash_timer = max(0, flash_timer - delta * 2.5)
 	_animate_sky_world(delta)
 	_animate_tile_ambience(delta)
+	if weather_fx_root.has_meta("weather_center"):
+		var weather_center: Vector3 = weather_fx_root.get_meta("weather_center")
+		weather_fx_root.position = Vector3(cam_offset.x - weather_center.x, 0, cam_offset.y - weather_center.z)
+	if state != S.TITLE and scores.size() == player_count:
+		if ranking_order.size() != player_count:
+			ranking_order.clear()
+			for pid in player_count: ranking_order.append(pid)
+		# Adjacent swaps preserve the previous order for ties.
+		for iteration in player_count:
+			for rank in range(player_count - 1):
+				if scores[ranking_order[rank]] < scores[ranking_order[rank + 1]]:
+					var swap: int = ranking_order[rank]
+					ranking_order[rank] = ranking_order[rank + 1]; ranking_order[rank + 1] = swap
+		for rank in player_count:
+			var pid: int = ranking_order[rank]
+			ranking_y[pid] = lerpf(float(ranking_y.get(pid, rank * 30.0)), rank * 30.0, minf(delta * 7.0, 1.0))
+			ranking_values[pid] = lerpf(float(ranking_values.get(pid, 0.0)), float(scores[pid]), minf(delta * 7.0, 1.0))
 
 	var viewport_size = get_viewport().get_visible_rect().size
 	var interface_scale = _ui_scale(viewport_size)
@@ -2935,7 +2990,7 @@ func _draw_ui():
 	ui_ctrl.draw_string(font, Vector2(ux + 128, uy + 23), st, HORIZONTAL_ALIGNMENT_LEFT, -1, 18, ink)
 
 	var sy = uy + 70
-	_draw_glass_card(Rect2(ux, sy - 6, 270, 112), glass, glass_line)
+	_draw_glass_card(Rect2(ux, sy - 6, 270, 225), glass, glass_line)
 	ui_ctrl.draw_string(font, Vector2(ux + 12, sy + 2), "守育进度", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, muted)
 	ui_ctrl.draw_string(font, Vector2(ux + 12, sy + 27), "%d / %d" % [turns_played + 1, total_turns], HORIZONTAL_ALIGNMENT_LEFT, -1, 22, ink)
 	var bp = float(turns_played) / total_turns
@@ -2946,11 +3001,15 @@ func _draw_ui():
 	ui_ctrl.draw_string(font, Vector2(ux + 54, sy + 71), str(seeds[current_player]), HORIZONTAL_ALIGNMENT_LEFT, -1, 20, ink)
 	ui_ctrl.draw_string(font, Vector2(ux + 120, sy + 70), "花朵总数", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, muted)
 	for i in player_count:
-		ui_ctrl.draw_circle(Vector2(ux + 125, sy + 92 + i * 21 - 3), 5, PLAYER_COLORS[i])
-		ui_ctrl.draw_string(font, Vector2(ux + 136, sy + 92 + i * 21), PLAYER_NAMES[i], HORIZONTAL_ALIGNMENT_LEFT, -1, 13, PLAYER_COLORS[i].darkened(0.18))
-		ui_ctrl.draw_string(font, Vector2(ux + 226, sy + 92 + i * 21), str(scores[i]), HORIZONTAL_ALIGNMENT_RIGHT, 30, 14, ink)
+		var row_y: float = sy + 92 + float(ranking_y.get(i, i * 30.0))
+		var amount: float = float(ranking_values.get(i, scores[i]))
+		var maximum: float = maxf(float(scores.max()), 1.0)
+		ui_ctrl.draw_string(font, Vector2(ux + 12, row_y), PLAYER_NAMES[i], HORIZONTAL_ALIGNMENT_LEFT, 60, 12, ink)
+		ui_ctrl.draw_rect(Rect2(ux + 76, row_y - 10, 125, 10), Color(0.2, 0.3, 0.25, 0.12))
+		ui_ctrl.draw_rect(Rect2(ux + 76, row_y - 10, 125 * clampf(amount / maximum, 0.0, 1.0), 10), PLAYER_COLORS[i])
+		_draw_fitted_text(str(roundi(amount)), Rect2(ux + 207, row_y - 14, 50, 18), font, 13, ink)
 
-	var wy = sy + 205
+	var wy = sy + 243
 	_draw_glass_card(Rect2(ux, wy - 8, 270, 62), glass_soft, glass_line)
 	var weather_text := "天气："
 	if active_weather.is_empty() and rainbow_turns <= 0:
@@ -2959,8 +3018,11 @@ func _draw_ui():
 		for weather in active_weather.keys():
 			weather_text += "%s%d " % [weather, active_weather[weather]]
 		if rainbow_turns > 0: weather_text += "彩虹 "
-	ui_ctrl.draw_string(font, Vector2(ux + 12, wy + 4), weather_text, HORIZONTAL_ALIGNMENT_LEFT, 248, 13, ink)
-	ui_ctrl.draw_string(font, Vector2(ux + 12, wy + 29), last_settlement, HORIZONTAL_ALIGNMENT_LEFT, 248, 12, muted)
+	_draw_fitted_text(weather_text, Rect2(ux + 12, wy - 10, 246, 22), font, 13, ink)
+	_draw_fitted_text(last_settlement, Rect2(ux + 12, wy + 15, 246, 22), font, 12, muted)
+	ui_ctrl.draw_string(font, Vector2(ux + 12, wy + 82), "最近操作", HORIZONTAL_ALIGNMENT_LEFT, 246, 13, ink)
+	for index in action_history.size():
+		_draw_fitted_text(action_history[index], Rect2(ux + 12, wy + 92 + index * 24, 246, 22), font, 12, muted)
 
 	ui_ctrl.draw_line(Vector2(ux + 4, vp.y - 55), Vector2(ux + 266, vp.y - 55), Color(1.0, 1.0, 1.0, 0.28), 1.0)
 	ui_ctrl.draw_string(font, Vector2(ux + 12, vp.y - 36), "滚轮缩放 · 中键平移 · R 重开", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, muted)
@@ -2998,10 +3060,19 @@ func _draw_bottom_hand(vp: Vector2, font: Font, ink: Color, muted: Color):
 		_draw_glass_card(rect, base, PLAYER_COLORS[current_player] if i == selected_card else accent.darkened(0.18), 10.0)
 		_draw_repeating_card_pattern(rect, card["kind"], base.darkened(0.17))
 		ui_ctrl.draw_rect(Rect2(rect.position, Vector2(rect.size.x, 9)), accent, 0, true, 10.0)
-		ui_ctrl.draw_string(font, rect.position + Vector2(10, 28), card["name"], HORIZONTAL_ALIGNMENT_LEFT, rect.size.x - 20, 13, ink)
+		_draw_fitted_text(card["name"], Rect2(rect.position + Vector2(10, 12), Vector2(rect.size.x - 20, 22)), font, 13, ink)
 		_draw_card_symbol(card, rect.get_center() + Vector2(0, -2), accent)
-		ui_ctrl.draw_string(font, rect.position + Vector2(8, 134), _card_description(card), HORIZONTAL_ALIGNMENT_CENTER, rect.size.x - 16, 10, ink)
+		_draw_fitted_text(_card_description(card), Rect2(rect.position + Vector2(8, 121), Vector2(rect.size.x - 16, 18)), font, 10, ink)
 		ui_ctrl.draw_string(font, rect.position + Vector2(8, 151), card["deck"], HORIZONTAL_ALIGNMENT_CENTER, rect.size.x - 16, 9, muted)
+
+func _draw_fitted_text(value: String, rect: Rect2, font: Font, size: int, color: Color):
+	var fitted: String = value
+	while size > 10 and font.get_string_size(fitted, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x > rect.size.x: size -= 1
+	if font.get_string_size(fitted, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x > rect.size.x:
+		while not fitted.is_empty() and font.get_string_size(fitted + "...", HORIZONTAL_ALIGNMENT_LEFT, -1, size).x > rect.size.x:
+			fitted = fitted.left(fitted.length() - 1)
+		fitted += "..."
+	ui_ctrl.draw_string(font, rect.position + Vector2(0, font.get_ascent(size)), fitted, HORIZONTAL_ALIGNMENT_LEFT, rect.size.x, size, color)
 
 func _draw_card_symbol(card: Dictionary, center: Vector2, color: Color):
 	match card["kind"]:
@@ -3042,8 +3113,10 @@ func _draw_repeating_card_pattern(rect: Rect2, kind: String, color: Color):
 					ui_ctrl.draw_circle(p + Vector2(-4, 1), 4, color); ui_ctrl.draw_circle(p + Vector2(2, -2), 6, color); ui_ctrl.draw_circle(p + Vector2(7, 2), 4, color)
 
 func _draw_glass_card(rect: Rect2, fill: Color, line: Color = Color(1.0, 1.0, 1.0, 0.45), radius: float = 18.0):
+	radius = minf(radius, 6.0)
+	fill.a = 0.94
 	var shadow = StyleBoxFlat.new()
-	shadow.bg_color = Color(0.02, 0.06, 0.05, 0.11)
+	shadow.bg_color = fill.darkened(0.30)
 	shadow.corner_radius_top_left = int(radius); shadow.corner_radius_top_right = int(radius)
 	shadow.corner_radius_bottom_left = int(radius); shadow.corner_radius_bottom_right = int(radius)
 	ui_ctrl.draw_style_box(shadow, Rect2(rect.position + Vector2(0, 8), rect.size))
