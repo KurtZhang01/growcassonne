@@ -311,9 +311,9 @@ func _setup_card_preview_viewport():
 	card_preview_viewport.add_child(world_env)
 
 func _setup_title_world():
-	# 标题场景：20×16地块铺满屏幕
-	var tw = 20; var th = 16
-	# 临时扩展网格到20×16
+	# 标题场景：50×20地块铺满屏幕，GGJ2026在中左下
+	var tw = 50; var th = 20
+	# 扩展网格
 	grid = []; roads = []; plants = []; plant_age = []; flowers = []
 	tile_nodes = []; plant_nodes = []; decor_nodes = []
 	for x in tw:
@@ -324,9 +324,9 @@ func _setup_title_world():
 			flowers[x].append([0, 0, 0, 0])
 			tile_nodes[x].append(null); plant_nodes[x].append(null); decor_nodes[x].append(null)
 	grid_origin = Vector2i.ZERO
-	# GGJ2026 文字用水域拼
+	# GGJ2026 文字坐标（ox=4, oy=7，中左下区域）
 	var text_cells = _ggj2026_cells()
-	# 遍历20×16生成地块
+	# 遍历50×20生成地块
 	for x in tw:
 		for y in th:
 			var pos = Vector2i(x, y)
@@ -345,7 +345,7 @@ func _setup_title_world():
 	title_label.outline_modulate = Color("#254940")
 	title_label.billboard = BaseMaterial3D.BILLBOARD_DISABLED
 	title_label.no_depth_test = true
-	title_label.position = _world(Vector2i(14, 4)) + Vector3(0, 0.3, 0)
+	title_label.position = _world(Vector2i(36, 6)) + Vector3(0, 0.3, 0)
 	title_label.rotation_degrees = Vector3(-90, 0, -45)
 	title_label.pixel_size = 0.01
 	add_child(title_label)
@@ -361,9 +361,9 @@ func _setup_title_world():
 	sub_label.rotation_degrees = Vector3(-90, 0, -45)
 	sub_label.pixel_size = 0.008
 	add_child(sub_label)
-	# 相机设置：拉远看全屏
-	camera.size = 22.0
-	camera.position = Vector3(tw * TILE_SPACING * 0.5, 18, th * TILE_SPACING * 0.3)
+	# 相机：拉高拉远，看到整个50×20网格
+	camera.size = 28.0
+	camera.position = Vector3(tw * TILE_SPACING * 0.5, 28, th * TILE_SPACING * 0.4)
 	camera.rotation_degrees = Vector3(-42, 42, 0)
 
 func _setup_sky_world():
@@ -4381,7 +4381,7 @@ func _ggj2026_cells() -> Dictionary:
 	}
 	var cells := {}
 	var text = "GGJ2026"
-	var ox = 2; var oy = 8  # 中左下区域
+	var ox = 4; var oy = 7  # 中左下区域（50×20网格内）
 	for ch_idx in text.length():
 		var ch = text[ch_idx]
 		if not font_data.has(ch): ox += 6; continue
