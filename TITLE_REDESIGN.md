@@ -1,192 +1,59 @@
-# 花满洪山 — 开始页面重设计 v2
+# 花满洪山 / Hongshan in Bloom：开始界面 v3
 
----
+本版替代旧的 v2 草案。实现入口为 `scripts/title_screen.gd`，由 `scripts/main3d.gd` 挂载。
 
-## 1. 命名变更
+## 视觉与构图
 
-| 原文 | 改为 |
-|------|------|
-| 花之江城 | 花满洪山 |
-| Wuhan in Bloom | Hongshan in Bloom |
-| 蔓延江城 | 蔓延洪山 |
+- 使用铺满视野的 2.5D 山水地块场景。19×19 地块由山体、河流、沿岸草地、森林和两处武汉理工大学图书馆组成。
+- 复用游戏内的地块底座、表面、装饰和建筑资源，不修改正式对局的地块颜色或光照。
+- 使用天蓝与近白色的透明遮罩，为标题和人数入口留出阅读空间，中部保留清晰的地形细节。
+- 删除带字背景图的全屏绘制，只保留一组“花满洪山 / HONGSHAN IN BLOOM”标题。
+- 中文标题优先使用楷体，带细白色描边；无楷体的系统依次回退到可用的中文衬线字体和系统字体。没有打包 Windows 字体。
+- 副文案为“一城山水，四季花开”，底部仅保留武汉洪山与 GGJ 2026 信息。
+- 固定等距镜头方向，与游戏保持一致；只有轻微镜头漂移和鼠标视差，不接受滚轮缩放和中键拖动。
 
-涉及文件：`project.godot`、`README.md`、`scripts/main3d.gd`
+## 人数入口
 
----
+四个入口始终水平排列，位于中下部，按钮之间和屏幕边缘保留间距。
 
-## 2. 核心设计思路
+| 人数 | 真实地块模型 | 文字 |
+| --- | --- | --- |
+| 1 | 草地 | 独自栽培 |
+| 2 | 水域 | 双人对弈 |
+| 3 | 森林 | 三人同游 |
+| 4 | 建筑：武汉理工大学图书馆 | 四人争芳 |
 
-**完全复用游戏场景的地块模型和渲染系统**，在开始界面铺满整个屏幕的地块，不新建任何UI绘制逻辑。
+- 使用独立透明 SubViewport 渲染模型，320×320 正方形输出等比例显示。
+- 模型下方保留轻薄投影；不再使用白色方框卡片或大面积彩色条。
+- 悬停或键盘聚焦时，模型平滑上浮、放大，文字与细下划线显示对应强调色。
+- 点击或触摸直接开始对应人数的游戏；按钮按释放触发，防止按下即误用。
+- 数字 1–4 可直接开始对应人数，方向键和 Tab 可选择，Enter 可确认；无焦点时 Enter 默认双人。
+- 启动时锁定按钮，淡出后进入抽卡阶段，阻止连续点击重复初始化。
+- 右上角音乐图标可切换背景音乐，并提供悬停提示。
 
----
+## 生命周期与性能
 
-## 3. 地块世界
+- 开始页的 3D 场景独立于游戏棋盘，不写入正式地块、花朵、卡牌或奖励数据。
+- 背景地形使用少量共享模型变体；重复的静态网格通过 MultiMesh 批量绘制，四个人数预览保持独立。
+- 水域使用原有时间驱动着色器，预览保留水波和模型动态。
+- 进入游戏后释放开始页场景、四个预览视口和循环动画，恢复游戏镜头方向。
+- 修复开局建筑光效的动画绑定：粒子和光幕移除时，其循环动画同时停止，避免“无限循环”错误。
 
-### 3.1 规格
-- 网格：**20列 × 16行**（铺满整个屏幕）
-- 地块类型：大部分为**山体**（约85%），少量**草地**（约15%）
-- 使用游戏内 `_spawn_tile()` / `_force_tile()` 生成完整3D地块（底座+表面+边框+装饰）
-- 地块间距：TILE_SPACING = 1.25（与游戏内一致）
+## 验证与预览
 
-### 3.2 水域拼字 "GGJ 2026"
-- 使用水域地块拼出 "GGJ 2026" 字样
-- 位于画面的**中左下角**（非正中，偏左偏下）
-- 5×7像素字体模板，每个"像素"对应1个水域地块
-- 文字大约占据 35×7 = 245个地块格子中的约50个水域
+`tests/title_screen_smoke.gd` 用无窗口模式验证：
 
-### 3.3 建筑点缀
-- 在文字周围空位放置 3-5 个建筑地块
-- 建筑使用 `_tile_pavilion_surface()` 渲染完整模型
+- 四种人数均可开始，正确初始化手牌并进入三次抽卡阶段。
+- 连续选择不会覆盖第一次选择。
+- 1280×720、1920×1080、2560×1080、390×844、844×390 下按钮和标题不重叠、不越界。
+- 音乐开关生效，退出开始页后对应场景和预览得到释放。
 
-### 3.4 网格布局示意（20×16）
-```
-山山山山山山山山山山山山山山山山山山山山
-山山山山山山山山山山山山山山山山山山山山
-山山山山山山山山山山山山山山山山山山山山
-山山山山山山山山山山山山山山山山山山山山
-山山山山山山山山山山山山山山山山山山山山
-山山水水水山水山水水水山水山水水水山山山  ← GGJ 2026 水域文字
-山山水山山山水山水山山水山水山山山山山山
-山山水水水山水山水水水山水山水水山山山山
-山山山山水山水山水山山山山山山山水山山山
-山山水水水山水山水水水山水山水水水山山山
-山山山山山山山山山山山山山山山山山山山山
-山山山山山山山山山山山山山山山山山山山山
-山山山山山山山山山山山山山山山山山山山山
-山山山山山山山山山山山山山山山山山山山山
-山山山山山山山山山山山山山山山山山山山山
-山山山山山山山山山山山山山山山山山山山山
+运行命令：
+
+```text
+godot --headless --path . --script tests/title_screen_smoke.gd
 ```
 
----
-
-## 4. 相机设置
-
-### 4.1 2.5D 等距视角（与游戏一致）
-```gdscript
-title_camera.projection = Camera3D.PROJECTION_ORTHOGONAL
-title_camera.size = 22.0  # 更大的size = 更远的视角，铺满屏幕
-title_camera.position = Vector3(12.5, 20, 10)  # 棋盘中心偏上
-title_camera.rotation_degrees = Vector3(-42, 42, 0)  # 标准等距视角
-```
-
-### 4.2 不可交互
-- 禁用缩放、平移
-- 只响应玩家人数按钮点击
-
----
-
-## 5. 标题文字
-
-### 5.1 "花满洪山" — 平行于2.5D平面
-- 使用 **Label3D** 渲染在3D场景中
-- **躺在地块平面上**，沿着等距轴方向排列
-- 旋转：`rotation_degrees = Vector3(-90, 0, -45)`（平躺在XZ平面，沿对角线方向）
-- 位置：棋盘上方偏右，不遮挡水域文字
-- 字体大小：大号（font_size = 80+）
-- 颜色：金色渐变，深绿描边
-- Billboard模式：**关闭**（固定在地面上，不随相机旋转）
-
-```gdscript
-var title_label = Label3D.new()
-title_label.text = "花满洪山"
-title_label.font_size = 84
-title_label.modulate = Color("#fff8e8")
-title_label.outline_size = 10
-title_label.outline_modulate = Color("#254940")
-title_label.position = Vector3(6, 0.3, 2)  # 在地块平面上方
-title_label.rotation_degrees = Vector3(-90, 0, -45)  # 平躺，沿对角线
-title_label.billboard = BaseMaterial3D.BILLBOARD_DISABLED
-title_root.add_child(title_label)
-```
-
-### 5.2 副标题 "HONGSHAN IN BLOOM"
-- 同样 Label3D，躺在主标题下方
-- 字体更小（font_size = 32）
-- 金色描边
-
-### 5.3 底部信息（2D UI叠加）
-- "武汉洪山区主题 · GGJ 2026 · GROW Theme"
-- 2D UI绘制在屏幕底部居中
-
----
-
-## 6. 玩家选择按钮
-
-### 6.1 布局
-- 横排排列，居中偏下
-- 每个按钮：宽 120px，高 60px
-- 间距：18px
-- 位于屏幕 y = 70% 处
-
-### 6.2 样式
-- 背景：深色半透明 `rgba(8, 18, 16, 0.88)`
-- 边框：玩家颜色底部4px
-- 文字："2人" / "3人" / "4人"
-- Hover：上浮4px + 边框变亮
-
----
-
-## 7. 技术实现
-
-### 7.1 标题场景初始化
-```gdscript
-func _setup_title_world():
-    _init_grid()
-    var text_cells = _ggj2026_cells()
-    var building_cells = _title_building_cells()
-    # 遍历20×16网格生成地块
-    for x in 20:
-        for y in 16:
-            var pos = Vector2i(x, y)
-            if building_cells.has(pos):
-                _force_tile(pos, T_BUILDING, false, 0)
-            elif text_cells.has(pos):
-                _force_tile(pos, T_WATER, false, 0)
-            elif randf() < 0.15:
-                _force_tile(pos, T_GRASS, false, 0)
-            else:
-                _force_tile(pos, T_MOUNTAIN, false, 0)
-    # 建筑渲染
-    for cell in building_cells:
-        if _in_bounds(cell) and grid[cell.x][cell.y] == T_BUILDING:
-            var root = tile_nodes[cell.x][cell.y]
-            if root: _tile_pavilion_surface(root, 0)
-    # Label3D 标题
-    _create_title_labels()
-    # 相机设置
-    camera.size = 22.0
-    camera.position = Vector3(12.5, 20, 10)
-    camera.rotation_degrees = Vector3(-42, 42, 0)
-```
-
-### 7.2 网格大小适配
-- 标题场景使用独立的网格大小（20×16）
-- 游戏开始时重新初始化为标准 GRID_SIZE（8×8）
-- `_init_grid()` 接受尺寸参数或使用全局常量
-
-### 7.3 GGJ2026 文字坐标
-- 文字起始位置：ox=3, oy=5（中左下区域）
-- 使用5×7像素字体模板
-- 每个像素 = 1个水域地块
-
-### 7.4 状态过渡
-```gdscript
-# 选择玩家数后
-func _start_game_from_title(count: int):
-    player_count = count
-    # 清除标题场景
-    _clear_title_world()
-    # 初始化游戏
-    _start_game()
-```
-
----
-
-## 8. 视觉效果
-
-- 山体地块有随机小山峰和色差
-- 水域地块有涟漪动画（游戏内已有）
-- 建筑有完整3D模型（黄鹤楼等）
-- Label3D标题平躺在地面上，沿等距轴排列
-- 2D UI只负责玩家按钮和底部说明文字
+浏览器构图预览：`title_mockup.html`。截图放在 `assets/title-preview/`。
+HTML 是交互式构图参考，地形使用 Canvas 示意、建筑复用 SVG；它不是 Godot 实机截图，也不会启动正式对局。
+Godot 无窗口测试验证脚本和流程，不能代替真实 GPU 渲染下的光照、透明排序与帧率验收。

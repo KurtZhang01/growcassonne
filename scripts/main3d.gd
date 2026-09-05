@@ -1,6 +1,6 @@
 extends Node3D
 
-const TITLE_BACKGROUND: Texture2D = preload("res://assets/Title.jpg")
+const TitleScreen = preload("res://scripts/title_screen.gd")
 const WATER_TILE_SHADER: Shader = preload("res://shaders/water_tile.gdshader")
 const UI_FROSTED_GLASS_SHADER: Shader = preload("res://shaders/ui_frosted_glass.gdshader")
 const HONGSHAN_TOWER_VIEWS = [
@@ -117,11 +117,7 @@ var pending_develop := {}; var develop_preview_cells := []
 var road_drag_cells := []; var road_drag_level := 0
 var hovered_cell := Vector2i(-1, -1); var pulse := 0.0
 var flash_timer := 0.0; var flash_color := Color.WHITE
-var title_hovered_player := -1
-var title_cam_size := 20.0
-var title_cam_offset := Vector2.ZERO
-var title_panning := false; var title_pan_start := Vector2.ZERO
-var title_pan_cam_start := Vector2.ZERO
+var title_screen: Control
 
 # Camera zoom/pan
 var cam_zoom := 1.0; var cam_zoom_target := 1.0
@@ -175,6 +171,7 @@ func _ready():
 
 func _setup_music():
 	var player = AudioStreamPlayer.new()
+	player.name = "BackgroundMusic"
 	var stream = preload("res://assets/music/Blossom in the Light.mp3")
 	stream.loop = true
 	player.stream = stream
@@ -326,33 +323,19 @@ func _setup_card_preview_viewport():
 	card_preview_viewport.add_child(world_env)
 
 func _setup_title_world():
-	# 标题场景：角落放几个高级地块做装饰
-	var tw = 8; var th = 8
-	grid = []; roads = []; plants = []; plant_age = []; flowers = []
-	tile_nodes = []; plant_nodes = []; decor_nodes = []
-	for x in tw:
-		grid.append([]); roads.append([]); plants.append([]); plant_age.append([]); flowers.append([])
-		tile_nodes.append([]); plant_nodes.append([]); decor_nodes.append([])
-		for y in th:
-			grid[x].append(-1); roads[x].append(0); plants[x].append(0); plant_age[x].append(0)
-			flowers[x].append([0, 0, 0, 0])
-			tile_nodes[x].append(null); plant_nodes[x].append(null); decor_nodes[x].append(null)
-	grid_origin = Vector2i.ZERO
-	# 左下角森林
-	_force_tile(Vector2i(0, 7), T_FOREST, false, 0)
-	_force_tile(Vector2i(1, 7), T_FOREST, false, 0)
-	_force_tile(Vector2i(0, 6), T_FOREST, false, 0)
-	_force_tile(Vector2i(1, 6), T_GRASS, false, 0)
-	# 右上角建筑
-	_force_tile(Vector2i(7, 0), T_BUILDING, false, 0)
-	_force_tile(Vector2i(6, 0), T_BUILDING, false, 0)
-	_force_tile(Vector2i(7, 1), T_GRASS, false, 0)
-	for pos in [Vector2i(7, 0), Vector2i(6, 0)]:
-		var root = tile_nodes[pos.x][pos.y]
-		if root: _tile_pavilion_surface(root, 0)
-	camera.size = 8.0
-	camera.position = Vector3(5, 10, 5)
+	title_screen = TitleScreen.new()
+	ui_ctrl.get_parent().add_child(title_screen)
+	title_screen.setup(self)
+	title_screen.start_requested.connect(_start_game_from_title)
+
+func _start_game_from_title(count: int):
+	if state != S.TITLE: return
+	player_count = clampi(count, 1, 4)
+	title_screen.release()
+	title_screen = null
 	camera.rotation_degrees = Vector3(-42, 42, 0)
+	state = S.PLAY_CARDS
+	_start_game()
 
 func _setup_sky_world():
 	sky_root = Node3D.new(); sky_root.name = "LivingSky"; add_child(sky_root)
@@ -766,7 +749,7 @@ func _refresh_building_auras():
 			border.material_override = material
 			border.position = _world(pos) + Vector3(DIRS[side].x * TILE_SPACING * 0.5, 0.40, DIRS[side].y * TILE_SPACING * 0.5)
 			aura_root.add_child(border)
-			var tween = create_tween().set_loops()
+			var tween = border.create_tween().set_loops()
 			tween.tween_property(material, "emission_energy_multiplier", 0.85, 1.2).set_trans(Tween.TRANS_SINE)
 			tween.tween_property(material, "emission_energy_multiplier", 0.25, 1.2).set_trans(Tween.TRANS_SINE)
 
@@ -779,7 +762,7 @@ func _spawn_aura_particles(pos: Vector2i):
 		mote.material_override = material
 		mote.position = _world(pos) + Vector3(randf_range(-0.36, 0.36), 0.30 + particle_index * 0.08, randf_range(-0.36, 0.36))
 		aura_root.add_child(mote)
-		var start_y = mote.position.y; var tween = create_tween().set_loops()
+		var start_y = mote.position.y; var tween = mote.create_tween().set_loops()
 		tween.tween_property(mote, "position:y", start_y + 0.38, 1.5 + particle_index * 0.25).set_trans(Tween.TRANS_SINE)
 		tween.tween_property(mote, "position:y", start_y, 1.1).set_trans(Tween.TRANS_SINE)
 
@@ -3139,12 +3122,8 @@ func _process(delta):
 	var play_aspect = maxf(viewport_size.x / maxf(viewport_size.y, 1.0), 0.35)
 	var camera_fit = maxf(1.0, 1.05 / play_aspect)
 
-	# 标题状态：应用缩放和平移
 	if state == S.TITLE:
-		camera.size = title_cam_size
-		var base = _world(Vector2i(_grid_width() / 2, _grid_height() / 2))
-		camera.position = base + Vector3(title_cam_offset.x * 5, 25, title_cam_offset.y * 5)
-		camera.rotation_degrees = Vector3(-42, 42, 0)
+		if is_instance_valid(title_screen): title_screen.advance(delta)
 		ui_ctrl.queue_redraw()
 		return
 
@@ -3279,46 +3258,6 @@ func _layout_rule_ticker(vp: Vector2, interface_scale: float):
 
 func _input(event):
 	if state == S.TITLE:
-		if event is InputEventKey and event.pressed:
-			if event.keycode == KEY_1: player_count = 1; state = S.PLAY_CARDS; _start_game()
-			elif event.keycode == KEY_2: player_count = 2; state = S.PLAY_CARDS; _start_game()
-			elif event.keycode == KEY_3: player_count = 3; state = S.PLAY_CARDS; _start_game()
-			elif event.keycode == KEY_4: player_count = 4; state = S.PLAY_CARDS; _start_game()
-			elif event.keycode == KEY_C: title_cam_size = 20.0; title_cam_offset = Vector2.ZERO
-		# 标题页缩放
-		if event is InputEventMouseButton:
-			if event.button_index == MOUSE_BUTTON_WHEEL_UP:
-				title_cam_size = clampf(title_cam_size - 1.0, 8.0, 60.0); ui_ctrl.queue_redraw(); return
-			elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
-				title_cam_size = clampf(title_cam_size + 1.0, 8.0, 60.0); ui_ctrl.queue_redraw(); return
-			elif event.button_index == MOUSE_BUTTON_MIDDLE:
-				if event.pressed:
-					title_panning = true; title_pan_start = event.position
-					title_pan_cam_start = title_cam_offset
-				else:
-					title_panning = false
-				return
-		if event is InputEventMagnifyGesture:
-			title_cam_size = clampf(title_cam_size - event.factor * 2.0, 8.0, 60.0); ui_ctrl.queue_redraw(); return
-		if event is InputEventPanGesture:
-			title_cam_offset += Vector2(event.delta.x, event.delta.y) * 0.02; ui_ctrl.queue_redraw(); return
-		if event is InputEventMouseMotion and title_panning:
-			var delta = (event.position - title_pan_start) * 0.01
-			title_cam_offset = title_pan_cam_start + Vector2(-delta.x, -delta.y)
-			ui_ctrl.queue_redraw(); return
-		if event is InputEventMouseMotion:
-			var vp = get_viewport().get_visible_rect().size / _ui_scale(get_viewport().get_visible_rect().size)
-			var pointer = _ui_point(event.position)
-			title_hovered_player = -1
-			for index in 3:
-				if _title_player_button_rect(index, vp).has_point(pointer): title_hovered_player = index; break
-			ui_ctrl.queue_redraw()
-		if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
-			var vp = get_viewport().get_visible_rect().size / _ui_scale(get_viewport().get_visible_rect().size)
-			var ui_pointer = _ui_point(event.position)
-			for index in 3:
-				if _title_player_button_rect(index, vp).has_point(ui_pointer):
-					player_count = index + 2; state = S.PLAY_CARDS; _start_game(); return
 		return
 
 	# The history panel owns the wheel while hovered; elsewhere it controls zoom.
@@ -3486,7 +3425,7 @@ func _draw_ui():
 	var ink = Color(0.08, 0.14, 0.13)
 	var muted = Color(0.34, 0.42, 0.39)
 
-	if state == S.TITLE: _draw_title(vp, font); return
+	if state == S.TITLE: return
 	if state == S.GAME_OVER: _draw_gameover(vp, font); return
 
 	for panel in [_ui_top_rect(vp), _ui_left_rect(vp), _ui_right_rect(vp), _ui_rail_rect(vp)]:
@@ -3953,7 +3892,7 @@ func _spawn_exact_preview_tile(root: Node3D, terrain: int, card: Dictionary, ind
 
 func _draw_top_info_bar(vp: Vector2, font: Font, ink: Color, muted: Color):
 	var bar = _ui_top_rect(vp); var x = bar.position.x + 18.0; var center_y = bar.get_center().y
-	_draw_fitted_text("花之江城", Rect2(x, center_y - 12.0, 78.0, 24.0), font, 17, ink)
+	_draw_fitted_text("花满洪山", Rect2(x, center_y - 12.0, 78.0, 24.0), font, 17, ink)
 	_draw_fitted_text("WUHAN IN BLOOM", Rect2(x + 82.0, center_y - 9.0, 112.0, 20.0), font, 11, muted)
 	x += 225.0
 	var terrain_types = [T_GRASS, T_WATER, T_FOREST, T_DESERT, T_BUILDING]
@@ -4331,108 +4270,11 @@ func _draw_repeating_card_pattern(rect: Rect2, kind: String, color: Color):
 					ui_ctrl.draw_circle(p + Vector2(1.5, -1.5), 3.5, pattern_color)
 					ui_ctrl.draw_circle(p + Vector2(4, 0.5), 2.5, pattern_color)
 
-func _draw_title(vp: Vector2, font: Font):
-	# Title.jpg 背景铺满
-	ui_ctrl.draw_texture_rect(TITLE_BACKGROUND, Rect2(Vector2.ZERO, vp), false)
-	# 半透明遮罩
-	ui_ctrl.draw_rect(Rect2(0, 0, vp.x, vp.y), Color(0.02, 0.06, 0.05, 0.30), true)
-
-	# 标题文字
-	_draw_centered_outlined_text("花 满 洪 山", Vector2(vp.x * 0.5, vp.y * 0.18), font, 68, Color("#fff8e8"), Color("#1a3a2a"), 6)
-	_draw_centered_outlined_text("HONGSHAN IN BLOOM", Vector2(vp.x * 0.5, vp.y * 0.18 + 52), font, 18, Color("#d4c890"), Color("#1a3a2a"), 3)
-
-	# 卡牌风格玩家选择按钮（正中间）
-	for index in 3:
-		_draw_title_card_button(index, _title_player_button_rect(index, vp), font)
-
-	# 底部
-	_draw_centered_outlined_text("武汉洪山区主题 · GGJ 2026 · GROW Theme", Vector2(vp.x * 0.5, vp.y * 0.93), font, 13, Color(1, 1, 1, 0.35), Color(0, 0, 0, 0.2), 2)
-
 func _draw_centered_outlined_text(value: String, center: Vector2, font: Font, size: int, color: Color, outline: Color, outline_size: int):
 	var text_size = font.get_string_size(value, HORIZONTAL_ALIGNMENT_LEFT, -1, size)
 	var baseline = center + Vector2(-text_size.x * 0.5, font.get_ascent(size) * 0.5)
 	ui_ctrl.draw_string_outline(font, baseline, value, HORIZONTAL_ALIGNMENT_LEFT, -1, size, outline_size, outline)
 	ui_ctrl.draw_string(font, baseline, value, HORIZONTAL_ALIGNMENT_LEFT, -1, size, color)
-
-func _draw_wuhan_river_lines(vp: Vector2):
-	var yangtze = PackedVector2Array([
-		Vector2(-40, vp.y * 0.47), Vector2(vp.x * 0.18, vp.y * 0.42), Vector2(vp.x * 0.39, vp.y * 0.50),
-		Vector2(vp.x * 0.60, vp.y * 0.46), Vector2(vp.x * 0.82, vp.y * 0.54), Vector2(vp.x + 40, vp.y * 0.49)
-	])
-	var han = PackedVector2Array([
-		Vector2(vp.x * 0.50, -30), Vector2(vp.x * 0.47, vp.y * 0.20), Vector2(vp.x * 0.53, vp.y * 0.34), Vector2(vp.x * 0.49, vp.y * 0.48)
-	])
-	ui_ctrl.draw_polyline(yangtze, Color(0.24, 0.62, 0.78, 0.54), 28.0, true)
-	ui_ctrl.draw_polyline(yangtze, Color(0.56, 0.84, 0.91, 0.38), 12.0, true)
-	ui_ctrl.draw_polyline(han, Color(0.24, 0.62, 0.78, 0.50), 20.0, true)
-	ui_ctrl.draw_polyline(han, Color(0.56, 0.84, 0.91, 0.34), 8.0, true)
-
-func _title_player_button_rect(index: int, vp: Vector2) -> Rect2:
-	var gap = 18.0
-	var tile_width = minf(132.0, maxf(68.0, (vp.x - 64.0 - gap * 2.0) / 3.0))
-	var total_width = tile_width * 3.0 + gap * 2.0
-	return Rect2(vp.x * 0.5 - total_width * 0.5 + index * (tile_width + gap), vp.y * 0.56, tile_width, 118.0)
-
-func _draw_title_player_button(index: int, rect: Rect2, font: Font):
-	var player_count = index + 2  # 2, 3, 4
-	var color = PLAYER_COLORS[index]
-	var hovered = index == title_hovered_player
-	var y_off = -6.0 if hovered else 0.0
-	# 按钮背景
-	ui_ctrl.draw_rect(Rect2(rect.position + Vector2(0, y_off), rect.size), Color(0.04, 0.10, 0.08, 0.88), 0, true, 4.0)
-	# 底部彩色条
-	ui_ctrl.draw_rect(Rect2(rect.position.x, rect.position.y + rect.size.y - 5 + y_off, rect.size.x, 5), color, 0, false)
-	# 文字
-	_draw_centered_outlined_text("%d 人" % player_count, rect.position + Vector2(rect.size.x * 0.5, rect.size.y * 0.4 + y_off), font, 24, color.lightened(0.2), Color(0, 0, 0, 0.3), 3)
-
-func _draw_title_card_button(index: int, rect: Rect2, font: Font):
-	var player_count = index + 2
-	var color = PLAYER_COLORS[index]
-	var hovered = index == title_hovered_player
-	var y_off = -8.0 if hovered else 0.0
-	var r = Rect2(rect.position + Vector2(0, y_off), rect.size)
-	# 投影
-	ui_ctrl.draw_rect(Rect2(r.position + Vector2(4, 6), r.size), Color(0, 0, 0, 0.35), 0, true, 6.0)
-	# 卡牌背景渐变
-	ui_ctrl.draw_rect(r, Color(1, 1, 1, 0.92), 0, true, 6.0)
-	# 顶部彩色条
-	ui_ctrl.draw_rect(Rect2(r.position, Vector2(r.size.x, 6)), color, 0, true, 6.0)
-	# 底部彩色条
-	ui_ctrl.draw_rect(Rect2(r.position.x, r.position.y + r.size.y - 5, r.size.x, 5), color, 0, false)
-	# 中间玩家颜色区域
-	ui_ctrl.draw_rect(Rect2(r.position.x + 8, r.position.y + 20, r.size.x - 16, r.size.y - 45), color.darkened(0.7), 0, true, 4.0)
-	# 人数数字
-	_draw_centered_outlined_text(str(player_count), r.position + Vector2(r.size.x * 0.5, r.size.y * 0.35), font, 36, color.lightened(0.3), Color(0, 0, 0, 0.4), 4)
-	# "人" 字
-	_draw_centered_outlined_text("人", r.position + Vector2(r.size.x * 0.5, r.size.y * 0.62), font, 16, Color(1, 1, 1, 0.8), Color(0, 0, 0, 0.3), 2)
-
-func _draw_title_player_tile(index: int, rect: Rect2, font: Font):
-	var terrain = [T_GRASS, T_WATER, T_FOREST, T_BUILDING][index]
-	var hovered = index == title_hovered_player
-	var center = Vector2(rect.get_center().x, rect.position.y + 42.0 - (8.0 if hovered else 0.0))
-	var size = minf(48.0, rect.size.x * 0.38) * (1.08 if hovered else 1.0)
-	ui_ctrl.draw_colored_polygon(PackedVector2Array([
-		center + Vector2(-size, 8), center + Vector2(0, size * 0.56 + 8), center + Vector2(size, 8), center + Vector2(0, -size * 0.56 + 8)
-	]), Color(0, 0, 0, 0.24))
-	_draw_iso_tile(center, TERRAIN_TOP[terrain].lightened(0.08 if hovered else 0.0), TERRAIN_MID[terrain], size)
-	match terrain:
-		T_GRASS:
-			for shrub in 3: ui_ctrl.draw_circle(center + Vector2(-18 + shrub * 18, -5 + abs(shrub - 1) * 5), 7, Color("#397a3d"))
-		T_WATER:
-			ui_ctrl.draw_arc(center, size * 0.42, 0.1, PI - 0.1, 18, Color("#a8e2ee"), 3.0)
-			ui_ctrl.draw_arc(center + Vector2(0, 7), size * 0.28, 0.1, PI - 0.1, 14, Color("#d0f1f4"), 2.0)
-		T_FOREST:
-			for tree in 3:
-				var tree_center = center + Vector2(-18 + tree * 18, -3 + abs(tree - 1) * 4)
-				ui_ctrl.draw_rect(Rect2(tree_center + Vector2(-2, 1), Vector2(4, 15)), Color("#684326"), true)
-				ui_ctrl.draw_colored_polygon(PackedVector2Array([tree_center + Vector2(-10, 4), tree_center + Vector2(0, -22), tree_center + Vector2(10, 4)]), Color("#286a43"))
-		T_BUILDING:
-			for tier in 4:
-				var width = 45.0 - tier * 7.0; var y = center.y + 8.0 - tier * 10.0
-				ui_ctrl.draw_rect(Rect2(center.x - width * 0.28, y - 6, width * 0.56, 7), Color("#b43b32"), true)
-				ui_ctrl.draw_colored_polygon(PackedVector2Array([Vector2(center.x - width * 0.56, y), Vector2(center.x + width * 0.56, y), Vector2(center.x + width * 0.38, y + 4), Vector2(center.x - width * 0.38, y + 4)]), Color("#d99a26"))
-	var label_color = PLAYER_COLORS[index].lightened(0.18) if hovered else Color("#fff8e8")
-	_draw_centered_outlined_text("%d 人" % (index + 1), Vector2(rect.get_center().x, rect.position.y + 101), font, 19, label_color, Color("#254940"), 4)
 
 func _draw_gameover(vp: Vector2, font: Font):
 	ui_ctrl.draw_rect(Rect2(0, 0, vp.x, vp.y), Color(0, 0, 0, 0.85))

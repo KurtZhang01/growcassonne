@@ -1,4 +1,4 @@
-# 花之江城 / Wuhan in Bloom — 玩法说明
+# 花满洪山 / Hongshan in Bloom — 玩法说明
 
 ## 概述
 
