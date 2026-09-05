@@ -150,13 +150,13 @@ func _setup_scene():
 
 	var fill = DirectionalLight3D.new()
 	fill.rotation_degrees = Vector3(30, 150, 0)
-	fill.light_energy = 0.22; fill.light_color = Color("#87c5c7")
+	fill.light_energy = 0.18; fill.light_color = Color("#b9ddf0")
 	fill.sky_mode = DirectionalLight3D.SKY_MODE_LIGHT_ONLY
 	add_child(fill)
 
 	var rim = DirectionalLight3D.new()
 	rim.rotation_degrees = Vector3(-10, -120, 0)
-	rim.light_energy = 0.10; rim.light_color = Color("#f5b766")
+	rim.light_energy = 0.08; rim.light_color = Color("#d8ecf7")
 	rim.sky_mode = DirectionalLight3D.SKY_MODE_LIGHT_ONLY
 	add_child(rim)
 
@@ -167,8 +167,8 @@ func _setup_scene():
 	sky.process_mode = Sky.PROCESS_MODE_REALTIME; sky.radiance_size = Sky.RADIANCE_SIZE_128
 	e.background_mode = Environment.BG_SKY; e.sky = sky
 	e.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	e.ambient_light_color = Color("#a7d6c4")
-	e.ambient_light_energy = 0.60
+	e.ambient_light_color = Color("#e8f5fb")
+	e.ambient_light_energy = 0.66
 	e.tonemap_mode = Environment.TONE_MAPPER_FILMIC
 	e.glow_enabled = true; e.glow_intensity = 0.14; e.glow_bloom = 0.02
 	env.environment = e; add_child(env)
@@ -275,37 +275,31 @@ func _sky_prop_material(color: Color) -> StandardMaterial3D:
 	return material
 
 func _spawn_cloud_layer():
-	var grass_mat = _sky_prop_material(Color(0.58, 0.82, 0.46, 0.72))
-	var earth_mat = _sky_prop_material(Color(0.34, 0.46, 0.30, 0.66))
-	var trunk_mat = _sky_prop_material(Color(0.42, 0.29, 0.17, 0.70))
-	var leaf_mat = _sky_prop_material(Color(0.22, 0.55, 0.36, 0.70))
-	var islet_positions = [
-		Vector3(-14, 2.3, -8), Vector3(-10, 3.8, 8), Vector3(-3, 5.2, -13),
-		Vector3(8, 3.2, 10), Vector3(13, 4.7, -3), Vector3(15, 1.8, 6),
+	var pearl_mat = _sky_prop_material(Color(0.99, 1.00, 1.00, 0.72))
+	var shade_mat = _sky_prop_material(Color(0.72, 0.86, 0.95, 0.34))
+	var cloud_positions = [
+		Vector3(-15, 3.0, -9), Vector3(-13, 4.2, 8), Vector3(-4, 5.8, -15),
+		Vector3(10, 3.8, 12), Vector3(15, 5.2, -4), Vector3(17, 2.6, 7),
 	]
-	for islet_index in islet_positions.size():
-		var islet = Node3D.new(); islet.position = islet_positions[islet_index]
-		islet.set_meta("speed", randf_range(0.07, 0.14)); islet.set_meta("base_z", islet.position.z)
-		islet.set_meta("base_y", islet.position.y); islet.set_meta("bob", randf_range(0.10, 0.22))
-		islet.set_meta("phase", randf() * TAU); sky_root.add_child(islet); drifting_clouds.append(islet)
-		islet.scale = Vector3.ONE * randf_range(0.55, 0.82)
-		var top = MeshInstance3D.new(); var top_mesh = BoxMesh.new()
-		top_mesh.size = Vector3(randf_range(0.95, 1.35), 0.12, randf_range(0.56, 0.86))
-		top.mesh = top_mesh; top.material_override = grass_mat; top.position.y = 0.08; islet.add_child(top)
-		var base = MeshInstance3D.new(); var base_mesh = CylinderMesh.new()
-		base_mesh.top_radius = randf_range(0.42, 0.62); base_mesh.bottom_radius = randf_range(0.18, 0.30)
-		base_mesh.height = randf_range(0.45, 0.68); base_mesh.radial_segments = 6
-		base.mesh = base_mesh; base.material_override = earth_mat; base.position.y = -0.25; islet.add_child(base)
-		if islet_index % 2 == 0:
-			var trunk = MeshInstance3D.new(); var trunk_mesh = CylinderMesh.new()
-			trunk_mesh.top_radius = 0.025; trunk_mesh.bottom_radius = 0.035; trunk_mesh.height = 0.28; trunk_mesh.radial_segments = 6
-			trunk.mesh = trunk_mesh; trunk.material_override = trunk_mat; trunk.position.y = 0.28; islet.add_child(trunk)
-			var crown = MeshInstance3D.new(); var crown_mesh = SphereMesh.new()
-			crown_mesh.radius = 0.18; crown_mesh.height = 0.26; crown_mesh.radial_segments = 8; crown_mesh.rings = 4
-			crown.mesh = crown_mesh; crown.material_override = leaf_mat; crown.position.y = 0.50; crown.scale = Vector3(1.25, 0.75, 1.0); islet.add_child(crown)
+	for cloud_index in cloud_positions.size():
+		var cloud = Node3D.new(); cloud.position = cloud_positions[cloud_index]
+		cloud.set_meta("speed", randf_range(0.055, 0.10)); cloud.set_meta("base_z", cloud.position.z)
+		cloud.set_meta("base_y", cloud.position.y); cloud.set_meta("bob", randf_range(0.07, 0.14))
+		cloud.set_meta("phase", randf() * TAU); sky_root.add_child(cloud); drifting_clouds.append(cloud)
+		cloud.scale = Vector3.ONE * randf_range(0.72, 1.08)
+		for puff_index in 4:
+			var puff = MeshInstance3D.new(); var puff_mesh = SphereMesh.new()
+			puff_mesh.radius = 0.38 + float(puff_index % 2) * 0.08
+			puff_mesh.height = puff_mesh.radius * 1.25; puff_mesh.radial_segments = 8; puff_mesh.rings = 4
+			puff.mesh = puff_mesh; puff.material_override = pearl_mat if puff_index < 3 else shade_mat
+			puff.position = Vector3((puff_index - 1.5) * 0.35, 0.08 + (puff_index % 2) * 0.13, (puff_index % 3 - 1) * 0.12)
+			puff.scale = Vector3(1.25, 0.68, 0.92); cloud.add_child(puff)
+		var cloud_base = MeshInstance3D.new(); var base_mesh = BoxMesh.new()
+		base_mesh.size = Vector3(1.48, 0.13, 0.52); cloud_base.mesh = base_mesh
+		cloud_base.material_override = shade_mat; cloud_base.position.y = -0.10; cloud.add_child(cloud_base)
 
 func _spawn_mist_banks():
-	var mist_material = _sky_prop_material(Color(0.88, 0.98, 0.88, 0.20))
+	var mist_material = _sky_prop_material(Color(0.94, 0.98, 1.00, 0.16))
 	for i in 9:
 		var mist = Node3D.new()
 		var angle = TAU * float(i) / 9.0 + randf_range(-0.16, 0.16)
@@ -320,8 +314,8 @@ func _spawn_mist_banks():
 		ribbon.rotation_degrees.y = randf_range(-18, 18); mist.add_child(ribbon)
 
 func _spawn_sky_motes():
-	var mote_material = _soft_material(Color(0.74, 1.0, 0.72, 0.72), 1.4)
-	for i in 28:
+	var mote_material = _soft_material(Color(0.82, 0.94, 1.00, 0.48), 0.65)
+	for i in 20:
 		var mote = MeshInstance3D.new(); var mesh = SphereMesh.new()
 		mesh.radius = randf_range(0.018, 0.038); mesh.height = mesh.radius * 2.0; mesh.radial_segments = 6; mesh.rings = 3
 		mote.mesh = mesh; mote.material_override = mote_material
