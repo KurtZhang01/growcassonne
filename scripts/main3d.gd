@@ -2112,11 +2112,21 @@ func _update_placement_highlights():
 	_clear_placement_highlights()
 	var card = _selected_card()
 	if card.is_empty() or card["kind"] == "weather": return
+	# 只在已有非山体地块的邻域内检查，避免外围山体亮满
+	var developed := {}
 	for x in _grid_width():
 		for y in _grid_height():
-			var pos = Vector2i(x, y)
-			if _can_play_selected_card(pos):
-				_spawn_tile_breath_glow(pos)
+			if grid[x][y] >= 0 and grid[x][y] != T_MOUNTAIN:
+				developed[Vector2i(x, y)] = true
+	var check_zone := {}
+	for pos in developed:
+		check_zone[pos] = true
+		for dir in DIRS:
+			var n = pos + dir
+			if _in_bounds(n): check_zone[n] = true
+	for pos in check_zone:
+		if _can_play_selected_card(pos):
+			_spawn_tile_breath_glow(pos)
 
 func _clear_placement_highlights():
 	for node in placement_highlights:
