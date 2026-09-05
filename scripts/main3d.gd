@@ -110,6 +110,8 @@ var falling_leaves := []; var animated_grass_patches := []
 var tile_select_root: Node3D; var selected_tile := Vector2i(-1, -1)
 var aura_root: Node3D; var settle_fx_root: Node3D; var weather_fx_root: Node3D
 var action_history: Array[String] = []
+var placement_highlights := []
+var placement_highlight_root: Node3D
 var ranking_order: Array[int] = []
 var ranking_y: Dictionary = {}
 var ranking_values: Dictionary = {}
@@ -171,6 +173,7 @@ func _setup_scene():
 	aura_root = Node3D.new(); aura_root.name = "BuildingAuras"; add_child(aura_root)
 	settle_fx_root = Node3D.new(); settle_fx_root.name = "SettlementEffects"; add_child(settle_fx_root)
 	weather_fx_root = Node3D.new(); weather_fx_root.name = "WeatherEffects"; add_child(weather_fx_root)
+	placement_highlight_root = Node3D.new(); placement_highlight_root.name = "PlacementHighlights"; add_child(placement_highlight_root)
 
 	# Pre-create edge materials
 	for i in TERRAIN_TOP.size():
@@ -2022,13 +2025,51 @@ func _release_hand_drag(pointer: Vector2, cell: Vector2i):
 		_cancel_armed_card(); return
 	if card["kind"] == "weather": _finish_card_drag(cell)
 	else: _update_card_drag_preview(cell)
+	_update_placement_highlights()
 	ui_ctrl.queue_redraw()
 
 func _cancel_armed_card():
 	dragging_card = false; card_armed = false; road_drawing = false; drag_card_index = -1
 	road_drag_cells.clear(); pending_develop.clear(); develop_preview_cells.clear()
 	for child in piece_preview_root.get_children(): child.free()
-	piece_preview_root.visible = false; ui_ctrl.queue_redraw()
+	piece_preview_root.visible = false; _clear_placement_highlights(); ui_ctrl.queue_redraw()
+
+func _update_placement_highlights():
+	_clear_placement_highlights()
+	var card = _selected_card()
+	if card.is_empty() or card["kind"] == "weather": return
+	for x in _grid_width():
+		for y in _grid_height():
+			var pos = Vector2i(x, y)
+			if _can_play_selected_card(pos):
+				_spawn_tile_breath_glow(pos)
+
+func _clear_placement_highlights():
+	for node in placement_highlights:
+		if is_instance_valid(node): node.queue_free()
+	placement_highlights.clear()
+
+func _spawn_tile_breath_glow(pos: Vector2i):
+	var glow = MeshInstance3D.new()
+	var gm = BoxMesh.new(); gm.size = Vector3(1.06, 0.025, 1.06)
+	glow.mesh = gm
+	var mat = StandardMaterial3D.new()
+	mat.albedo_color = Color(1, 1, 1, 0.15)
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.emission_enabled = true; mat.emission = Color.WHITE
+	mat.emission_energy_multiplier = 0.3
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.no_depth_test = true
+	glow.material_override = mat
+	glow.position = _world(pos) + Vector3(0, 0.16, 0)
+	placement_highlight_root.add_child(glow)
+	placement_highlights.append(glow)
+	var tw = create_tween().set_loops()
+	tw.tween_property(mat, "albedo_color:a", 0.30, 0.8).set_trans(Tween.TRANS_SINE)
+	tw.tween_property(mat, "albedo_color:a", 0.10, 0.8).set_trans(Tween.TRANS_SINE)
+	var tw2 = create_tween().set_loops()
+	tw2.tween_property(mat, "emission_energy_multiplier", 0.6, 0.8).set_trans(Tween.TRANS_SINE)
+	tw2.tween_property(mat, "emission_energy_multiplier", 0.15, 0.8).set_trans(Tween.TRANS_SINE)
 
 func _card_has_valid_target(card: Dictionary) -> bool:
 	if card["kind"] == "weather": return true
@@ -3034,11 +3075,11 @@ func _input(event):
 		elif state == S.PLAY_CARDS and event.keycode == KEY_Q:
 			piece_rotation = posmod(piece_rotation - 1, 4)
 			if dragging_card or card_armed: _update_card_drag_preview(_mouse_to_grid(drag_pointer))
-			ui_ctrl.queue_redraw()
+			_update_placement_highlights(); ui_ctrl.queue_redraw()
 		elif state == S.PLAY_CARDS and event.keycode == KEY_E:
 			piece_rotation = posmod(piece_rotation + 1, 4)
 			if dragging_card or card_armed: _update_card_drag_preview(_mouse_to_grid(drag_pointer))
-			ui_ctrl.queue_redraw()
+			_update_placement_highlights(); ui_ctrl.queue_redraw()
 		elif state == S.PLACE_TILE and event.keycode >= KEY_1 and event.keycode <= KEY_3:
 			_select_market(event.keycode - KEY_1)
 		elif event.keycode == KEY_Q: _rotate_selected_piece(-1)
