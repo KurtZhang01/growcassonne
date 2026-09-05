@@ -1,0 +1,19 @@
+[remap]
+
+importer="mp3"
+type="AudioStreamMP3"
+uid="uid://dl6sv8vrbb2a2"
+path="res://.godot/imported/Blossom in the Light.mp3-012bc6334a1cbb723cb174783ed62ce0.mp3str"
+
+[deps]
+
+source_file="res://assets/music/Blossom in the Light.mp3"
+dest_files=["res://.godot/imported/Blossom in the Light.mp3-012bc6334a1cbb723cb174783ed62ce0.mp3str"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4
