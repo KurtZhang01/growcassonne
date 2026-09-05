@@ -3451,42 +3451,42 @@ func _draw_hand_card_face(card: Dictionary, rect: Rect2, font: Font, ink: Color,
 	# 1. 投影
 	var shadow_alpha = 0.28 if active else 0.18
 	ui_ctrl.draw_rect(Rect2(rect.position + Vector2(5, 8), rect.size), Color(0, 0, 0, shadow_alpha), true)
-	# 2. 白色底（与渐变对齐）
-	ui_ctrl.draw_rect(rect, Color(1.0, 1.0, 0.98, 0.96), true)
-	# 3. 连续渐变：accent淡色→base→白色，从上到下平滑过渡
-	var accent_light = accent.lerp(Color.WHITE, 0.55)
+	# 2. 四边边框 + 阴影
+	var border_w = 4.0
+	var border_color = accent.lerp(Color.WHITE, 0.20)
+	# 边框阴影（向内偏移）
+	ui_ctrl.draw_rect(Rect2(rect.position + Vector2(border_w, border_w), rect.size - Vector2(border_w * 2, border_w * 2)), Color(0, 0, 0, 0.10), true)
+	# 边框本体（四边）
+	ui_ctrl.draw_rect(rect, border_color, true)
+	# 3. 内容区域（边框内部）
+	var inner = Rect2(rect.position + Vector2(border_w, border_w), rect.size - Vector2(border_w * 2, border_w * 2))
+	ui_ctrl.draw_rect(inner, Color(1.0, 1.0, 0.98, 0.96), true)
+	# 4. 连续渐变：accent(顶) → base → 暗base(底) → 白，从上到下越来越淡
 	var rows = 24
 	for row in rows:
 		var t = float(row) / float(rows - 1)
 		var band_color: Color
-		if t < 0.4:
-			band_color = accent_light.lerp(base, t / 0.4)
-		elif t < 0.7:
-			band_color = base.lerp(base.lightened(0.18), (t - 0.4) / 0.3)
+		if t < 0.35:
+			band_color = accent.lerp(base, t / 0.35)
+		elif t < 0.65:
+			band_color = base.lerp(base.darkened(0.10), (t - 0.35) / 0.3)
 		else:
-			band_color = base.lightened(0.18).lerp(Color(1.0, 1.0, 0.98, 1.0), (t - 0.7) / 0.3)
-		var band_y = rect.position.y + rect.size.y * t
-		var next_y = rect.position.y + rect.size.y * float(row + 1) / float(rows)
-		ui_ctrl.draw_rect(Rect2(rect.position.x, band_y, rect.size.x, next_y - band_y + 1.0), band_color, true)
-	# 4. 卡牌内容
-	_draw_repeating_card_pattern(rect, card["kind"], base.darkened(0.10))
-	_draw_fitted_text(card["name"], Rect2(rect.position + Vector2(9, 11), Vector2(rect.size.x - 18, 22)), font, 13, ink)
-	_draw_card_model_icon(card, rect.get_center() + Vector2(0, -3), accent.lightened(0.08))
-	_draw_fitted_text(_card_description(card), Rect2(rect.position + Vector2(8, 116), Vector2(rect.size.x - 16, 18)), font, 10, ink)
-	_draw_fitted_text(card["deck"], Rect2(rect.position + Vector2(8, 134), Vector2(rect.size.x - 16, 14)), font, 10, muted)
-	# 5. 顶部彩色边框 + 阴影
-	var border_h = 5.0
-	var border_color = accent.lerp(Color.WHITE, 0.25)
-	# 阴影（边框下方）
-	ui_ctrl.draw_rect(Rect2(rect.position.x, rect.position.y + border_h, rect.size.x, 3.0), Color(0, 0, 0, 0.15), true)
-	# 边框本体
-	ui_ctrl.draw_rect(Rect2(rect.position, Vector2(rect.size.x, border_h)), border_color, true)
+			band_color = base.darkened(0.10).lerp(Color(1.0, 1.0, 0.97, 1.0), (t - 0.65) / 0.35)
+		var band_y = inner.position.y + inner.size.y * t
+		var next_y = inner.position.y + inner.size.y * float(row + 1) / float(rows)
+		ui_ctrl.draw_rect(Rect2(inner.position.x, band_y, inner.size.x, next_y - band_y + 1.0), band_color, true)
+	# 5. 卡牌内容
+	_draw_repeating_card_pattern(inner, card["kind"], base.darkened(0.08))
+	_draw_fitted_text(card["name"], Rect2(inner.position + Vector2(5, 7), Vector2(inner.size.x - 10, 20)), font, 12, ink)
+	_draw_card_model_icon(card, inner.get_center() + Vector2(0, -3), accent.lightened(0.08))
+	_draw_fitted_text(_card_description(card), Rect2(inner.position + Vector2(4, inner.size.y - 36), Vector2(inner.size.x - 8, 16)), font, 9, ink)
+	_draw_fitted_text(card["deck"], Rect2(inner.position + Vector2(4, inner.size.y - 18), Vector2(inner.size.x - 8, 14)), font, 9, muted)
 	# 6. 选中/深度遮罩
 	if active:
-		ui_ctrl.draw_rect(rect, Color(accent.r, accent.g, accent.b, 0.08), true)
+		ui_ctrl.draw_rect(inner, Color(accent.r, accent.g, accent.b, 0.08), true)
 	elif index != selected_card:
 		var depth = float(index) / maxf(float(current_hand.size() - 1), 1.0)
-		ui_ctrl.draw_rect(rect, Color(0.03, 0.06, 0.05, 0.05 + (1.0 - depth) * 0.09), true)
+		ui_ctrl.draw_rect(inner, Color(0.03, 0.06, 0.05, 0.04 + (1.0 - depth) * 0.08), true)
 
 func _draw_card_model_icon(card: Dictionary, center: Vector2, color: Color):
 	match card["kind"]:
