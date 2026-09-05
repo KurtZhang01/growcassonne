@@ -1,6 +1,5 @@
 extends Node3D
 
-const TITLE_BACKGROUND: Texture2D = preload("res://assets/title-background.png")
 const DYNAMIC_SKY_SHADER: Shader = preload("res://shaders/dynamic_sky.gdshader")
 const WATER_TILE_SHADER: Shader = preload("res://shaders/water_tile.gdshader")
 
@@ -88,6 +87,7 @@ var pending_develop := {}; var develop_preview_cells := []
 var road_drag_cells := []; var road_drag_level := 0
 var hovered_cell := Vector2i(-1, -1); var pulse := 0.0
 var flash_timer := 0.0; var flash_color := Color.WHITE
+var title_hovered_player := -1
 
 # Camera zoom/pan
 var cam_zoom := 1.0; var cam_zoom_target := 1.0
@@ -3095,29 +3095,26 @@ func _ui_scale(viewport_size: Vector2) -> float:
 func _ui_point(screen_point: Vector2) -> Vector2:
 	return screen_point / _ui_scale(get_viewport().get_visible_rect().size)
 
-func _cover_source_rect(texture: Texture2D, target_size: Vector2) -> Rect2:
-	var source_size = texture.get_size()
-	var source_aspect = source_size.x / source_size.y
-	var target_aspect = target_size.x / maxf(target_size.y, 1.0)
-	if source_aspect > target_aspect:
-		var crop_width = source_size.y * target_aspect
-		return Rect2(Vector2((source_size.x - crop_width) * 0.5, 0.0), Vector2(crop_width, source_size.y))
-	var crop_height = source_size.x / target_aspect
-	return Rect2(Vector2(0.0, (source_size.y - crop_height) * 0.5), Vector2(source_size.x, crop_height))
-
 func _input(event):
 	if state == S.TITLE:
 		if event is InputEventKey and event.pressed:
-			if event.keycode == KEY_2: player_count = 2; state = S.PLAY_CARDS; _start_game()
+			if event.keycode == KEY_1: player_count = 1; state = S.PLAY_CARDS; _start_game()
+			elif event.keycode == KEY_2: player_count = 2; state = S.PLAY_CARDS; _start_game()
 			elif event.keycode == KEY_3: player_count = 3; state = S.PLAY_CARDS; _start_game()
 			elif event.keycode == KEY_4: player_count = 4; state = S.PLAY_CARDS; _start_game()
+		if event is InputEventMouseMotion:
+			var vp = get_viewport().get_visible_rect().size / _ui_scale(get_viewport().get_visible_rect().size)
+			var pointer = _ui_point(event.position)
+			title_hovered_player = -1
+			for index in 4:
+				if _title_player_button_rect(index, vp).has_point(pointer): title_hovered_player = index; break
+			ui_ctrl.queue_redraw()
 		if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 			var vp = get_viewport().get_visible_rect().size / _ui_scale(get_viewport().get_visible_rect().size)
 			var ui_pointer = _ui_point(event.position)
-			for i in 3:
-				var button_rect = Rect2(vp.x * 0.5 - 110 + i * 130.0, vp.y * 0.53, 100, 50)
-				if button_rect.has_point(ui_pointer):
-					player_count = i + 2; state = S.PLAY_CARDS; _start_game(); return
+			for index in 4:
+				if _title_player_button_rect(index, vp).has_point(ui_pointer):
+					player_count = index + 1; state = S.PLAY_CARDS; _start_game(); return
 		return
 
 	# ---- Zoom: scroll wheel ----
@@ -3720,28 +3717,91 @@ func _draw_flat_card(rect: Rect2, fill: Color, border: Color, shadow_offset: Vec
 	ui_ctrl.draw_rect(Rect2(rect.position + Vector2(3, 3), Vector2(rect.size.x - 6, 2)), Color(1, 1, 1, 0.18), true)
 
 func _draw_title(vp: Vector2, font: Font):
-	ui_ctrl.draw_texture_rect_region(TITLE_BACKGROUND, Rect2(Vector2.ZERO, vp), _cover_source_rect(TITLE_BACKGROUND, vp))
-	ui_ctrl.draw_rect(Rect2(0, 0, vp.x, vp.y), Color(0.008, 0.035, 0.04, 0.27))
-	ui_ctrl.draw_rect(Rect2(0, 0, vp.x, vp.y * 0.46), Color(0.01, 0.06, 0.065, 0.28))
+	_draw_title_mountain_field(vp)
+	_draw_wuhan_river_lines(vp)
+	ui_ctrl.draw_rect(Rect2(0, 0, vp.x, vp.y), Color(0.05, 0.10, 0.09, 0.12), true)
 
-	ui_ctrl.draw_string(font, Vector2(vp.x * 0.5 - 140, vp.y * 0.20), "蔓  延", HORIZONTAL_ALIGNMENT_LEFT, -1, 90, Color(0.94, 1.0, 0.93))
-	ui_ctrl.draw_string(font, Vector2(vp.x * 0.5 - 170, vp.y * 0.20 + 68), "G R O W  C A S S O N N E", HORIZONTAL_ALIGNMENT_LEFT, -1, 28, Color(0.55, 0.92, 0.68))
-	ui_ctrl.draw_string(font, Vector2(vp.x * 0.5 - 120, vp.y * 0.22 + 108), "抽牌开发 · 道路天气 · 花朵蔓延", HORIZONTAL_ALIGNMENT_LEFT, -1, 18, Color(0.55, 0.65, 0.62))
+	_draw_centered_outlined_text("花之江城", Vector2(vp.x * 0.5, vp.y * 0.22), font, 72, Color("#fff8e8"), Color("#254940"), 8)
+	_draw_centered_outlined_text("W U H A N   I N   B L O O M", Vector2(vp.x * 0.5, vp.y * 0.22 + 57), font, 20, Color("#f3cf8d"), Color("#254940"), 4)
 
-	ui_ctrl.draw_string(font, Vector2(vp.x * 0.5 - 120, vp.y * 0.48), "选择玩家人数:", HORIZONTAL_ALIGNMENT_LEFT, -1, 24, Color(0.85, 0.85, 0.85))
-	for i in 3:
-		var np = i + 2
-		var bx = vp.x * 0.5 - 110 + i * 130.0; var by = vp.y * 0.53
-		ui_ctrl.draw_rect(Rect2(bx, by, 100, 50), Color(0.02, 0.09, 0.09, 0.88), 0, true, 6.0)
-		ui_ctrl.draw_rect(Rect2(bx, by + 46, 100, 4), PLAYER_COLORS[np - 2])
-		ui_ctrl.draw_string(font, Vector2(bx + 25, by + 34), "%d 人" % np, HORIZONTAL_ALIGNMENT_LEFT, -1, 24, PLAYER_COLORS[np - 2].lightened(0.2))
+	for index in 4:
+		_draw_title_player_tile(index, _title_player_button_rect(index, vp), font)
 
-	var blink = sin(pulse * 2.2) * 0.3 + 0.7
-	ui_ctrl.draw_string(font, Vector2(vp.x * 0.5 - 140, vp.y * 0.64), "按 2 / 3 / 4 或点击选择人数", HORIZONTAL_ALIGNMENT_LEFT, -1, 18, Color(1, 1, 1, blink))
+func _draw_centered_outlined_text(value: String, center: Vector2, font: Font, size: int, color: Color, outline: Color, outline_size: int):
+	var text_size = font.get_string_size(value, HORIZONTAL_ALIGNMENT_LEFT, -1, size)
+	var baseline = center + Vector2(-text_size.x * 0.5, font.get_ascent(size) * 0.5)
+	ui_ctrl.draw_string_outline(font, baseline, value, HORIZONTAL_ALIGNMENT_LEFT, -1, size, outline_size, outline)
+	ui_ctrl.draw_string(font, baseline, value, HORIZONTAL_ALIGNMENT_LEFT, -1, size, color)
 
-	ui_ctrl.draw_string(font, Vector2(vp.x * 0.5 - 165, vp.y * 0.75), "使用开发、道路、天气和播种卡，经营中心花朵网络", HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(0.50, 0.56, 0.54))
-	ui_ctrl.draw_string(font, Vector2(vp.x * 0.5 - 165, vp.y * 0.79), "花朵总数最高获胜，平局比较占据植物地块数", HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(0.44, 0.50, 0.48))
-	ui_ctrl.draw_string(font, Vector2(vp.x * 0.5 - 90, vp.y * 0.90), "GGJ 2025  ·  GROW Theme", HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color(0.22, 0.22, 0.22))
+func _draw_title_mountain_field(vp: Vector2):
+	ui_ctrl.draw_rect(Rect2(Vector2.ZERO, vp), Color("#9fc9bd"), true)
+	var tile_w = 112.0; var tile_h = 54.0
+	var rows = ceili(vp.y / (tile_h * 0.5)) + 3
+	var columns = ceili(vp.x / tile_w) + 3
+	for row in rows:
+		for column in columns:
+			var center = Vector2((column - 1) * tile_w + (row % 2) * tile_w * 0.5, row * tile_h * 0.5 - tile_h)
+			var shade = float(posmod(row * 7 + column * 11, 5)) * 0.025
+			var top_color = TERRAIN_TOP[T_MOUNTAIN].lightened(0.20 + shade)
+			_draw_iso_tile(center, top_color, TERRAIN_MID[T_MOUNTAIN].lightened(0.08 + shade), tile_w * 0.5)
+			var peak_height = 24.0 + float(posmod(row * 13 + column * 5, 4)) * 5.0
+			var peak_x = center.x + float(posmod(row + column, 3) - 1) * 11.0
+			ui_ctrl.draw_colored_polygon(PackedVector2Array([
+				Vector2(peak_x - 28, center.y + 5), Vector2(peak_x, center.y - peak_height), Vector2(peak_x + 9, center.y + 5)
+			]), top_color.lightened(0.08))
+			ui_ctrl.draw_colored_polygon(PackedVector2Array([
+				Vector2(peak_x, center.y - peak_height), Vector2(peak_x + 30, center.y + 5), Vector2(peak_x + 9, center.y + 5)
+			]), top_color.darkened(0.22))
+			ui_ctrl.draw_colored_polygon(PackedVector2Array([
+				Vector2(peak_x - 6, center.y - peak_height + 7), Vector2(peak_x, center.y - peak_height), Vector2(peak_x + 6, center.y - peak_height + 9)
+			]), Color("#dce5dd"))
+
+func _draw_wuhan_river_lines(vp: Vector2):
+	var yangtze = PackedVector2Array([
+		Vector2(-40, vp.y * 0.47), Vector2(vp.x * 0.18, vp.y * 0.42), Vector2(vp.x * 0.39, vp.y * 0.50),
+		Vector2(vp.x * 0.60, vp.y * 0.46), Vector2(vp.x * 0.82, vp.y * 0.54), Vector2(vp.x + 40, vp.y * 0.49)
+	])
+	var han = PackedVector2Array([
+		Vector2(vp.x * 0.50, -30), Vector2(vp.x * 0.47, vp.y * 0.20), Vector2(vp.x * 0.53, vp.y * 0.34), Vector2(vp.x * 0.49, vp.y * 0.48)
+	])
+	ui_ctrl.draw_polyline(yangtze, Color(0.24, 0.62, 0.78, 0.54), 28.0, true)
+	ui_ctrl.draw_polyline(yangtze, Color(0.56, 0.84, 0.91, 0.38), 12.0, true)
+	ui_ctrl.draw_polyline(han, Color(0.24, 0.62, 0.78, 0.50), 20.0, true)
+	ui_ctrl.draw_polyline(han, Color(0.56, 0.84, 0.91, 0.34), 8.0, true)
+
+func _title_player_button_rect(index: int, vp: Vector2) -> Rect2:
+	var gap = 16.0
+	var tile_width = minf(132.0, maxf(68.0, (vp.x - 64.0 - gap * 3.0) / 4.0))
+	var total_width = tile_width * 4.0 + gap * 3.0
+	return Rect2(vp.x * 0.5 - total_width * 0.5 + index * (tile_width + gap), vp.y * 0.59, tile_width, 118.0)
+
+func _draw_title_player_tile(index: int, rect: Rect2, font: Font):
+	var terrain = [T_GRASS, T_WATER, T_FOREST, T_BUILDING][index]
+	var hovered = index == title_hovered_player
+	var center = Vector2(rect.get_center().x, rect.position.y + 42.0 - (8.0 if hovered else 0.0))
+	var size = minf(48.0, rect.size.x * 0.38) * (1.08 if hovered else 1.0)
+	ui_ctrl.draw_colored_polygon(PackedVector2Array([
+		center + Vector2(-size, 8), center + Vector2(0, size * 0.56 + 8), center + Vector2(size, 8), center + Vector2(0, -size * 0.56 + 8)
+	]), Color(0, 0, 0, 0.24))
+	_draw_iso_tile(center, TERRAIN_TOP[terrain].lightened(0.08 if hovered else 0.0), TERRAIN_MID[terrain], size)
+	match terrain:
+		T_GRASS:
+			for shrub in 3: ui_ctrl.draw_circle(center + Vector2(-18 + shrub * 18, -5 + abs(shrub - 1) * 5), 7, Color("#397a3d"))
+		T_WATER:
+			ui_ctrl.draw_arc(center, size * 0.42, 0.1, PI - 0.1, 18, Color("#a8e2ee"), 3.0)
+			ui_ctrl.draw_arc(center + Vector2(0, 7), size * 0.28, 0.1, PI - 0.1, 14, Color("#d0f1f4"), 2.0)
+		T_FOREST:
+			for tree in 3:
+				var tree_center = center + Vector2(-18 + tree * 18, -3 + abs(tree - 1) * 4)
+				ui_ctrl.draw_rect(Rect2(tree_center + Vector2(-2, 1), Vector2(4, 15)), Color("#684326"), true)
+				ui_ctrl.draw_colored_polygon(PackedVector2Array([tree_center + Vector2(-10, 4), tree_center + Vector2(0, -22), tree_center + Vector2(10, 4)]), Color("#286a43"))
+		T_BUILDING:
+			for tier in 4:
+				var width = 45.0 - tier * 7.0; var y = center.y + 8.0 - tier * 10.0
+				ui_ctrl.draw_rect(Rect2(center.x - width * 0.28, y - 6, width * 0.56, 7), Color("#b43b32"), true)
+				ui_ctrl.draw_colored_polygon(PackedVector2Array([Vector2(center.x - width * 0.56, y), Vector2(center.x + width * 0.56, y), Vector2(center.x + width * 0.38, y + 4), Vector2(center.x - width * 0.38, y + 4)]), Color("#d99a26"))
+	var label_color = PLAYER_COLORS[index].lightened(0.18) if hovered else Color("#fff8e8")
+	_draw_centered_outlined_text("%d 人" % (index + 1), Vector2(rect.get_center().x, rect.position.y + 101), font, 19, label_color, Color("#254940"), 4)
 
 func _draw_gameover(vp: Vector2, font: Font):
 	ui_ctrl.draw_rect(Rect2(0, 0, vp.x, vp.y), Color(0, 0, 0, 0.85))

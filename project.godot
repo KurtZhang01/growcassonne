@@ -10,7 +10,7 @@ config_version=5
 
 [application]
 
-config/name="蔓延 / GrowCassonne"
+config/name="花之江城 / Wuhan in Bloom"
 run/main_scene="res://scenes/main.tscn"
 config/features=PackedStringArray("4.7")
 
