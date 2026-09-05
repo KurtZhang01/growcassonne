@@ -311,40 +311,60 @@ func _setup_card_preview_viewport():
 	card_preview_viewport.add_child(world_env)
 
 func _setup_title_world():
-	# 创建标题场景的3D地块世界
-	_init_grid()
-	# GGJ2026 文字用水域拼，其余用山体/草地填充
+	# 标题场景：20×16地块铺满屏幕
+	var tw = 20; var th = 16
+	# 临时扩展网格到20×16
+	grid = []; roads = []; plants = []; plant_age = []; flowers = []
+	tile_nodes = []; plant_nodes = []; decor_nodes = []
+	for x in tw:
+		grid.append([]); roads.append([]); plants.append([]); plant_age.append([]); flowers.append([])
+		tile_nodes.append([]); plant_nodes.append([]); decor_nodes.append([])
+		for y in th:
+			grid[x].append(-1); roads[x].append(0); plants[x].append(0); plant_age[x].append(0)
+			flowers[x].append([0, 0, 0, 0])
+			tile_nodes[x].append(null); plant_nodes[x].append(null); decor_nodes[x].append(null)
+	grid_origin = Vector2i.ZERO
+	# GGJ2026 文字用水域拼
 	var text_cells = _ggj2026_cells()
-	var building_cells = _title_building_cells()
-	var title_w = 18; var title_h = 14
-	var ox = -(title_w / 2); var oy = -(title_h / 2)
-	for lx in title_w:
-		for ly in title_h:
-			var gx = GRID_SIZE / 2 + ox + lx
-			var gy = GRID_SIZE / 2 + oy + ly
-			if gx < 0 or gx >= GRID_SIZE or gy < 0 or gy >= GRID_SIZE: continue
-			var pos = Vector2i(gx, gy)
-			if building_cells.has(Vector2i(lx, ly)):
-				_force_tile(pos, T_BUILDING, false, 0)
-			elif text_cells.has(Vector2i(lx, ly)):
+	# 遍历20×16生成地块
+	for x in tw:
+		for y in th:
+			var pos = Vector2i(x, y)
+			if text_cells.has(pos):
 				_force_tile(pos, T_WATER, false, 0)
-			elif randf() < 0.2:
+			elif randf() < 0.12:
 				_force_tile(pos, T_GRASS, false, 0)
 			else:
 				_force_tile(pos, T_MOUNTAIN, false, 0)
-	# 建筑地块渲染建筑模型
-	for cell in building_cells:
-		var gx = GRID_SIZE / 2 + ox + cell.x
-		var gy = GRID_SIZE / 2 + oy + cell.y
-		var pos = Vector2i(gx, gy)
-		if _in_bounds(pos) and grid[pos.x][pos.y] == T_BUILDING:
-			var root = tile_nodes[pos.x][pos.y]
-			if root: _tile_pavilion_surface(root, 0)
-	# 调整相机看向棋盘中心
-	var center_world = _world(Vector2i(GRID_SIZE / 2, GRID_SIZE / 2))
-	camera.position = center_world + Vector3(8, 14, 10)
+	# Label3D 标题（平躺在等距平面上）
+	var title_label = Label3D.new()
+	title_label.text = "花满洪山"
+	title_label.font_size = 60
+	title_label.modulate = Color("#fff8e8")
+	title_label.outline_size = 8
+	title_label.outline_modulate = Color("#254940")
+	title_label.billboard = BaseMaterial3D.BILLBOARD_DISABLED
+	title_label.no_depth_test = true
+	title_label.position = _world(Vector2i(14, 4)) + Vector3(0, 0.3, 0)
+	title_label.rotation_degrees = Vector3(-90, 0, -45)
+	title_label.pixel_size = 0.01
+	add_child(title_label)
+	var sub_label = Label3D.new()
+	sub_label.text = "HONGSHAN IN BLOOM"
+	sub_label.font_size = 24
+	sub_label.modulate = Color("#f3cf8d")
+	sub_label.outline_size = 4
+	sub_label.outline_modulate = Color("#254940")
+	sub_label.billboard = BaseMaterial3D.BILLBOARD_DISABLED
+	sub_label.no_depth_test = true
+	sub_label.position = title_label.position + Vector3(0.3, 0, 0.3)
+	sub_label.rotation_degrees = Vector3(-90, 0, -45)
+	sub_label.pixel_size = 0.008
+	add_child(sub_label)
+	# 相机设置：拉远看全屏
+	camera.size = 22.0
+	camera.position = Vector3(tw * TILE_SPACING * 0.5, 18, th * TILE_SPACING * 0.3)
 	camera.rotation_degrees = Vector3(-42, 42, 0)
-	camera.size = 16
 
 func _setup_sky_world():
 	sky_root = Node3D.new(); sky_root.name = "LivingSky"; add_child(sky_root)
@@ -4291,12 +4311,8 @@ func _draw_repeating_card_pattern(rect: Rect2, kind: String, color: Color):
 					ui_ctrl.draw_circle(p + Vector2(4, 0.5), 2.5, pattern_color)
 
 func _draw_title(vp: Vector2, font: Font):
-	# 3D地块世界已由 _setup_title_world() 创建，这里只画UI叠加层
-	ui_ctrl.draw_rect(Rect2(0, 0, vp.x, vp.y), Color(0.02, 0.06, 0.05, 0.15), true)
-
-	# 标题（上部居中）
-	_draw_centered_outlined_text("花 满 洪 山", Vector2(vp.x * 0.5, vp.y * 0.13), font, 72, Color("#fff8e8"), Color("#254940"), 8)
-	_draw_centered_outlined_text("H O N G S H A N   I N   B L O O M", Vector2(vp.x * 0.5, vp.y * 0.13 + 57), font, 18, Color("#f3cf8d"), Color("#254940"), 4)
+	# 3D地块世界+Label3D标题已由 _setup_title_world() 创建
+	ui_ctrl.draw_rect(Rect2(0, 0, vp.x, vp.y), Color(0.02, 0.06, 0.05, 0.12), true)
 
 	# 玩家选择（中下部）
 	for index in 3:
@@ -4365,7 +4381,7 @@ func _ggj2026_cells() -> Dictionary:
 	}
 	var cells := {}
 	var text = "GGJ2026"
-	var ox = 12; var oy = 10  # 在网格中的起始位置（中下部）
+	var ox = 2; var oy = 8  # 中左下区域
 	for ch_idx in text.length():
 		var ch = text[ch_idx]
 		if not font_data.has(ch): ox += 6; continue
