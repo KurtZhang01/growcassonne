@@ -3108,6 +3108,7 @@ func _draw_ui():
 	if state == S.TITLE: _draw_title(vp, font); return
 	if state == S.GAME_OVER: _draw_gameover(vp, font); return
 
+	_draw_top_info_bar(vp, font, ink, muted)
 	var pcol = PLAYER_COLORS[current_player]
 	_draw_glass_card(Rect2(ux, uy, 270, 54), glass_strong, pcol.lightened(0.10))
 	var st := "抽牌 %d / 3" % (3 - draws_remaining) if state == S.DRAW_CARDS else "出牌阶段"
@@ -3154,6 +3155,43 @@ func _draw_ui():
 	ui_ctrl.draw_string(font, Vector2(ux + 12, vp.y - 36), "滚轮缩放 · 中键平移 · R 重开", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, muted)
 	_draw_public_decks(font, ink, muted)
 	_draw_bottom_hand(vp, font, ink, muted)
+
+func _draw_top_info_bar(vp: Vector2, font: Font, ink: Color, muted: Color):
+	var bar_y = 8.0; var bar_h = 36.0
+	# 背景
+	ui_ctrl.draw_rect(Rect2(8, bar_y, vp.x - 16, bar_h), Color(0.08, 0.10, 0.12, 0.82), 0, false)
+	var x = 20.0
+	var terrain_colors = [Color("#5fae55"), Color("#3f94bd"), Color("#2f7048"), Color("#c8944e")]
+	var names_short = ["草", "水", "林", "漠"]
+	var base_rates = [0.3, 0.0, 0.5, 0.1]
+	var caps = [50, 0, 100, 10]
+	for i in 4:
+		var rate = base_rates[i]
+		if _has_extreme_weather(): rate *= 0.5
+		if rainbow_turns > 0: rate *= 2.0
+		ui_ctrl.draw_rect(Rect2(x, bar_y + 8, 14, 14), terrain_colors[i], 0, true, 3.0)
+		ui_ctrl.draw_string(font, Vector2(x + 18, bar_y + 20), "%s %.1f" % [names_short[i], rate], HORIZONTAL_ALIGNMENT_LEFT, 60, 12, Color("#d0d8d4"))
+		x += 82.0
+	# 分隔线
+	ui_ctrl.draw_line(Vector2(x, bar_y + 6), Vector2(x, bar_y + bar_h - 6), Color(1, 1, 1, 0.15), 1.0)
+	x += 12.0
+	# 升级/降级状态
+	var up_color = Color("#88aa88", 0.6); var down_color = Color("#aa8888", 0.6)
+	var up_text = "升级"; var down_text = "降级"
+	if active_weather.has("雨季"): up_text = "升级×2"; up_color = Color("#60dd80")
+	if active_weather.has("旱季"): down_text = "降级×2"; down_color = Color("#dd6060")
+	if rainbow_turns > 0: up_text = "升级×2"; up_color = Color("#60dd80")
+	ui_ctrl.draw_string(font, Vector2(x, bar_y + 15), up_text, HORIZONTAL_ALIGNMENT_LEFT, 60, 12, up_color)
+	ui_ctrl.draw_string(font, Vector2(x, bar_y + 30), down_text, HORIZONTAL_ALIGNMENT_LEFT, 60, 12, down_color)
+	x += 72.0
+	# 当前天气
+	if not active_weather.is_empty() or rainbow_turns > 0:
+		ui_ctrl.draw_line(Vector2(x, bar_y + 6), Vector2(x, bar_y + bar_h - 6), Color(1, 1, 1, 0.15), 1.0)
+		x += 12.0
+		var wt = ""
+		for w in active_weather.keys(): wt += "%s%d " % [w, active_weather[w]]
+		if rainbow_turns > 0: wt += "彩虹 "
+		ui_ctrl.draw_string(font, Vector2(x, bar_y + 22), wt.strip_edges(), HORIZONTAL_ALIGNMENT_LEFT, 200, 12, Color("#d4c080"))
 
 func _draw_public_decks(font: Font, ink: Color, muted: Color):
 	var names = ["开发卡堆", "道路卡堆", "天气卡堆"]
