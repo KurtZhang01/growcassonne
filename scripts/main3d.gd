@@ -3458,17 +3458,21 @@ func _draw_hand_card_face(card: Dictionary, rect: Rect2, font: Font, ink: Color,
 	# 3. 内容区域（边框内部）
 	var inner = Rect2(rect.position + Vector2(border_w, border_w), rect.size - Vector2(border_w * 2, border_w * 2))
 	ui_ctrl.draw_rect(inner, Color(1.0, 1.0, 0.98, 0.96), true)
-	# 4. 连续渐变：accent(顶) → base → 暗base(底) → 白，从上到下越来越淡
+	# 4. 连续渐变：accent(顶) → base → 目标淡色(中下) → 白(底)
+	var fade_target := Color(1.0, 1.0, 0.97, 1.0)  # 默认白色
+	match card["kind"]:
+		"develop", "building_develop": fade_target = Color("#f0d0b0")  # 皮肤色
+		"weather": fade_target = Color("#d0e4f4")  # 淡蓝色
 	var rows = 24
 	for row in rows:
 		var t = float(row) / float(rows - 1)
 		var band_color: Color
-		if t < 0.35:
-			band_color = accent.lerp(base, t / 0.35)
-		elif t < 0.65:
-			band_color = base.lerp(base.darkened(0.10), (t - 0.35) / 0.3)
+		if t < 0.25:
+			band_color = accent.lerp(base, t / 0.25)
+		elif t < 0.50:
+			band_color = base.lerp(fade_target, (t - 0.25) / 0.25)
 		else:
-			band_color = base.darkened(0.10).lerp(Color(1.0, 1.0, 0.97, 1.0), (t - 0.65) / 0.35)
+			band_color = fade_target.lerp(Color(1.0, 1.0, 0.97, 1.0), (t - 0.50) / 0.50)
 		var band_y = inner.position.y + inner.size.y * t
 		var next_y = inner.position.y + inner.size.y * float(row + 1) / float(rows)
 		ui_ctrl.draw_rect(Rect2(inner.position.x, band_y, inner.size.x, next_y - band_y + 1.0), band_color, true)
@@ -3636,23 +3640,34 @@ func _draw_card_symbol(card: Dictionary, center: Vector2, color: Color):
 			ui_ctrl.draw_circle(center + Vector2(18, 5), 12, color.lightened(0.45))
 
 func _draw_repeating_card_pattern(rect: Rect2, kind: String, color: Color):
-	for row in 4:
-		var center = rect.position + Vector2(12 + (row % 2) * 25, 40 + row * 24)
-		for column in 2:
-			var p = center + Vector2(column * 42, -column * 10)
-			if not rect.grow(-8.0).has_point(p): continue
+	# 底纹颜色更接近白色
+	var pattern_color = color.lerp(Color.WHITE, 0.55)
+	# 整齐网格排列
+	var spacing_x = 28.0; var spacing_y = 26.0
+	var start_x = rect.position.x + 14.0
+	var start_y = rect.position.y + 38.0
+	var cols = maxi(1, floori((rect.size.x - 20) / spacing_x))
+	var rows = maxi(1, floori((rect.size.y - 50) / spacing_y))
+	for row in rows:
+		for col in cols:
+			var p = Vector2(start_x + col * spacing_x, start_y + row * spacing_y)
+			if not rect.grow(-6.0).has_point(p): continue
 			match kind:
 				"seed":
-					ui_ctrl.draw_line(p + Vector2(0, 6), p + Vector2(0, -3), color, 1.2)
-					ui_ctrl.draw_circle(p + Vector2(-3, -4), 3, color); ui_ctrl.draw_circle(p + Vector2(3, -6), 3, color)
+					ui_ctrl.draw_line(p + Vector2(0, 5), p + Vector2(0, -3), pattern_color, 1.0)
+					ui_ctrl.draw_circle(p + Vector2(-3, -4), 2.5, pattern_color)
+					ui_ctrl.draw_circle(p + Vector2(3, -5), 2.5, pattern_color)
 				"develop", "building_develop":
-					ui_ctrl.draw_line(p + Vector2(5, -7), p + Vector2(-4, 7), color, 2.0)
-					ui_ctrl.draw_line(p + Vector2(-9, 4), p + Vector2(1, 8), color, 3.0)
+					ui_ctrl.draw_line(p + Vector2(4, -5), p + Vector2(-3, 5), pattern_color, 1.5)
+					ui_ctrl.draw_line(p + Vector2(-6, 3), p + Vector2(1, 6), pattern_color, 2.0)
 				"road":
-					ui_ctrl.draw_line(p + Vector2(-7, -3), p + Vector2(7, 4), color, 3.0)
-					ui_ctrl.draw_line(p + Vector2(-5, -7), p + Vector2(-5, 6), color, 2.0); ui_ctrl.draw_line(p + Vector2(5, -2), p + Vector2(5, 9), color, 2.0)
+					ui_ctrl.draw_line(p + Vector2(-5, -2), p + Vector2(5, 3), pattern_color, 2.0)
+					ui_ctrl.draw_line(p + Vector2(-4, -5), p + Vector2(-4, 4), pattern_color, 1.5)
+					ui_ctrl.draw_line(p + Vector2(4, -1), p + Vector2(4, 6), pattern_color, 1.5)
 				"weather":
-					ui_ctrl.draw_circle(p + Vector2(-4, 1), 4, color); ui_ctrl.draw_circle(p + Vector2(2, -2), 6, color); ui_ctrl.draw_circle(p + Vector2(7, 2), 4, color)
+					ui_ctrl.draw_circle(p + Vector2(-3, 1), 3, pattern_color)
+					ui_ctrl.draw_circle(p + Vector2(2, -2), 4.5, pattern_color)
+					ui_ctrl.draw_circle(p + Vector2(5, 1), 3, pattern_color)
 
 func _draw_glass_card(rect: Rect2, fill: Color, line: Color = Color(1.0, 1.0, 1.0, 0.45), radius: float = 18.0):
 	fill.a = 0.94
