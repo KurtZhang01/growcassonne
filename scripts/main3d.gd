@@ -3458,16 +3458,6 @@ func _draw_hand_card_face(card: Dictionary, rect: Rect2, font: Font, ink: Color,
 	# 3. 内容区域（边框内部）
 	var inner = Rect2(rect.position + Vector2(border_w, border_w), rect.size - Vector2(border_w * 2, border_w * 2))
 	ui_ctrl.draw_rect(inner, Color(1.0, 1.0, 0.98, 0.96), true)
-	# 4. 边框立体阴影：边框向卡面右下方投射阴影
-	var sh = 3.0  # 阴影宽度
-	# 顶部内阴影（从边框内边缘向下渐变）
-	for s in sh:
-		var a = 0.12 * (1.0 - s / sh)
-		ui_ctrl.draw_rect(Rect2(inner.position.x, inner.position.y + s, inner.size.x, 1.0), Color(0, 0, 0, a), true)
-	# 左侧内阴影（从边框内边缘向右渐变）
-	for s in sh:
-		var a = 0.10 * (1.0 - s / sh)
-		ui_ctrl.draw_rect(Rect2(inner.position.x + s, inner.position.y, 1.0, inner.size.y), Color(0, 0, 0, a), true)
 	# 4. 连续渐变：accent(顶) → base → 暗base(底) → 白，从上到下越来越淡
 	var rows = 24
 	for row in rows:
@@ -3494,6 +3484,16 @@ func _draw_hand_card_face(card: Dictionary, rect: Rect2, font: Font, ink: Color,
 	elif index != selected_card:
 		var depth = float(index) / maxf(float(current_hand.size() - 1), 1.0)
 		ui_ctrl.draw_rect(inner, Color(0.03, 0.06, 0.05, 0.04 + (1.0 - depth) * 0.08), true)
+	# 7. 边框立体阴影：画在所有内容之上，边框向卡面内侧投射
+	var sh = 6.0
+	# 上边内阴影（向下投射）
+	for s in int(sh):
+		var a = 0.25 * (1.0 - float(s) / sh)
+		ui_ctrl.draw_rect(Rect2(inner.position.x, inner.position.y + s, inner.size.x, 1.0), Color(0, 0, 0, a), true)
+	# 左边内阴影（向右投射）
+	for s in int(sh):
+		var a = 0.20 * (1.0 - float(s) / sh)
+		ui_ctrl.draw_rect(Rect2(inner.position.x + s, inner.position.y + sh, 1.0, inner.size.y - sh), Color(0, 0, 0, a), true)
 
 func _draw_card_model_icon(card: Dictionary, center: Vector2, color: Color):
 	match card["kind"]:
