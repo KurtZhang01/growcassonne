@@ -102,9 +102,9 @@ const CAM_BASE_SIZE := 14.5
 const UI_DESIGN_SIZE := Vector2(1280.0, 720.0)
 const UI_MARGIN := 18.0
 const UI_TOP_HEIGHT := 54.0
-const UI_RAIL_HEIGHT := 214.0
+const UI_RAIL_HEIGHT := 188.0
 const UI_SIDE_TOP := 82.0
-const UI_SIDE_BOTTOM := 254.0
+const UI_SIDE_BOTTOM := 228.0
 
 # Nodes
 var camera: Camera3D; var grid_root: Node3D; var plant_root: Node3D
@@ -115,6 +115,7 @@ var falling_leaves := []; var animated_grass_patches := []
 var tile_select_root: Node3D; var selected_tile := Vector2i(-1, -1)
 var aura_root: Node3D; var settle_fx_root: Node3D; var weather_fx_root: Node3D
 var action_history: Array[String] = []
+var history_scroll := 0
 var placement_highlights := []
 var placement_highlight_root: Node3D
 var ranking_order: Array[int] = []
@@ -143,40 +144,40 @@ func _setup_scene():
 
 	var sun = DirectionalLight3D.new()
 	sun.rotation_degrees = Vector3(-50, -25, 0)
-	sun.light_energy = 0.82; sun.light_color = Color("#ffe8c4")
+	sun.light_energy = 0.70; sun.light_color = Color("#ffe8c4")
 	sun.sky_mode = DirectionalLight3D.SKY_MODE_LIGHT_ONLY
 	sun.shadow_enabled = true; add_child(sun)
 
 	var fill = DirectionalLight3D.new()
 	fill.rotation_degrees = Vector3(30, 150, 0)
-	fill.light_energy = 0.22; fill.light_color = Color("#87c5c7")
+	fill.light_energy = 0.17; fill.light_color = Color("#87c5c7")
 	fill.sky_mode = DirectionalLight3D.SKY_MODE_LIGHT_ONLY
 	add_child(fill)
 
 	var rim = DirectionalLight3D.new()
 	rim.rotation_degrees = Vector3(-10, -120, 0)
-	rim.light_energy = 0.10; rim.light_color = Color("#f5b766")
+	rim.light_energy = 0.07; rim.light_color = Color("#f5b766")
 	rim.sky_mode = DirectionalLight3D.SKY_MODE_LIGHT_ONLY
 	add_child(rim)
 
 	var env = WorldEnvironment.new()
 	var e = Environment.new()
 	var sky_material = ProceduralSkyMaterial.new()
-	sky_material.sky_top_color = Color("#8fd0f2")
-	sky_material.sky_horizon_color = Color("#f5fbff")
-	sky_material.sky_curve = 0.22
-	sky_material.ground_horizon_color = Color("#f8fcff")
+	sky_material.sky_top_color = Color("#89cbed")
+	sky_material.sky_horizon_color = Color("#dff4ff")
+	sky_material.sky_curve = 0.28
+	sky_material.ground_horizon_color = Color("#e8f7ff")
 	sky_material.ground_bottom_color = Color("#ffffff")
-	sky_material.ground_curve = 0.12
+	sky_material.ground_curve = 0.55
 	var sky = Sky.new(); sky.sky_material = sky_material
 	sky.process_mode = Sky.PROCESS_MODE_QUALITY; sky.radiance_size = Sky.RADIANCE_SIZE_128
 	e.background_mode = Environment.BG_SKY; e.sky = sky
 	e.background_color = Color("#f8fcff")
 	e.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	e.ambient_light_color = Color("#a7d6c4")
-	e.ambient_light_energy = 0.60
+	e.ambient_light_energy = 0.52
 	e.tonemap_mode = Environment.TONE_MAPPER_FILMIC
-	e.glow_enabled = true; e.glow_intensity = 0.14; e.glow_bloom = 0.02
+	e.glow_enabled = true; e.glow_intensity = 0.10; e.glow_bloom = 0.015
 	env.environment = e; add_child(env)
 	_setup_sky_world()
 
@@ -1977,7 +1978,7 @@ func _start_player_turn():
 	ui_ctrl.queue_redraw()
 
 func _start_game():
-	action_history.clear(); ranking_order.clear(); ranking_y.clear(); ranking_values.clear()
+	action_history.clear(); history_scroll = 0; ranking_order.clear(); ranking_y.clear(); ranking_values.clear()
 	_init_grid()
 	current_player = randi() % player_count; turns_played = 0
 	total_turns = TOTAL_ROUNDS_PER_PLAYER * player_count
@@ -2042,7 +2043,7 @@ func _card_base_color(card: Dictionary) -> Color:
 	return Color.WHITE
 
 func _bottom_card_rect(index: int, count: int, vp: Vector2) -> Rect2:
-	var card_size = Vector2(104, 150)
+	var card_size = Vector2(98, 141)
 	var hand_left = UI_MARGIN + 315.0
 	var hand_right = vp.x - UI_MARGIN - 74.0
 	var available = maxf(card_size.x, hand_right - hand_left)
@@ -2072,7 +2073,7 @@ func _hand_card_has_point(pointer: Vector2, index: int, vp: Vector2) -> bool:
 	return Rect2(-rect.size * 0.5, rect.size).has_point(local)
 
 func _deck_rect(index: int, vp: Vector2) -> Rect2:
-	return Rect2(UI_MARGIN + 14.0 + index * 84.0, vp.y - UI_MARGIN - 148.0, 70.0, 99.0)
+	return Rect2(UI_MARGIN + 14.0 + index * 96.0, vp.y - UI_MARGIN - 145.0, 82.0, 116.0)
 
 func _card_at_pointer(pointer: Vector2, vp: Vector2) -> int:
 	if selected_card >= 0 and selected_card < current_hand.size() and _hand_card_has_point(pointer, selected_card, vp): return selected_card
@@ -2266,7 +2267,7 @@ func _finish_card_drag(cell: Vector2i):
 
 func _record_action(message: String):
 	action_history.push_front("%s · %s" % [PLAYER_NAMES[current_player], message])
-	if action_history.size() > 4: action_history.resize(4)
+	history_scroll = 0
 
 func _apply_pending_develop(anchor: Vector2i, card: Dictionary) -> bool:
 	var cells = _develop_card_cells(anchor, int(card["level"]), piece_rotation)
@@ -3098,7 +3099,7 @@ func _ui_left_width(vp: Vector2) -> float:
 	return clampf(vp.x * 0.18, 190.0, 226.0)
 
 func _ui_right_width(vp: Vector2) -> float:
-	return clampf(vp.x * 0.23, 240.0, 292.0)
+	return clampf(vp.x * 0.20, 220.0, 254.0)
 
 func _ui_top_rect(vp: Vector2) -> Rect2:
 	return Rect2(UI_MARGIN, UI_MARGIN, vp.x - UI_MARGIN * 2.0, UI_TOP_HEIGHT)
@@ -3118,6 +3119,13 @@ func _end_turn_rect(vp: Vector2) -> Rect2:
 
 func _pointer_over_ui(pointer: Vector2, vp: Vector2) -> bool:
 	return _ui_top_rect(vp).has_point(pointer) or _ui_left_rect(vp).has_point(pointer) or _ui_right_rect(vp).has_point(pointer) or _ui_rail_rect(vp).has_point(pointer)
+
+func _history_capacity(vp: Vector2) -> int:
+	var inner = _ui_right_rect(vp).grow(-20.0)
+	var progress_top = inner.position.y + 48.0
+	var ranking_top = progress_top + 43.0 + 31.0
+	var history_top = ranking_top + player_count * 21.0 + 35.0
+	return maxi(1, floori((inner.end.y - history_top - 2.0) / 25.0))
 
 func _layout_glass_panels(vp: Vector2, interface_scale: float):
 	if ui_glass_panels.size() != 4: return
@@ -3150,8 +3158,17 @@ func _input(event):
 					player_count = index + 1; state = S.PLAY_CARDS; _start_game(); return
 		return
 
-	# ---- Zoom: scroll wheel ----
+	# The history panel owns the wheel while hovered; elsewhere it controls zoom.
 	if event is InputEventMouseButton:
+		var ui_view = get_viewport().get_visible_rect().size / _ui_scale(get_viewport().get_visible_rect().size)
+		var ui_pointer = _ui_point(event.position)
+		if _ui_right_rect(ui_view).has_point(ui_pointer):
+			var capacity = _history_capacity(ui_view)
+			var max_scroll = maxi(0, action_history.size() - capacity)
+			if event.button_index == MOUSE_BUTTON_WHEEL_UP:
+				history_scroll = maxi(0, history_scroll - 1); ui_ctrl.queue_redraw(); return
+			elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
+				history_scroll = mini(max_scroll, history_scroll + 1); ui_ctrl.queue_redraw(); return
 		if event.button_index == MOUSE_BUTTON_WHEEL_UP:
 			cam_zoom_target = clamp(cam_zoom_target * (1.0 + CAM_ZOOM_SPEED), CAM_ZOOM_MIN, CAM_ZOOM_MAX)
 			return
@@ -3367,7 +3384,7 @@ func _draw_card_context_stage(card: Dictionary, rect: Rect2, font: Font, ink: Co
 		_rebuild_card_model_preview(card)
 		ui_ctrl.draw_texture_rect(card_preview_viewport.get_texture(), rect, false)
 	else:
-		_draw_card_model_icon(card, rect.get_center() + Vector2(0, -12), _card_accent(card).lightened(0.08))
+		_draw_card_model_icon(card, rect.get_center() + Vector2(0, -12), _card_accent(card).lightened(0.08), 1.28)
 		_draw_fitted_text(_card_effect_text(card), Rect2(rect.position + Vector2(8, rect.size.y - 39), Vector2(rect.size.x - 16, 30)), font, 11, ink)
 
 func _card_preview_title(card: Dictionary) -> String:
@@ -3470,7 +3487,7 @@ func _rebuild_selected_tile_preview(pos: Vector2i):
 			else: _tile_pavilion_surface(root, 0)
 	_spawn_decor(terrain, root, roads[pos.x][pos.y])
 	if roads[pos.x][pos.y] != 0 and terrain != T_BUILDING: _spawn_road(root, roads[pos.x][pos.y])
-	card_preview_camera.size = 2.7
+	card_preview_camera.size = 2.28 if terrain == T_BUILDING else 2.08
 	var target = Vector3(0, 0.25, 0); card_preview_camera.look_at_from_position(target + Vector3(3.2, 3.4, 4.2), target)
 
 func _rebuild_card_model_preview(card: Dictionary):
@@ -3501,7 +3518,7 @@ func _rebuild_card_model_preview(card: Dictionary):
 			var mask = _rotate_road_mask(int(roads_data[index]), piece_rotation)
 			if mask != 0: _spawn_road(tile_root, mask)
 	var span = maxi(max_cell.x - min_cell.x + 1, max_cell.y - min_cell.y + 1)
-	card_preview_camera.size = 2.4 + maxf(0.0, float(span - 1)) * 1.05
+	card_preview_camera.size = 1.92 + maxf(0.0, float(span - 1)) * 0.82
 	var target = Vector3(0, 0.25, 0)
 	card_preview_camera.look_at_from_position(target + Vector3(3.2, 3.4, 4.2), target)
 
@@ -3534,11 +3551,11 @@ func _draw_top_info_bar(vp: Vector2, font: Font, ink: Color, muted: Color):
 		ui_ctrl.draw_rect(Rect2(x, center_y - 5.0, 8.0, 8.0), terrain_colors[i], true)
 		_draw_fitted_text("%s %.1f" % [names_short[i], rate], Rect2(x + 13.0, center_y - 9.0, 65.0, 20.0), font, 11, muted)
 		x += 79.0
-	var weather_text = "平稳"
+	var weather_text = "天气 平稳"
 	if not active_weather.is_empty() or rainbow_turns > 0:
-		weather_text = ""
-		for weather in active_weather.keys(): weather_text += "%s · %d回合  " % [weather, active_weather[weather]]
-		if rainbow_turns > 0: weather_text += "彩虹 · %d回合" % rainbow_turns
+		weather_text = "天气 "
+		for weather in active_weather.keys(): weather_text += "%s %d回合  " % [weather, active_weather[weather]]
+		if rainbow_turns > 0: weather_text += "彩虹 %d回合" % rainbow_turns
 	var weather_width = minf(190.0, bar.end.x - x - 18.0)
 	ui_ctrl.draw_circle(Vector2(bar.end.x - weather_width + 3.0, center_y), 4.0, Color("#65a9d8"))
 	_draw_fitted_text(weather_text.strip_edges(), Rect2(bar.end.x - weather_width + 14.0, center_y - 9.0, weather_width - 14.0, 20.0), font, 11, Color("#37657a"))
@@ -3575,13 +3592,23 @@ func _draw_right_info_panel(vp: Vector2, font: Font, ink: Color, muted: Color):
 	y = rank_top + player_count * 21.0 + 5.0
 	ui_ctrl.draw_line(Vector2(inner.position.x, y), Vector2(inner.end.x, y), Color(0.20, 0.30, 0.26, 0.18), 1.0)
 	_draw_fitted_text("操作历史", Rect2(inner.position.x, y + 8, 100, 18), font, 11, muted)
-	_draw_fitted_text("最近4条", Rect2(inner.end.x - 54, y + 8, 54, 18), font, 10, muted)
+	_draw_fitted_text("全部%d条" % action_history.size(), Rect2(inner.end.x - 62, y + 8, 62, 18), font, 10, muted)
 	var history_top = y + 30.0
-	var visible_count = mini(action_history.size(), maxi(0, floori((inner.end.y - history_top - 2.0) / 25.0)))
-	for index in visible_count:
-		var color = _player_text_color(action_history[index], muted)
-		ui_ctrl.draw_rect(Rect2(inner.position.x, history_top + index * 25.0, 4, 19), color, true)
-		_draw_fitted_text(action_history[index], Rect2(inner.position.x + 12, history_top + index * 25.0, inner.size.x - 12, 20), font, 10, color)
+	var capacity = maxi(0, floori((inner.end.y - history_top - 2.0) / 25.0))
+	history_scroll = clampi(history_scroll, 0, maxi(0, action_history.size() - capacity))
+	var visible_count = mini(maxi(0, action_history.size() - history_scroll), capacity)
+	for slot in visible_count:
+		var history_index = history_scroll + slot
+		var color = _player_text_color(action_history[history_index], muted)
+		ui_ctrl.draw_rect(Rect2(inner.position.x, history_top + slot * 25.0, 4, 19), color, true)
+		_draw_fitted_text(action_history[history_index], Rect2(inner.position.x + 12, history_top + slot * 25.0, inner.size.x - 17, 20), font, 10, color)
+	if action_history.size() > capacity and capacity > 0:
+		var track = Rect2(inner.end.x - 3.0, history_top, 2.0, capacity * 25.0 - 5.0)
+		ui_ctrl.draw_rect(track, Color(0.20, 0.30, 0.26, 0.12), true)
+		var thumb_h = maxf(12.0, track.size.y * float(capacity) / float(action_history.size()))
+		var max_scroll = maxi(1, action_history.size() - capacity)
+		var thumb_y = track.position.y + (track.size.y - thumb_h) * float(history_scroll) / float(max_scroll)
+		ui_ctrl.draw_rect(Rect2(track.position.x, thumb_y, track.size.x, thumb_h), Color(0.20, 0.30, 0.26, 0.42), true)
 
 func _draw_card_rail_labels(vp: Vector2, font: Font, muted: Color):
 	var rail = _ui_rail_rect(vp)
@@ -3606,7 +3633,7 @@ func _draw_public_decks(vp: Vector2, font: Font, ink: Color, muted: Color):
 		if hovered_deck_index == i and state == S.DRAW_CARDS: rect.position.y -= 4.0
 		for layer in range(2, 0, -1):
 			ui_ctrl.draw_rect(Rect2(rect.position + Vector2(-layer * 3.0, -layer * 3.0), rect.size), Color(1.0, 1.0, 0.98, 0.90), true)
-		_draw_card_component(cards[i], rect, font, ink, muted, ui_preview_mode == "deck" and ui_preview_index == i, 0.0)
+		_draw_card_component(cards[i], rect, font, ink, muted, ui_preview_mode == "deck" and ui_preview_index == i, 0.0, false)
 		if state != S.DRAW_CARDS: ui_ctrl.draw_rect(rect.grow(-4.0), Color(0.20, 0.24, 0.22, 0.16), true)
 		ui_ctrl.draw_string(font, Vector2(rect.position.x, rect.end.y + 18), ["开发", "道路", "天气"][i], HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, 10, ink if state == S.DRAW_CARDS else muted)
 
@@ -3637,7 +3664,7 @@ func _draw_hand_card_face(card: Dictionary, rect: Rect2, font: Font, ink: Color,
 	var depth = float(index) / maxf(float(current_hand.size() - 1), 1.0)
 	_draw_card_component(card, rect, font, ink, muted, active, 0.0 if active else 0.04 + (1.0 - depth) * 0.08)
 
-func _draw_card_component(card: Dictionary, rect: Rect2, font: Font, ink: Color, muted: Color, active: bool, depth_mask: float):
+func _draw_card_component(card: Dictionary, rect: Rect2, font: Font, ink: Color, muted: Color, active: bool, depth_mask: float, show_details: bool = true):
 	var base = _card_base_color(card)
 	var accent = _card_accent(card)
 	# 1. 投影
@@ -3673,10 +3700,11 @@ func _draw_card_component(card: Dictionary, rect: Rect2, font: Font, ink: Color,
 		ui_ctrl.draw_rect(Rect2(inner.position.x, band_y, inner.size.x, next_y - band_y + 1.0), band_color, true)
 	# 5. 卡牌内容
 	_draw_repeating_card_pattern(inner, card["kind"], base.darkened(0.08))
-	_draw_fitted_text(card["name"], Rect2(inner.position + Vector2(5, 7), Vector2(inner.size.x - 10, 20)), font, 12, ink)
 	_draw_card_model_icon(card, inner.get_center() + Vector2(0, -3), accent.lightened(0.08))
-	_draw_fitted_text(_card_description(card), Rect2(inner.position + Vector2(4, inner.size.y - 36), Vector2(inner.size.x - 8, 16)), font, 9, ink)
-	_draw_fitted_text(card["deck"], Rect2(inner.position + Vector2(4, inner.size.y - 18), Vector2(inner.size.x - 8, 14)), font, 9, muted)
+	if show_details:
+		_draw_fitted_text(_card_description(card), Rect2(inner.position + Vector2(4, inner.size.y - 36), Vector2(inner.size.x - 8, 16)), font, 9, ink)
+		_draw_fitted_text(card["deck"], Rect2(inner.position + Vector2(4, inner.size.y - 18), Vector2(inner.size.x - 8, 14)), font, 9, muted)
+	_draw_fitted_text(card["name"], Rect2(inner.position + Vector2(5, 7), Vector2(inner.size.x - 10, 20)), font, 12, ink)
 	# 6. 选中/深度遮罩
 	if active:
 		ui_ctrl.draw_rect(inner, Color(accent.r, accent.g, accent.b, 0.08), true)
@@ -3693,21 +3721,21 @@ func _draw_card_component(card: Dictionary, rect: Rect2, font: Font, ink: Color,
 		var a = 0.20 * (1.0 - float(s) / sh)
 		ui_ctrl.draw_rect(Rect2(inner.position.x + s, inner.position.y + sh, 1.0, inner.size.y - sh), Color(0, 0, 0, a), true)
 
-func _draw_card_model_icon(card: Dictionary, center: Vector2, color: Color):
+func _draw_card_model_icon(card: Dictionary, center: Vector2, color: Color, preview_scale: float = 1.0):
 	match card["kind"]:
-		"seed": _draw_seed_card_flowers(center, int(card["level"]))
+		"seed": _draw_seed_card_flowers(center, int(card["level"]), preview_scale)
 		"develop": _draw_develop_card_mountains(center, card)
 		"building_develop": _draw_building_card_model(center, int(card["level"]))
 		"weather": _draw_weather_card_forecast(center, str(card.get("weather", "")))
 		_: _draw_card_symbol(card, center, color)
 
-func _draw_seed_card_flowers(center: Vector2, level: int):
+func _draw_seed_card_flowers(center: Vector2, level: int, preview_scale: float = 1.0):
 	var count = clampi(level, 1, 5)
 	for flower_index in count:
-		var x = center.x + (flower_index - (count - 1) * 0.5) * 17.0
-		var y = center.y + absf(flower_index - (count - 1) * 0.5) * 3.0
-		var scale = 0.82 + float((flower_index + level) % 3) * 0.10
-		ui_ctrl.draw_line(Vector2(x, y + 23), Vector2(x, y + 2), Color("#397044"), 2.2)
+		var x = center.x + (flower_index - (count - 1) * 0.5) * 17.0 * preview_scale
+		var y = center.y + absf(flower_index - (count - 1) * 0.5) * 3.0 * preview_scale
+		var scale = (0.82 + float((flower_index + level) % 3) * 0.10) * preview_scale
+		ui_ctrl.draw_line(Vector2(x, y + 23 * preview_scale), Vector2(x, y + 2 * preview_scale), Color("#397044"), 2.2 * preview_scale)
 		_draw_card_flower_bloom(Vector2(x, y), current_player, scale, flower_index)
 
 func _draw_card_flower_bloom(center: Vector2, owner: int, scale: float, variant: int):
