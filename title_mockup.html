@@ -2,360 +2,292 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>花满洪山 - 开始页面布局示意</title>
+<title>花满洪山 - 开始页面示意</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
-body { 
+body {
     width: 1280px; height: 720px; overflow: hidden;
     font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
-    position: relative;
-    background: linear-gradient(180deg, #1a3a4a 0%, #2a5a6a 40%, #3a7a8a 100%);
+    background: linear-gradient(160deg, #0d2b2a 0%, #163d3a 30%, #1e524e 60%, #2a6a64 100%);
 }
 
-/* 等距网格容器 */
-.iso-world {
+/* 等距画布 */
+.iso-canvas {
     position: absolute;
-    left: 50%; top: 55%;
-    transform: translate(-50%, -50%) rotateX(60deg) rotateZ(-45deg);
-    transform-style: preserve-3d;
-    width: 900px; height: 600px;
+    left: 50%; top: 52%;
+    transform: translate(-50%, -50%);
+    width: 1400px; height: 900px;
 }
 
-/* 地块基础 */
-.tile {
+/* 单个地块 */
+.t {
     position: absolute;
-    width: 58px; height: 58px;
-    border-radius: 4px;
-    transform-style: preserve-3d;
+    /* 等距菱形 */
+    width: 80px; height: 46px;
+    clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
 }
-.tile::before {
+.t::after {
     content: '';
     position: absolute;
     inset: 0;
-    border-radius: 4px;
-    border: 1px solid rgba(255,255,255,0.12);
+    clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+    border: 1.5px solid rgba(255,255,255,0.10);
+    pointer-events: none;
 }
 
-/* 水域地块 */
+/* 地形类型 */
 .water {
-    background: linear-gradient(135deg, #3a8ab5 0%, #2d7aa5 50%, #256b95 100%);
-    box-shadow: inset 0 -2px 6px rgba(0,0,0,0.2), 0 2px 4px rgba(0,0,0,0.3);
+    background: linear-gradient(160deg, #2d8ab8 0%, #2580a8 40%, #1e6e96 100%);
+    box-shadow: 0 2px 8px rgba(0,40,60,0.4);
 }
-.water::after {
+.water::before {
     content: '';
     position: absolute;
-    top: 20%; left: 15%;
-    width: 30%; height: 12%;
-    background: rgba(255,255,255,0.15);
+    top: 35%; left: 20%; width: 25%; height: 10%;
+    background: rgba(180,220,255,0.25);
     border-radius: 50%;
-    animation: ripple 3s ease-in-out infinite;
+    animation: shimmer 3.5s ease-in-out infinite;
 }
-@keyframes ripple {
-    0%, 100% { transform: scale(1); opacity: 0.15; }
-    50% { transform: scale(1.3); opacity: 0.08; }
+@keyframes shimmer {
+    0%,100% { transform: scaleX(1); opacity: 0.25; }
+    50% { transform: scaleX(1.4); opacity: 0.10; }
 }
 
-/* 山体地块 */
 .mountain {
-    background: linear-gradient(135deg, #8a9a8e 0%, #7a8a7e 50%, #6a7a6e 100%);
-    box-shadow: inset 0 -2px 6px rgba(0,0,0,0.25), 0 3px 6px rgba(0,0,0,0.35);
+    background: linear-gradient(160deg, #7a8e82 0%, #6a7e72 40%, #5a6e62 100%);
+    box-shadow: 0 3px 10px rgba(0,20,15,0.5);
 }
-.mountain::after {
+.mountain::before {
     content: '';
     position: absolute;
-    top: 10%; left: 25%;
+    top: 12%; left: 28%;
     width: 0; height: 0;
-    border-left: 10px solid transparent;
-    border-right: 7px solid transparent;
-    border-bottom: 16px solid #a0b8a8;
+    border-left: 11px solid transparent;
+    border-right: 8px solid transparent;
+    border-bottom: 18px solid #8aaa98;
+    filter: drop-shadow(1px 0px 1px rgba(0,0,0,0.2));
 }
 
-/* 建筑地块 */
-.building-tile {
-    background: linear-gradient(135deg, #c47a42 0%, #b06838 50%, #9c5a2e 100%);
-    box-shadow: inset 0 -2px 6px rgba(0,0,0,0.25), 0 3px 8px rgba(0,0,0,0.4);
+.grass {
+    background: linear-gradient(160deg, #4ea848 0%, #429840 40%, #388838 100%);
+    box-shadow: 0 2px 8px rgba(0,30,10,0.4);
 }
-.building-model {
-    position: absolute;
-    bottom: 60%; left: 50%;
-    transform: translateX(-50%);
-    width: 32px; height: 48px;
-    background: linear-gradient(180deg, #d4a040 0%, #c08030 40%, #a06020 100%);
-    border-radius: 3px 3px 0 0;
-    box-shadow: 0 -4px 12px rgba(0,0,0,0.3);
-}
-.building-model::before {
+.grass::before {
     content: '';
     position: absolute;
-    top: -12px; left: -8px;
-    width: 48px; height: 14px;
-    background: linear-gradient(180deg, #e8c060 0%, #d4a040 100%);
-    border-radius: 4px 4px 0 0;
+    top: 30%; left: 30%;
+    width: 6px; height: 6px;
+    background: #7dcc6a;
+    border-radius: 50%;
+    box-shadow: 12px 4px 0 #6abb5a, -6px 10px 0 #5aaa4a;
+}
+
+.building {
+    background: linear-gradient(160deg, #c47a42 0%, #b06838 40%, #9c5a2e 100%);
+    box-shadow: 0 3px 12px rgba(60,20,0,0.5);
+}
+
+/* 建筑模型（CSS 3D） */
+.bld {
+    position: absolute;
+    bottom: 55%; left: 50%;
+    transform: translateX(-50%);
+    pointer-events: none;
+}
+.bld-body {
+    width: 28px; height: 40px;
+    background: linear-gradient(180deg, #e8c878 0%, #d4a050 50%, #b88030 100%);
+    border-radius: 2px 2px 0 0;
+    position: relative;
+    box-shadow: 2px -2px 8px rgba(0,0,0,0.3);
+}
+.bld-body::before {
+    /* 屋顶 */
+    content: '';
+    position: absolute;
+    top: -14px; left: -6px;
+    width: 40px; height: 16px;
+    background: linear-gradient(180deg, #e8a030 0%, #d48820 100%);
+    border-radius: 3px 3px 0 0;
     box-shadow: 0 -2px 6px rgba(0,0,0,0.2);
 }
-.building-model::after {
+.bld-body::after {
+    /* 塔尖 */
     content: '';
     position: absolute;
-    top: -20px; left: 8px;
-    width: 16px; height: 10px;
-    background: #c08030;
+    top: -22px; left: 10px;
+    width: 8px; height: 10px;
+    background: #c08020;
     border-radius: 2px 2px 0 0;
 }
 
-/* 草地 */
-.grass {
-    background: linear-gradient(135deg, #5fae55 0%, #4d9a45 50%, #3d8a35 100%);
-    box-shadow: inset 0 -2px 6px rgba(0,0,0,0.2), 0 2px 4px rgba(0,0,0,0.3);
-}
-
-/* 标题覆盖层 */
-.title-overlay {
+/* 标题层 */
+.title-layer {
     position: absolute; inset: 0;
-    display: flex;
-    flex-direction: column;
+    display: flex; flex-direction: column;
     align-items: center;
-    justify-content: flex-start;
-    padding-top: 80px;
+    padding-top: 58px;
     z-index: 10;
     pointer-events: none;
 }
-.title-overlay h1 {
-    font-size: 78px;
+.title-layer h1 {
+    font-size: 82px;
     font-weight: 900;
-    letter-spacing: 18px;
+    letter-spacing: 20px;
     color: transparent;
-    background: linear-gradient(180deg, #fff8e8 0%, #f5e0c0 60%, #e8d0a0 100%);
-    -webkit-background-clip: text;
-    background-clip: text;
-    -webkit-text-stroke: 2px #254940;
-    text-shadow: 0 4px 16px rgba(0,0,0,0.4);
-    filter: drop-shadow(0 2px 4px rgba(37,73,64,0.6));
+    background: linear-gradient(180deg, #fff8e8 0%, #f0dab0 50%, #e0c890 100%);
+    -webkit-background-clip: text; background-clip: text;
+    -webkit-text-stroke: 2.5px #1a3a32;
+    text-shadow: 0 6px 24px rgba(0,0,0,0.45);
+    filter: drop-shadow(0 3px 6px rgba(26,58,50,0.6));
 }
-.title-overlay h2 {
-    font-size: 18px;
+.title-layer h2 {
+    font-size: 17px;
     font-weight: 400;
     letter-spacing: 10px;
-    color: #f3cf8d;
-    -webkit-text-stroke: 1px #254940;
+    color: #e8c878;
+    -webkit-text-stroke: 0.8px #1a3a32;
     text-shadow: 0 2px 8px rgba(0,0,0,0.4);
-    margin-top: 4px;
+    margin-top: 2px;
 }
 
-/* 玩家按钮 */
-.players {
+/* 按钮 */
+.btn-row {
     position: absolute;
-    bottom: 100px; left: 50%;
+    bottom: 88px; left: 50%;
     transform: translateX(-50%);
-    display: flex;
-    gap: 20px;
+    display: flex; gap: 18px;
     z-index: 20;
-    pointer-events: all;
 }
-.player-btn {
-    width: 130px; height: 64px;
-    background: rgba(8, 18, 16, 0.88);
-    border: 2px solid rgba(255,255,255,0.12);
+.btn {
+    width: 128px; height: 62px;
+    background: rgba(6, 16, 14, 0.90);
+    border: 2px solid rgba(255,255,255,0.10);
     border-bottom: 4px solid;
-    border-radius: 6px;
-    color: #e8ece8;
-    font-size: 24px;
-    font-weight: 700;
+    border-radius: 4px;
+    color: #d8dcd8;
+    font-size: 24px; font-weight: 700;
     cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: all 0.25s;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.22s;
     pointer-events: all;
 }
-.player-btn:nth-child(1) { border-bottom-color: #4ade80; }
-.player-btn:nth-child(2) { border-bottom-color: #60a5fa; }
-.player-btn:nth-child(3) { border-bottom-color: #fb923c; }
-.player-btn:nth-child(4) { border-bottom-color: #c084fc; }
-.player-btn:hover {
-    background: rgba(15, 30, 25, 0.95);
-    border-color: rgba(255,255,255,0.35);
+.btn:nth-child(1) { border-bottom-color: #4ade80; }
+.btn:nth-child(2) { border-bottom-color: #60a5fa; }
+.btn:nth-child(3) { border-bottom-color: #fb923c; }
+.btn:hover {
+    background: rgba(12, 28, 24, 0.96);
+    border-color: rgba(255,255,255,0.3);
     transform: translateY(-4px);
-    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    box-shadow: 0 8px 28px rgba(0,0,0,0.45);
 }
 
-.footer {
+.foot {
     position: absolute;
-    bottom: 50px; left: 50%;
+    bottom: 42px; left: 50%;
     transform: translateX(-50%);
-    text-align: center;
-    z-index: 10;
+    text-align: center; z-index: 10;
 }
-.footer p {
-    color: rgba(255,255,255,0.5);
-    font-size: 14px;
-    letter-spacing: 2px;
-    margin: 3px 0;
-}
-
-/* 水面波纹装饰 */
-.water-wave {
-    position: absolute;
-    width: 100%; height: 100%;
-    pointer-events: none;
-    z-index: 1;
-}
+.foot p { color: rgba(255,255,255,0.40); font-size: 13px; letter-spacing: 2px; margin: 3px 0; }
 </style>
 </head>
 <body>
 
-<!-- 2.5D 等距世界 -->
-<div class="iso-world" id="world"></div>
+<div class="iso-canvas" id="world"></div>
 
-<!-- 标题 -->
-<div class="title-overlay">
-    <h1>花满洪山</h1>
-    <h2>H O N G S H A N &nbsp; I N &nbsp; B L O O M</h2>
+<div class="title-layer">
+    <h1>花 满 洪 山</h1>
+    <h2>H O N G S H A N &ensp; I N &ensp; B L O O M</h2>
 </div>
 
-<!-- 玩家按钮 -->
-<div class="players">
-    <div class="player-btn">2 人</div>
-    <div class="player-btn">3 人</div>
-    <div class="player-btn">4 人</div>
+<div class="btn-row">
+    <div class="btn">2 人</div>
+    <div class="btn">3 人</div>
+    <div class="btn">4 人</div>
 </div>
 
-<!-- 底部 -->
-<div class="footer">
+<div class="foot">
     <p>武汉洪山区主题</p>
     <p>GGJ 2026 · GROW Theme</p>
 </div>
 
 <script>
-// GGJ 2026 字体模板（每个字符5×7像素格子）
-const LETTERS = {
-    'G': [
-        [0,1,1,1,0],
-        [1,0,0,0,0],
-        [1,0,1,1,0],
-        [1,0,0,1,0],
-        [0,1,1,1,0]
-    ],
-    '2': [
-        [0,1,1,0,0],
-        [1,0,0,1,0],
-        [0,0,1,0,0],
-        [0,1,0,0,0],
-        [1,1,1,1,0]
-    ],
-    '0': [
-        [0,1,1,0,0],
-        [1,0,0,1,0],
-        [1,0,0,1,0],
-        [1,0,0,1,0],
-        [0,1,1,0,0]
-    ],
-    '6': [
-        [0,1,1,0,0],
-        [1,0,0,0,0],
-        [1,1,1,0,0],
-        [1,0,0,1,0],
-        [0,1,1,0,0]
-    ]
+// 5×7 像素字体
+const FONT = {
+  G:[[0,1,1,1,0],[1,0,0,0,0],[1,0,1,1,0],[1,0,0,1,0],[1,0,0,1,0],[1,0,0,1,0],[0,1,1,1,0]],
+  J:[[0,0,0,1,0],[0,0,0,1,0],[0,0,0,1,0],[0,0,0,1,0],[0,0,0,1,0],[1,0,0,1,0],[0,1,1,0,0]],
+  2:[[0,1,1,0,0],[1,0,0,1,0],[0,0,0,1,0],[0,0,1,0,0],[0,1,0,0,0],[1,0,0,0,0],[1,1,1,1,0]],
+  0:[[0,1,1,0,0],[1,0,0,1,0],[1,0,0,1,0],[1,0,0,1,0],[1,0,0,1,0],[1,0,0,1,0],[0,1,1,0,0]],
+  6:[[0,1,1,0,0],[1,0,0,1,0],[1,0,0,0,0],[1,1,1,0,0],[1,0,0,1,0],[1,0,0,1,0],[0,1,1,0,0]]
 };
 
-// 拼出 "GGJ 2026" 的像素坐标
+// 生成 "GGJ2026" 文字像素坐标
 function getTextPixels() {
+    const text = 'GGJ2026';
     const pixels = [];
-    const word = ['G','G','J','2','0','2','6'];
-    // J 手动定义
-    const J = [
-        [0,0,0,1,0],
-        [0,0,0,1,0],
-        [0,0,0,1,0],
-        [1,0,0,1,0],
-        [0,1,1,0,0]
-    ];
-    
-    let offsetX = 2;
-    for (let w = 0; w < word.length; w++) {
-        const ch = word[w];
-        let pattern;
-        if (ch === 'J') pattern = J;
-        else pattern = LETTERS[ch];
-        
-        if (!pattern) { offsetX += 6; continue; }
-        
-        for (let r = 0; r < pattern.length; r++) {
-            for (let c = 0; c < pattern[r].length; c++) {
-                if (pattern[r][c] === 1) {
-                    pixels.push([offsetX + c, 2 + r]);
-                }
-            }
-        }
-        offsetX += 6;
+    let ox = 1;
+    for (const ch of text) {
+        const glyph = FONT[ch];
+        if (!glyph) { ox += 6; continue; }
+        for (let r = 0; r < glyph.length; r++)
+            for (let c = 0; c < glyph[r].length; c++)
+                if (glyph[r][c]) pixels.push([ox + c, r]);
+        ox += 6;
     }
     return pixels;
 }
 
 const world = document.getElementById('world');
-const textPixels = getTextPixels();
-const tileW = 58;
-const tileH = 58;
-const cols = 48;
-const rows = 18;
+const textPixels = new Set(getTextPixels().map(p => p[0]+','+p[1]));
 
-// 偏移使文字居中
-const textMinX = Math.min(...textPixels.map(p => p[0]));
-const textMaxX = Math.max(...textPixels.map(p => p[0]));
-const textMinY = Math.min(...textPixels.map(p => p[1]));
-const textMaxY = Math.max(...textPixels.map(p => p[1]));
-const centerOffsetX = (cols - (textMaxX - textMinX)) / 2 - textMinX;
-const centerOffsetY = (rows - (textMaxY - textMinY)) / 2 - textMinY;
+// 等距参数
+const TW = 80, TH = 46;
+const COLS = 50, ROWS = 20;
 
-// 建筑位置（放在文字附近）
-const buildingPositions = [
-    [8, 3],   // 左上建筑
-    [38, 4],  // 右上建筑
-    [6, 13],  // 左下建筑
-    [40, 12], // 右下建筑
-    [23, 1],  // 顶部中间
-];
+// 建筑位置（在文字周围的空地上）
+const buildings = new Set(['6,2','42,3','8,16','40,15','24,0']);
 
-// 生成所有地块
-for (let y = 0; y < rows; y++) {
-    for (let x = 0; x < cols; x++) {
-        const tile = document.createElement('div');
-        tile.className = 'tile';
-        
-        const isText = textPixels.some(p => 
-            p[0] + centerOffsetX === x && p[1] + centerOffsetY === y
-        );
-        const isBuilding = buildingPositions.some(b => b[0] === x && b[1] === y);
-        
-        if (isBuilding) {
-            tile.classList.add('building-tile');
-            const model = document.createElement('div');
-            model.className = 'building-model';
-            tile.appendChild(model);
-        } else if (isText) {
-            tile.classList.add('water');
-        } else {
-            // 周围用山体，部分用草地点缀
-            const hash = (x * 7 + y * 13) % 11;
-            if (hash < 2) {
-                tile.classList.add('grass');
-            } else {
-                tile.classList.add('mountain');
-            }
+function tileAt(x, y) {
+    if (buildings.has(x+','+y)) return 'building';
+    if (textPixels.has(x+','+y)) return 'water';
+    // 文字外围1格留白为草地
+    for (const key of textPixels) {
+        const [tx,ty] = key.split(',').map(Number);
+        if (Math.abs(tx-x)+Math.abs(ty-y) === 1) return 'grass';
+    }
+    // 角落区域多一些草地
+    const hash = (x*7+y*13+3)%11;
+    if (hash < 2) return 'grass';
+    return 'mountain';
+}
+
+// 渲染
+for (let y = 0; y < ROWS; y++) {
+    for (let x = 0; x < COLS; x++) {
+        const kind = tileAt(x, y);
+        const el = document.createElement('div');
+        el.className = 't ' + kind;
+
+        // 等距坐标
+        const isoX = (x - y) * TW * 0.5 + COLS * TW * 0.25;
+        const isoY = (x + y) * TH * 0.5 - ROWS * TH * 0.15;
+        el.style.left = isoX + 'px';
+        el.style.top = isoY + 'px';
+        el.style.zIndex = x + y;
+
+        // 微小高度变化
+        const h = Math.random() * 3;
+        el.style.transform = `translateY(${-h}px)`;
+
+        // 建筑模型
+        if (kind === 'building') {
+            const bld = document.createElement('div');
+            bld.className = 'bld';
+            bld.innerHTML = '<div class="bld-body"></div>';
+            el.appendChild(bld);
         }
-        
-        // 等距定位
-        const isoX = (x - y) * tileW * 0.5;
-        const isoY = (x + y) * tileH * 0.25;
-        tile.style.left = (isoX + cols * tileW * 0.25) + 'px';
-        tile.style.top = (isoY) + 'px';
-        
-        // 随机微小高度变化
-        const heightOffset = Math.random() * 4;
-        tile.style.transform = `translateZ(${heightOffset}px)`;
-        
-        world.appendChild(tile);
+
+        world.appendChild(el);
     }
 }
 </script>
