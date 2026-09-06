@@ -70,8 +70,8 @@ const TERRAIN_BOT := [
 	Color("#454a48"),
 ]
 const TERRAIN_NAMES := ["草地", "水域", "森林", "荒漠", "建筑", "山体", "缺口"]
-const TERRAIN_CAPACITY := [50, 0, 100, 10, 0, 0, 0]
-const TERRAIN_GROWTH := [0.3, 0.0, 0.5, 0.1, 0.0, 0.0, 0.0]
+const TERRAIN_CAPACITY := [50, 0, 80, 30, 0, 0, 0]
+const TERRAIN_GROWTH := [0.3, 0.0, 0.4, 0.2, 0.0, 0.0, 0.0]
 const TERRAIN_SPREAD := [0.3, 0.0, 0.5, 0.1, 0.0, 0.0, 0.0]
 const T_GRASS := 0
 const T_WATER := 1
@@ -1987,14 +1987,31 @@ func _draw_card_from_deck(deck: int) -> Dictionary:
 			var building_level = randi_range(1, 2)
 			var landmark: String = ["hongshan_tech", "wuhan_university", "hust"][randi_range(0, 2)] if building_level == 2 else "library"
 			return {"kind": "building_develop", "name": _landmark_name(landmark), "level": building_level, "landmark": landmark, "deck": "开发"}
-		var level = randi_range(1, 4)
+		# 开发卡等级概率：1级40%, 2级30%, 3级20%, 4级10%
+		var level_roll = randf()
+		var level: int
+		if level_roll < 0.40: level = 1
+		elif level_roll < 0.70: level = 2
+		elif level_roll < 0.90: level = 3
+		else: level = 4
 		var shape = randi_range(0, 2) if level == 4 else 0
 		return {"kind": "develop", "name": "%d级山体开发" % level, "level": level, "deck": "开发", "shape": shape}
 	if deck == 1:
-		var level = randi_range(1, 3)
-		return {"kind": "road", "name": "%d级道路" % level, "level": level, "deck": "道路"}
-	var weather_names = ["台风", "沙尘暴", "雨季", "旱季", "彩虹"]
-	var weather = weather_names[randi() % weather_names.size()]
+		# 道路卡等级概率：1级50%, 2级30%, 3级20%
+		var road_roll = randf()
+		var road_level: int
+		if road_roll < 0.50: road_level = 1
+		elif road_roll < 0.80: road_level = 2
+		else: road_level = 3
+		return {"kind": "road", "name": "%d级道路" % road_level, "level": road_level, "deck": "道路"}
+	# 天气卡概率：台风20%, 沙尘暴20%, 雨季25%, 旱季25%, 彩虹10%
+	var weather_roll = randf()
+	var weather: String
+	if weather_roll < 0.20: weather = "台风"
+	elif weather_roll < 0.40: weather = "沙尘暴"
+	elif weather_roll < 0.65: weather = "雨季"
+	elif weather_roll < 0.90: weather = "旱季"
+	else: weather = "彩虹"
 	return {"kind": "weather", "name": weather, "level": 1, "deck": "天气", "weather": weather}
 
 func _card_sort_value(card: Dictionary) -> int:
