@@ -202,6 +202,8 @@ func _build_interface():
 		music_button.add_theme_stylebox_override(style, box)
 	music_button.toggled.connect(_toggle_music)
 	add_child(music_button)
+	game.game_audio.settings_changed.connect(_sync_music_button)
+	_sync_music_button()
 
 func _label(value: String, font_size: int, color: Color) -> Label:
 	var label := Label.new()
@@ -296,8 +298,11 @@ func _choose(count: int):
 	fade.tween_callback(func(): start_requested.emit(count))
 
 func _toggle_music(muted: bool):
-	var player := game.get_node_or_null("BackgroundMusic") as AudioStreamPlayer
-	if player: player.volume_db = -80.0 if muted else -12.0
+	game.game_audio.set_music_muted(muted)
+
+func _sync_music_button():
+	var muted: bool = game.game_audio.music_muted or game.game_audio.music_volume <= 0.0
+	music_button.set_pressed_no_signal(muted)
 	music_button.icon = preload("res://assets/ui/volume-x.svg") if muted else preload("res://assets/ui/volume-2.svg")
 	music_button.tooltip_text = "开启音乐" if muted else "关闭音乐"
 

@@ -18,6 +18,9 @@ func _run():
 	for count in range(1, 5):
 		var game = scene.instantiate()
 		root.add_child(game)
+		game.game_audio.persist_settings = false
+		game.game_audio.muted = false
+		game.game_audio.music_volume = db_to_linear(-12.0)
 		await process_frame
 		var title = game.title_screen
 		_check(is_instance_valid(title), "Title screen must initialize")
@@ -46,7 +49,7 @@ func _run():
 		title._toggle_music(true)
 		_check(game.get_node("BackgroundMusic").volume_db == -80.0, "Music must mute")
 		title._toggle_music(false)
-		_check(game.get_node("BackgroundMusic").volume_db == -12.0, "Music must restore volume")
+		_check(is_equal_approx(game.get_node("BackgroundMusic").volume_db, -12.0), "Music must restore volume")
 		var old_world: Node3D = title.world
 		title.size = root.get_visible_rect().size
 		title._layout()

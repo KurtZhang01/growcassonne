@@ -1,6 +1,7 @@
 extends Node3D
 
 const TitleScreen = preload("res://scripts/title_screen.gd")
+const GameAudio = preload("res://scripts/game_audio.gd")
 const WATER_TILE_SHADER: Shader = preload("res://shaders/water_tile.gdshader")
 const UI_FROSTED_GLASS_SHADER: Shader = preload("res://shaders/ui_frosted_glass.gdshader")
 const HONGSHAN_TOWER_VIEWS = [
@@ -118,6 +119,7 @@ var road_drag_cells := []; var road_drag_level := 0
 var hovered_cell := Vector2i(-1, -1); var pulse := 0.0
 var flash_timer := 0.0; var flash_color := Color.WHITE
 var title_screen: Control
+var game_audio: Node
 
 # Camera zoom/pan
 var cam_zoom := 1.0; var cam_zoom_target := 1.0
@@ -165,6 +167,8 @@ var flower_chart_glass: ColorRect
 
 func _ready():
 	_setup_scene()
+	game_audio = GameAudio.new()
+	add_child(game_audio)
 	_setup_title_world()
 	_setup_music()
 	state = S.TITLE
@@ -178,6 +182,7 @@ func _setup_music():
 	player.volume_db = -12.0
 	add_child(player)
 	player.play()
+	game_audio.attach_music(player)
 
 # ================================================================
 #  SCENE
@@ -665,6 +670,7 @@ func _place_piece(anchor: Vector2i) -> bool:
 		_refresh_neighbor_trims(anchor + local_cell)
 	_refresh_road_effects()
 	piece_preview_root.visible = false
+	game_audio.play_cue("develop")
 	return true
 
 func _force_tile(pos: Vector2i, terr: int, animate: bool, road_mask: int = 0):
@@ -969,7 +975,7 @@ func _spawn_road_fx(pos: Vector2i):
 	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	ring.material_override = material; ring.position = _world(pos) + Vector3(0, 0.305, 0)
 	ring.set_meta("road_fx", true); edge_root.add_child(ring)
-	var tw = create_tween().set_loops()
+	var tw = ring.create_tween().set_loops()
 	tw.tween_property(material, "emission_energy_multiplier", 0.8, 1.5).set_trans(Tween.TRANS_SINE)
 	tw.tween_property(material, "emission_energy_multiplier", 0.25, 1.5).set_trans(Tween.TRANS_SINE)
 
@@ -1429,6 +1435,7 @@ func _try_select_tile(pos: Vector2i):
 		_clear_tile_selection(); return
 	_clear_tile_selection()
 	selected_tile = pos
+	game_audio.play_cue("select")
 	ui_preview_mode = "tile"; ui_preview_index = 0
 	var highlight = MeshInstance3D.new(); var mesh = BoxMesh.new()
 	mesh.size = Vector3(1.07, 0.018, 1.07); highlight.mesh = mesh
@@ -1439,7 +1446,7 @@ func _try_select_tile(pos: Vector2i):
 	highlight.material_override = material
 	highlight.position = _world(pos) + Vector3(0, 0.31, 0)
 	tile_select_root.add_child(highlight)
-	var tween = create_tween().set_loops()
+	var tween = highlight.create_tween().set_loops()
 	tween.tween_property(material, "albedo_color:a", 0.40, 1.2).set_trans(Tween.TRANS_SINE)
 	tween.tween_property(material, "albedo_color:a", 0.18, 1.2).set_trans(Tween.TRANS_SINE)
 	ui_ctrl.queue_redraw()
@@ -1690,6 +1697,7 @@ func _place_seed(pos: Vector2i) -> bool:
 	if not _can_seed(pos): return false
 	if not _add_flowers(pos, current_player, 10): return false
 	seeds[current_player] -= 1
+	game_audio.play_cue("seed")
 	flash_timer = 0.2; flash_color = PLAYER_COLORS[current_player]
 	return true
 
@@ -1996,6 +2004,7 @@ func _take_card_from_deck(deck_index: int) -> bool:
 	if state != S.DRAW_CARDS or draws_remaining <= 0: return false
 	current_hand.append(_draw_card_from_deck(deck_index))
 	draws_remaining -= 1
+	game_audio.play_cue("draw")
 	_record_action("从%s卡堆抽牌，剩余%d次" % [["开发", "道路", "天气"][deck_index], draws_remaining])
 	_sort_current_hand()
 	if draws_remaining <= 0:
@@ -2005,6 +2014,7 @@ func _take_card_from_deck(deck_index: int) -> bool:
 	return true
 
 func _start_player_turn():
+	game_audio.play_cue("turn")
 	current_hand = hands[current_player]
 	selected_card = 0
 	ui_preview_mode = "card"; ui_preview_index = 0
@@ -2016,6 +2026,8 @@ func _start_player_turn():
 	ui_ctrl.queue_redraw()
 
 func _start_game():
+	game_audio.suspended = true
+	game_audio.set_weather({})
 	action_history.clear(); action_history_tones.clear(); center_notices.clear(); history_scroll = 0
 	top_terrain_count_tick = -1
 	ranking_order.clear(); ranking_y.clear(); ranking_values.clear()
@@ -2036,6 +2048,7 @@ func _start_game():
 		hands.append(hand)
 	_generate_start_tiles()
 	_refresh_building_auras()
+	game_audio.suspended = false
 	_start_player_turn()
 
 func _end_turn():
@@ -2045,6 +2058,8 @@ func _end_turn():
 	turns_played += 1
 	_calc_all_scores()
 	if turns_played >= total_turns:
+		game_audio.set_weather({})
+		game_audio.play_cue("victory")
 		state = S.GAME_OVER; _calc_all_scores(); ui_ctrl.queue_redraw(); return
 	current_player = (current_player + 1) % player_count
 	_start_player_turn()
@@ -2124,6 +2139,7 @@ func _card_at_pointer(pointer: Vector2, vp: Vector2) -> int:
 
 func _begin_card_drag(index: int):
 	if state != S.PLAY_CARDS or index < 0 or index >= current_hand.size(): return
+	game_audio.play_cue("select")
 	_clear_tile_selection()
 	selected_card = index; dragging_card = true; drag_card_index = index
 	card_drag_origin = drag_pointer
@@ -2160,7 +2176,8 @@ func _release_hand_drag(pointer: Vector2, cell: Vector2i):
 	_update_placement_highlights()
 	ui_ctrl.queue_redraw()
 
-func _cancel_armed_card():
+func _cancel_armed_card(with_sound: bool = false):
+	if with_sound and (dragging_card or card_armed or road_drawing): game_audio.play_cue("cancel")
 	dragging_card = false; card_armed = false; road_drawing = false; drag_card_index = -1
 	road_drag_cells.clear(); pending_develop.clear(); develop_preview_cells.clear()
 	for child in piece_preview_root.get_children(): child.free()
@@ -2206,10 +2223,10 @@ func _spawn_tile_breath_glow(pos: Vector2i):
 	glow.position = _world(pos) + Vector3(0, 0.16, 0)
 	placement_highlight_root.add_child(glow)
 	placement_highlights.append(glow)
-	var tw = create_tween().set_loops()
+	var tw = glow.create_tween().set_loops()
 	tw.tween_property(mat, "albedo_color:a", 0.30, 0.8).set_trans(Tween.TRANS_SINE)
 	tw.tween_property(mat, "albedo_color:a", 0.10, 0.8).set_trans(Tween.TRANS_SINE)
-	var tw2 = create_tween().set_loops()
+	var tw2 = glow.create_tween().set_loops()
 	tw2.tween_property(mat, "emission_energy_multiplier", 0.6, 0.8).set_trans(Tween.TRANS_SINE)
 	tw2.tween_property(mat, "emission_energy_multiplier", 0.15, 0.8).set_trans(Tween.TRANS_SINE)
 
@@ -2306,6 +2323,7 @@ func _finish_card_drag(cell: Vector2i):
 			if ok: seeds[current_player] = maxi(0, seeds[current_player] - 1)
 	if ok:
 		if card["kind"] == "seed": last_settlement = "播种增加%d朵" % (_flower_total(cell) - before_flowers)
+		game_audio.play_card(card)
 		_record_action(last_settlement)
 		_consume_dragged_card(card); _calc_all_scores(); _cancel_armed_card()
 	else:
@@ -2329,6 +2347,8 @@ func _record_action(message: String, tone: String = "info", actor_id: int = -1):
 	history_scroll = 0
 
 func _show_center_notice(message: String, tone: String):
+	if is_instance_valid(game_audio) and state != S.TITLE and tone in ["warning", "reward"]:
+		game_audio.play_cue(tone)
 	center_notices.append({"text": message, "tone": tone, "age": 0.0})
 	if center_notices.size() > 4: center_notices.pop_front()
 	ui_ctrl.queue_redraw()
@@ -2426,6 +2446,7 @@ func _play_selected_card(pos: Vector2i) -> bool:
 		"weather":
 			ok = _apply_weather_card(card)
 	if ok:
+		game_audio.play_card(card)
 		current_hand.remove_at(selected_card)
 		selected_card = clampi(selected_card, 0, maxi(current_hand.size() - 1, 0))
 		ui_preview_mode = "card"; ui_preview_index = selected_card
@@ -2542,6 +2563,7 @@ func _apply_weather_card(card: Dictionary) -> bool:
 		_apply_weather_visual(weather)
 		active_weather[weather] = 3
 		last_settlement = "%s将持续3回合" % weather
+	game_audio.set_weather(active_weather)
 	return true
 
 func _apply_weather_visual(weather: String):
@@ -2560,7 +2582,7 @@ func _apply_weather_visual(weather: String):
 		mesh.radius = 0.75; mesh.height = 1.5; mesh.radial_segments = 12; mesh.rings = 6; sun.mesh = mesh
 		var material = _soft_material(Color(1.0, 0.84, 0.26, 0.12), 1.3); sun.material_override = material
 		sun.position = center + Vector3(-2.8, 4.5, -2.8); weather_fx_root.add_child(sun)
-		var tween = create_tween().set_loops()
+		var tween = sun.create_tween().set_loops()
 		tween.tween_property(sun, "scale", Vector3.ONE * 1.14, 1.8).set_trans(Tween.TRANS_SINE)
 		tween.tween_property(sun, "scale", Vector3.ONE, 1.8).set_trans(Tween.TRANS_SINE)
 	else:
@@ -2611,7 +2633,7 @@ func _spawn_weather_rain(center: Vector3, count: int, storm: bool):
 			cloud.mesh = cloud_mesh; cloud.material_override = _soft_material(Color(0.22, 0.27, 0.30, 0.28))
 			cloud.position = center + Vector3(-3.0 + cloud_index * 2.0, 3.4 + cloud_index % 2 * 0.25, -1.5 + cloud_index % 3)
 			weather_fx_root.add_child(cloud)
-			create_tween().set_loops().tween_property(cloud, "position:x", cloud.position.x + 1.2, 3.4).set_trans(Tween.TRANS_SINE)
+			cloud.create_tween().set_loops().tween_property(cloud, "position:x", cloud.position.x + 1.2, 3.4).set_trans(Tween.TRANS_SINE)
 	var rain_material = _soft_material(Color(0.50, 0.65, 0.90, 0.55))
 	for drop_index in count:
 		var drop = MeshInstance3D.new(); var mesh = CylinderMesh.new()
@@ -2619,7 +2641,7 @@ func _spawn_weather_rain(center: Vector3, count: int, storm: bool):
 		drop.mesh = mesh; drop.material_override = rain_material
 		drop.position = center + Vector3(randf_range(-5.0, 5.0), randf_range(0.5, 3.4), randf_range(-5.0, 5.0))
 		weather_fx_root.add_child(drop)
-		var top_y = drop.position.y; var tween = create_tween().set_loops()
+		var top_y = drop.position.y; var tween = drop.create_tween().set_loops()
 		tween.tween_property(drop, "position:y", 0.0, randf_range(0.35, 0.65))
 		tween.tween_property(drop, "position:y", top_y, 0.01)
 
@@ -2631,7 +2653,7 @@ func _spawn_weather_drift(center: Vector3, color: Color, count: int):
 		grain.mesh = mesh; grain.material_override = material
 		grain.position = center + Vector3(randf_range(-5.0, 5.0), randf_range(0.2, 2.2), randf_range(-5.0, 5.0))
 		weather_fx_root.add_child(grain)
-		var start_x = grain.position.x; var tween = create_tween().set_loops()
+		var start_x = grain.position.x; var tween = grain.create_tween().set_loops()
 		tween.tween_property(grain, "position:x", start_x + 7.0, randf_range(1.8, 3.2))
 		tween.tween_property(grain, "position:x", start_x, 0.01)
 
@@ -2701,6 +2723,7 @@ func _tick_weather():
 		active_weather[weather] = int(active_weather[weather]) - 1
 		if active_weather[weather] <= 0: expired.append(weather)
 	for weather in expired: active_weather.erase(weather)
+	if not expired.is_empty(): game_audio.set_weather(active_weather)
 	if rainbow_turns > 0: rainbow_turns -= 1
 	if active_weather.is_empty() and rainbow_turns <= 0:
 		for child in weather_fx_root.get_children(): child.free()
@@ -3184,7 +3207,7 @@ func _ui_top_rect(vp: Vector2) -> Rect2:
 
 func _top_weather_rect(vp: Vector2) -> Rect2:
 	var bar = _ui_top_rect(vp)
-	return Rect2(bar.end.x - 205.0, bar.position.y + 7.0, 187.0, bar.size.y - 14.0)
+	return Rect2(bar.end.x - 249.0, bar.position.y + 7.0, 187.0, bar.size.y - 14.0)
 
 func _top_terrain_rect(index: int, vp: Vector2) -> Rect2:
 	var bar = _ui_top_rect(vp)
@@ -3257,6 +3280,7 @@ func _layout_rule_ticker(vp: Vector2, interface_scale: float):
 	rule_ticker_label.position = Vector2(-fmod(pulse * 32.0 * interface_scale, maxf(rule_ticker_text_width, 1.0)), 0.0)
 
 func _input(event):
+	if event is InputEventMouse and is_instance_valid(game_audio) and game_audio.pointer_over_settings(event.position): return
 	if state == S.TITLE:
 		return
 
@@ -3350,7 +3374,7 @@ func _input(event):
 		var ui_pointer = _ui_point(event.position)
 		var ui_view = get_viewport().get_visible_rect().size / _ui_scale(get_viewport().get_visible_rect().size)
 		if event.button_index == MOUSE_BUTTON_RIGHT and (card_armed or road_drawing or dragging_card):
-			_cancel_armed_card(); return
+			_cancel_armed_card(true); return
 		if event.button_index == MOUSE_BUTTON_LEFT:
 			if _top_weather_rect(ui_view).has_point(ui_pointer):
 				ui_preview_mode = "weather"; ui_preview_index = 0; ui_ctrl.queue_redraw(); return
@@ -3385,22 +3409,24 @@ func _input(event):
 			elif state == S.PLACE_SEED:
 				if _place_seed(cell): _end_turn()
 		elif event.button_index == MOUSE_BUTTON_RIGHT:
-			if card_armed or road_drawing: _cancel_armed_card()
+			if card_armed or road_drawing: _cancel_armed_card(true)
 			elif state == S.PLAY_CARDS or state == S.PLACE_SEED: _end_turn()
 
 	if event is InputEventKey and event.pressed:
 		if event.keycode == KEY_R: get_tree().reload_current_scene()
-		elif event.keycode == KEY_ESCAPE and (card_armed or road_drawing or dragging_card): _cancel_armed_card()
+		elif event.keycode == KEY_ESCAPE and (card_armed or road_drawing or dragging_card): _cancel_armed_card(true)
 		elif state == S.PLAY_CARDS and event.keycode >= KEY_1 and event.keycode <= KEY_9:
 			selected_card = clampi(event.keycode - KEY_1, 0, maxi(current_hand.size() - 1, 0))
 			ui_preview_mode = "card"; ui_preview_index = selected_card; ui_ctrl.queue_redraw()
 		elif state == S.PLAY_CARDS and (event.keycode == KEY_ENTER or event.keycode == KEY_KP_ENTER or event.keycode == KEY_SPACE):
 			_end_turn()
 		elif state == S.PLAY_CARDS and event.keycode == KEY_Q:
+			if dragging_card or card_armed: game_audio.play_cue("rotate")
 			piece_rotation = posmod(piece_rotation - 1, 4)
 			if dragging_card or card_armed: _update_card_drag_preview(_mouse_to_grid(drag_pointer))
 			_update_placement_highlights(); ui_ctrl.queue_redraw()
 		elif state == S.PLAY_CARDS and event.keycode == KEY_E:
+			if dragging_card or card_armed: game_audio.play_cue("rotate")
 			piece_rotation = posmod(piece_rotation + 1, 4)
 			if dragging_card or card_armed: _update_card_drag_preview(_mouse_to_grid(drag_pointer))
 			_update_placement_highlights(); ui_ctrl.queue_redraw()
