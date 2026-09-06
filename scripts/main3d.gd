@@ -3101,18 +3101,15 @@ func _update_card_drag_preview(cell: Vector2i):
 			if mask != 0: _spawn_road(root, mask)
 
 func _spawn_preview_tile_model(root: Node3D, terrain: int, card: Dictionary, index: int):
+	# 简化预览：只显示底座+表面色块，跳过装饰物以提升拖拽性能
 	_spawn_island_base(root, terrain)
-	match terrain:
-		T_GRASS: _tile_grass_surface(root, 0)
-		T_WATER: _tile_water_surface(root, 0)
-		T_FOREST: _tile_forest_surface(root, 0)
-		T_DESERT: _tile_desert_surface(root, 0)
-		T_MOUNTAIN: _tile_mountain_surface(root)
-		T_BUILDING:
-			if card.get("kind", "") == "building_develop" and int(card.get("level", 1)) == 2:
-				_tile_hongshan_tech_surface(root, {"part": index, "direction": piece_rotation, "landmark": card.get("landmark", "hongshan_tech")})
-			else: _tile_pavilion_surface(root, 0)
-		_: pass
+	var surface = MeshInstance3D.new()
+	var sm = BoxMesh.new(); sm.size = Vector3(0.95, 0.05, 0.95)
+	surface.mesh = sm
+	var mat = StandardMaterial3D.new()
+	mat.albedo_color = TERRAIN_TOP[terrain]; mat.roughness = 0.92
+	surface.material_override = mat; surface.position.y = 0.13
+	root.add_child(surface)
 	_make_preview_translucent(root)
 
 func _make_preview_translucent(node: Node):
@@ -4287,35 +4284,26 @@ func _draw_card_symbol(card: Dictionary, center: Vector2, color: Color):
 
 func _draw_repeating_card_pattern(rect: Rect2, kind: String, color: Color):
 	var pattern_color = color.lerp(Color.WHITE, 0.55)
-	# 斜向排列：每行错开半格，覆盖整个卡面
-	var spacing = 22.0
-	var diag_x = 14.0  # 斜向x偏移
-	var start_y = rect.position.y + 12.0
-	var rows = maxi(1, floori((rect.size.y - 16) / spacing))
-	var cols = maxi(1, floori(rect.size.x / diag_x)) + 2
+	# 简化：只画几个关键装饰点，不铺满
+	var spacing = 30.0
+	var start_y = rect.position.y + 18.0
+	var rows = maxi(1, floori((rect.size.y - 24) / spacing))
+	var cols = maxi(1, floori(rect.size.x / 20.0))
 	for row in rows:
-		var offset_x = (row % 2) * (diag_x * 0.5)  # 奇数行错开半格
 		for col in cols:
-			var px = rect.position.x + offset_x + col * diag_x
+			var px = rect.position.x + 10.0 + col * 20.0 + (row % 2) * 10.0
 			var py = start_y + row * spacing
 			var p = Vector2(px, py)
-			if not rect.grow(-4.0).has_point(p): continue
+			if not rect.grow(-6.0).has_point(p): continue
 			match kind:
 				"seed":
-					ui_ctrl.draw_line(p + Vector2(0, 4), p + Vector2(0, -3), pattern_color, 0.9)
-					ui_ctrl.draw_circle(p + Vector2(-2.5, -3.5), 2.0, pattern_color)
-					ui_ctrl.draw_circle(p + Vector2(2.5, -4.5), 2.0, pattern_color)
+					ui_ctrl.draw_circle(p, 2.0, pattern_color)
 				"develop", "building_develop":
-					ui_ctrl.draw_line(p + Vector2(3, -4), p + Vector2(-2, 4), pattern_color, 1.2)
-					ui_ctrl.draw_line(p + Vector2(-5, 2), p + Vector2(1, 5), pattern_color, 1.5)
+					ui_ctrl.draw_line(p + Vector2(2, -3), p + Vector2(-2, 3), pattern_color, 1.0)
 				"road":
-					ui_ctrl.draw_line(p + Vector2(-4, -2), p + Vector2(4, 2), pattern_color, 1.5)
-					ui_ctrl.draw_line(p + Vector2(-3, -4), p + Vector2(-3, 3), pattern_color, 1.0)
-					ui_ctrl.draw_line(p + Vector2(3, -1), p + Vector2(3, 5), pattern_color, 1.0)
+					ui_ctrl.draw_line(p + Vector2(-3, 0), p + Vector2(3, 0), pattern_color, 1.2)
 				"weather":
-					ui_ctrl.draw_circle(p + Vector2(-2.5, 0.5), 2.5, pattern_color)
-					ui_ctrl.draw_circle(p + Vector2(1.5, -1.5), 3.5, pattern_color)
-					ui_ctrl.draw_circle(p + Vector2(4, 0.5), 2.5, pattern_color)
+					ui_ctrl.draw_circle(p, 2.5, pattern_color)
 
 func _draw_centered_outlined_text(value: String, center: Vector2, font: Font, size: int, color: Color, outline: Color, outline_size: int):
 	var text_size = font.get_string_size(value, HORIZONTAL_ALIGNMENT_LEFT, -1, size)
