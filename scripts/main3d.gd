@@ -159,6 +159,9 @@ var ranking_y: Dictionary = {}
 var ranking_values: Dictionary = {}
 var card_preview_viewport: SubViewport; var card_preview_root: Node3D; var card_preview_camera: Camera3D
 var card_preview_signature := ""
+var placement_preview_signature := ""
+var board_revision := 0
+var title_transition := false
 var ui_glass_root: Control; var ui_glass_panels := []
 var ui_preview_mode := "card"; var ui_preview_index := 0
 var rule_ticker_clip: Control; var rule_ticker_label: Label
@@ -334,13 +337,18 @@ func _setup_title_world():
 	title_screen.start_requested.connect(_start_game_from_title)
 
 func _start_game_from_title(count: int):
-	if state != S.TITLE: return
+	if state != S.TITLE or title_transition: return
+	title_transition = true
 	player_count = clampi(count, 1, 4)
 	title_screen.release()
 	title_screen = null
+	# Let deferred title destruction finish before allocating the game board.
+	await get_tree().process_frame
+	await get_tree().process_frame
 	camera.rotation_degrees = Vector3(-42, 42, 0)
 	state = S.PLAY_CARDS
 	_start_game()
+	title_transition = false
 
 func _setup_sky_world():
 	sky_root = Node3D.new(); sky_root.name = "LivingSky"; add_child(sky_root)
@@ -420,6 +428,7 @@ func _spawn_sky_motes():
 #  GRID
 # ================================================================
 func _init_grid():
+	board_revision += 1
 	hongshan_decor_rolls.clear()
 	for c in grid_root.get_children(): c.queue_free()
 	for c in edge_root.get_children(): c.queue_free()
@@ -438,9 +447,9 @@ func _init_grid():
 			tile_nodes[x].append(null); plant_nodes[x].append(null); decor_nodes[x].append(null)
 
 func _world(pos: Vector2i) -> Vector3:
-	var gw = _grid_width(); var gh = _grid_height()
-	var off_x = (gw - 1) * TILE_SPACING * 0.5
-	var off_z = (gh - 1) * TILE_SPACING * 0.5
+	# Expansion changes array indices, never the logical world's origin.
+	var off_x = (GRID_SIZE - 1) * TILE_SPACING * 0.5
+	var off_z = off_x
 	var logical = pos - grid_origin
 	return Vector3(logical.x * TILE_SPACING - off_x, 0, logical.y * TILE_SPACING - off_z)
 
@@ -474,6 +483,7 @@ func _new_node_column(height: int) -> Array:
 	return column
 
 func _expand_board_ring():
+	board_revision += 1
 	var old_width = _grid_width(); var old_height = _grid_height()
 	for x in old_width:
 		grid[x].push_front(-1); grid[x].append(-1)
@@ -674,6 +684,7 @@ func _place_piece(anchor: Vector2i) -> bool:
 	return true
 
 func _force_tile(pos: Vector2i, terr: int, animate: bool, road_mask: int = 0):
+	board_revision += 1
 	grid[pos.x][pos.y] = terr; roads[pos.x][pos.y] = road_mask
 	_spawn_tile(pos, terr, animate, road_mask)
 	_update_edge_bridges(pos)
@@ -681,6 +692,7 @@ func _force_tile(pos: Vector2i, terr: int, animate: bool, road_mask: int = 0):
 	_refresh_neighbor_trims(pos)
 
 func _set_tile_type(pos: Vector2i, terr: int, animate: bool = true, road_mask: int = -1):
+	board_revision += 1
 	if not _in_bounds(pos): return
 	if grid[pos.x][pos.y] == T_BUILDING: return
 	var next_road = roads[pos.x][pos.y] if road_mask < 0 else road_mask
@@ -696,6 +708,7 @@ func _set_tile_type(pos: Vector2i, terr: int, animate: bool = true, road_mask: i
 	_refresh_neighbor_trims(pos)
 
 func _redraw_tile(pos: Vector2i):
+	board_revision += 1
 	if not _in_bounds(pos): return
 	if tile_nodes[pos.x][pos.y] != null:
 		tile_nodes[pos.x][pos.y].queue_free()
@@ -2148,7 +2161,7 @@ func _begin_card_drag(index: int):
 	var card: Dictionary = current_hand[index]
 	if card["kind"] == "road": road_drag_level = int(card["level"])
 	elif card["kind"] == "develop":
-		if not card.has("rolled_terrains"):
+		if not card.has("rolled_terrains") or not card.has("rolled_roads"):
 			var terrains := []
 			for i in int(card["level"]): terrains.append(_draw_terrain())
 			var offsets = _development_shape_offsets(int(card["level"]), int(card.get("shape", 0)))
@@ -2177,6 +2190,7 @@ func _release_hand_drag(pointer: Vector2, cell: Vector2i):
 	ui_ctrl.queue_redraw()
 
 func _cancel_armed_card(with_sound: bool = false):
+	placement_preview_signature = ""
 	if with_sound and (dragging_card or card_armed or road_drawing): game_audio.play_cue("cancel")
 	dragging_card = false; card_armed = false; road_drawing = false; drag_card_index = -1
 	road_drag_cells.clear(); pending_develop.clear(); develop_preview_cells.clear()
@@ -2358,10 +2372,13 @@ func _warn_player(message: String):
 	_show_center_notice(message, "warning")
 
 func _apply_pending_develop(anchor: Vector2i, card: Dictionary) -> bool:
-	var cells = _develop_card_cells(anchor, int(card["level"]), piece_rotation)
+	var cells := []
+	for offset in _development_shape_offsets(int(card["level"]), int(card.get("shape", 0))):
+		cells.append(anchor + _rotate_cell(offset, piece_rotation))
 	if not _can_develop_cells(cells): return false
 	var generated: Array = pending_develop.get("terrains", [])
 	var generated_roads: Array = pending_develop.get("roads", [])
+	if generated.size() != cells.size() or generated_roads.size() != cells.size(): return false
 	for i in cells.size(): _set_tile_type(cells[i], generated[i], true, _rotate_road_mask(generated_roads[i], piece_rotation))
 	_reward_developed_buildings(cells)
 	_update_gaps(); _ensure_growth_margin(cells); _update_gaps(); _refresh_road_effects()
@@ -2501,6 +2518,7 @@ func _apply_building_develop_card(pos: Vector2i, level: int, landmark: String = 
 
 func _develop_card_cells(pos: Vector2i, level: int, rotation: int = 0) -> Array:
 	var active_card = _selected_card()
+	if (dragging_card or card_armed) and _drag_card_index_is_valid(): active_card = current_hand[drag_card_index]
 	var shape_index = int(active_card.get("shape", 0)) if not active_card.is_empty() else 0
 	var result := []
 	for cell in _development_shape_offsets(level, shape_index): result.append(pos + _rotate_cell(cell, rotation))
@@ -3033,6 +3051,9 @@ func _rotate_selected_piece(delta: int):
 	_update_piece_preview(); ui_ctrl.queue_redraw()
 
 func _update_card_drag_preview(cell: Vector2i):
+	var signature := str([cell, piece_rotation, drag_card_index, dragging_card, card_armed, road_drawing, road_drag_cells, pending_develop, current_hand, board_revision])
+	if signature == placement_preview_signature: return
+	placement_preview_signature = signature
 	for child in piece_preview_root.get_children(): child.free()
 	piece_preview_root.visible = false
 	if (not dragging_card and not card_armed and not road_drawing) or not _drag_card_index_is_valid(): return

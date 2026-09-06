@@ -188,9 +188,30 @@ func _build_settings():
 	settings_button.pressed.connect(func(): panel.visible = not panel.visible)
 	settings_layer.add_child(settings_button)
 	panel = PanelContainer.new()
+	var panel_theme := Theme.new()
+	panel_theme.default_font_size = 16
+	for control_type in ["Label", "Button", "CheckButton"]:
+		for color_name in ["font_color", "font_hover_color", "font_pressed_color", "font_focus_color"]:
+			panel_theme.set_color(color_name, control_type, Color(0.08, 0.14, 0.13))
+	panel.theme = panel_theme
+	var copy := BackBufferCopy.new()
+	copy.copy_mode = BackBufferCopy.COPY_MODE_VIEWPORT
+	settings_layer.add_child(copy)
+	var glass := ColorRect.new()
+	glass.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var glass_material := ShaderMaterial.new()
+	glass_material.shader = preload("res://shaders/ui_frosted_glass.gdshader")
+	glass_material.set_shader_parameter("tint_color", Color(0.78, 0.78, 0.78, 0.43))
+	glass_material.set_shader_parameter("blur_lod", 3.4)
+	glass_material.set_shader_parameter("blur_radius", 12.0)
+	glass.material = glass_material
+	settings_layer.add_child(glass)
+	panel.visibility_changed.connect(func(): glass.visible = panel.visible; copy.visible = panel.visible)
+	panel.item_rect_changed.connect(func(): glass.position = panel.position; glass.size = panel.size; glass.scale = panel.scale)
 	var background := StyleBoxFlat.new()
-	background.bg_color = Color(0.22, 0.22, 0.22, 0.96)
-	background.set_corner_radius_all(8)
+	background.bg_color = Color(1, 1, 1, 0.04)
+	background.border_color = Color(1, 1, 1, 0.40)
+	background.set_border_width_all(1)
 	background.content_margin_left = 18.0; background.content_margin_right = 18.0
 	background.content_margin_top = 14.0; background.content_margin_bottom = 14.0
 	panel.add_theme_stylebox_override("panel", background)
@@ -203,6 +224,15 @@ func _build_settings():
 		label.text = {"music": "背景音乐", "effects": "操作与提示", "ambience": "天气环境"}[category]
 		column.add_child(label)
 		var slider := HSlider.new()
+		var track := StyleBoxFlat.new()
+		track.bg_color = Color(0.25, 0.28, 0.27, 0.20)
+		track.set_corner_radius_all(3)
+		track.content_margin_top = 3; track.content_margin_bottom = 3
+		slider.add_theme_stylebox_override("slider", track)
+		var fill: StyleBoxFlat = track.duplicate()
+		fill.bg_color = Color(0.30, 0.49, 0.43, 0.90)
+		slider.add_theme_stylebox_override("grabber_area", fill)
+		slider.add_theme_stylebox_override("grabber_area_highlight", fill)
 		slider.min_value = 0; slider.max_value = 100; slider.step = 1
 		slider.value = float(get(category + "_volume")) * 100.0
 		slider.custom_minimum_size = Vector2(204, 22)
@@ -221,6 +251,7 @@ func _layout_settings():
 	var game = get_parent()
 	var title: bool = game.state == game.S.TITLE
 	var scale: float = 1.0 if title else game._ui_scale(viewport_size)
+	scale = minf(scale, minf((viewport_size.x - 36.0) / 240.0, (viewport_size.y - 90.0) / maxf(panel.size.y, 280.0)))
 	settings_button.scale = Vector2.ONE * scale
 	settings_button.size = Vector2(36, 36)
 	settings_button.position = Vector2(viewport_size.x - (120.0 if title else 59.0 * scale), 20.0 if title else 27.0 * scale)

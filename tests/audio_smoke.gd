@@ -27,7 +27,7 @@ func _run():
 	sound.muted = false
 	sound.effects_volume = 0.7
 	sound.ambience_volume = 0.65
-	game._start_game_from_title(2)
+	await game._start_game_from_title(2)
 	await process_frame
 	root.notify_mouse_entered()
 	var before_history: int = game.action_history.size()

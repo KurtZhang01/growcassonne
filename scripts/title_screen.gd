@@ -307,10 +307,16 @@ func _sync_music_button():
 	music_button.tooltip_text = "开启音乐" if muted else "关闭音乐"
 
 func release():
+	set_process(false)
+	set_process_input(false)
+	for viewport in previews:
+		viewport.render_target_update_mode = SubViewport.UPDATE_DISABLED
 	# Stop repeating property animations before their model targets are removed.
 	for tween in scenery_tweens:
 		if tween.is_valid(): tween.kill()
 	scenery_tweens.clear()
-	if is_instance_valid(world): world.queue_free()
+	if is_instance_valid(world):
+		world.hide()
+		world.queue_free()
 	hide()
 	queue_free()
